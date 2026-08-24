@@ -1,0 +1,511 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  BTC/JPY multi-agent trading system (spec 17).
+  Region: ap-northeast-1. Designed to sit inside the AWS Always-Free tier:
+  DynamoDB tables are provisioned at 1 RCU / 1 WCU each (25 of each are always
+  free, account-wide), and Lambda usage is roughly 11k invocations a month.
+
+Parameters:
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [dev, prod]
+  OwnerEmail:
+    Type: String
+    Description: >
+      Destination for every emergency notification (spec 16.4) and for the
+      budget alarm. Must be a verified SES identity in this region.
+  SenderEmail:
+    Type: String
+    Description: Verified SES sender address.
+  PaperTrading:
+    Type: String
+    Default: 'true'
+    AllowedValues: ['true', 'false']
+    Description: >
+      Phase 1 kill-flag (spec 13/17.3). While true the executor cannot reach
+      bitbank's private order API at all. Flip to 'false' only after the owner
+      has explicitly approved the move to Phase 2.
+  Phase:
+    Type: String
+    Default: '1'
+    AllowedValues: ['1', '2', '3']
+  MonthlyBudgetUSD:
+    Type: Number
+    Default: 2
+    Description: AWS Budgets alarm threshold, roughly 200 JPY (spec 17.2).
+  LogRetentionDays:
+    Type: Number
+    Default: 30
+    Description: Spec 17.2 — durable logs live in S3, not CloudWatch.
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Architectures: [arm64]
+    MemorySize: 256
+    Timeout: 60
+    Tracing: Active
+    Environment:
+      Variables:
+        TA_ENV: !Ref Environment
+        TA_SYSTEM__PAPER_TRADING: !Ref PaperTrading
+        TA_SYSTEM__PHASE: !Ref Phase
+        TA_STORAGE__TABLE_PREFIX: !Sub 'trade-agent-${Environment}'
+        TA_STORAGE__S3_BUCKET: !Ref DataBucket
+        TA_NOTIFY__TO_ADDRESS: !Ref OwnerEmail
+        TA_NOTIFY__FROM_ADDRESS: !Ref SenderEmail
+        TA_NOTIFY__SES_REGION: !Ref AWS::Region
+        PYTHONPATH: /var/task/src
+
+Resources:
+
+  # ---------------------------------------------------------------- storage
+  # One table per entity (spec 10). Provisioned rather than on-demand: the
+  # Always-Free allowance is expressed in provisioned capacity units, and at
+  # this volume one unit per table is ample.
+
+  StateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'trade-agent-${Environment}-state'
+      AttributeDefinitions: [{AttributeName: pk, AttributeType: S}]
+      KeySchema: [{AttributeName: pk, KeyType: HASH}]
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+
+  OrdersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'trade-agent-${Environment}-orders'
+      AttributeDefinitions: [{AttributeName: pk, AttributeType: S}]
+      KeySchema: [{AttributeName: pk, KeyType: HASH}]
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+
+  LocksTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'trade-agent-${Environment}-locks'
+      AttributeDefinitions: [{AttributeName: pk, AttributeType: S}]
+      KeySchema: [{AttributeName: pk, KeyType: HASH}]
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+      # Leases are reclaimed by the conditional write; TTL is only housekeeping.
+      TimeToLiveSpecification: {AttributeName: ttl, Enabled: true}
+
+  TradesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'trade-agent-${Environment}-trades'
+      AttributeDefinitions: [{AttributeName: pk, AttributeType: S}]
+      KeySchema: [{AttributeName: pk, KeyType: HASH}]
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+      PointInTimeRecoverySpecification: {PointInTimeRecoveryEnabled: true}
+
+  AgentCallsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'trade-agent-${Environment}-agent-calls'
+      AttributeDefinitions:
+        - {AttributeName: pk, AttributeType: S}
+        - {AttributeName: sk, AttributeType: S}
+      KeySchema:
+        - {AttributeName: pk, KeyType: HASH}
+        - {AttributeName: sk, KeyType: RANGE}
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 2}
+
+  LessonsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'trade-agent-${Environment}-lessons'
+      AttributeDefinitions:
+        - {AttributeName: pk, AttributeType: S}
+        - {AttributeName: sk, AttributeType: S}
+      KeySchema:
+        - {AttributeName: pk, KeyType: HASH}
+        - {AttributeName: sk, KeyType: RANGE}
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+
+  EquityCurveTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'trade-agent-${Environment}-equity-curve'
+      AttributeDefinitions:
+        - {AttributeName: pk, AttributeType: S}
+        - {AttributeName: sk, AttributeType: S}
+      KeySchema:
+        - {AttributeName: pk, KeyType: HASH}
+        - {AttributeName: sk, KeyType: RANGE}
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+
+  DailyReportsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'trade-agent-${Environment}-daily-reports'
+      AttributeDefinitions:
+        - {AttributeName: pk, AttributeType: S}
+        - {AttributeName: sk, AttributeType: S}
+      KeySchema:
+        - {AttributeName: pk, KeyType: HASH}
+        - {AttributeName: sk, KeyType: RANGE}
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+
+  AuditTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub 'trade-agent-${Environment}-audit'
+      AttributeDefinitions:
+        - {AttributeName: pk, AttributeType: S}
+        - {AttributeName: sk, AttributeType: S}
+      KeySchema:
+        - {AttributeName: pk, KeyType: HASH}
+        - {AttributeName: sk, KeyType: RANGE}
+      ProvisionedThroughput: {ReadCapacityUnits: 1, WriteCapacityUnits: 1}
+
+  DataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'trade-agent-${Environment}-${AWS::AccountId}'
+      VersioningConfiguration: {Status: Enabled}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-old-versions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 90
+
+  # -------------------------------------------------------------- functions
+
+  TickFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'trade-agent-${Environment}-tick'
+      Handler: trade_agent.handlers.tick.handler
+      CodeUri: .
+      Timeout: 120
+      # Spec 17.3: AWS must never retry this by itself. A retried tick could
+      # duplicate an exit order; re-running is an explicit, idempotent action.
+      EventInvokeConfig:
+        MaximumRetryAttempts: 0
+        MaximumEventAgeInSeconds: 120
+      Policies:
+        - !Ref TradingDataPolicy
+        - !Ref SecretsReadPolicy
+        - !Ref NotifyPolicy
+      Events:
+        FiveMinutes:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: 'rate(5 minutes)'
+            ScheduleExpressionTimezone: Asia/Tokyo
+            RetryPolicy: {MaximumRetryAttempts: 0}
+
+  ScreenFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'trade-agent-${Environment}-screen'
+      Handler: trade_agent.handlers.screen.handler
+      CodeUri: .
+      Timeout: 120
+      Environment:
+        Variables:
+          TA_DECIDE_FUNCTION_NAME: !Ref DecideFunction
+      EventInvokeConfig:
+        MaximumRetryAttempts: 0
+        MaximumEventAgeInSeconds: 300
+      Policies:
+        - !Ref TradingDataPolicy
+        - !Ref SecretsReadPolicy
+        - !Ref NotifyPolicy
+        - LambdaInvokePolicy: {FunctionName: !Ref DecideFunction}
+      Events:
+        ThirtyMinutes:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: 'rate(30 minutes)'
+            ScheduleExpressionTimezone: Asia/Tokyo
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        # Spec 9(b): the scheduled floor. Times are JST; EventBridge Scheduler
+        # converts them, so no manual UTC arithmetic is involved.
+        MorningFloor:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: 'cron(0 9 * * ? *)'
+            ScheduleExpressionTimezone: Asia/Tokyo
+            RetryPolicy: {MaximumRetryAttempts: 0}
+        EveningFloor:
+          Type: ScheduleV2
+          Properties:
+            ScheduleExpression: 'cron(0 21 * * ? *)'
+            ScheduleExpressionTimezone: Asia/Tokyo
+            RetryPolicy: {MaximumRetryAttempts: 0}
+
+  DecideFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'trade-agent-${Environment}-decide'
+      Handler: trade_agent.handlers.decide.handler
+      CodeUri: .
+      # Spec 17.1 budgets 1-3 minutes for a full debate; 15 is the hard ceiling.
+      Timeout: 600
+      MemorySize: 512
+      EventInvokeConfig:
+        MaximumRetryAttempts: 0
+        MaximumEventAgeInSeconds: 600
+      Policies:
+        - !Ref TradingDataPolicy
+        - !Ref SecretsReadPolicy
+        - !Ref NotifyPolicy
+        - LambdaInvokePolicy: {FunctionName: !Sub 'trade-agent-${Environment}-reflect'}
+
+  ReflectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'trade-agent-${Environment}-reflect'
+      Handler: trade_agent.handlers.reflect.handler
+      CodeUri: .
+      Timeout: 300
+      EventInvokeConfig:
+        MaximumRetryAttempts: 0
+        MaximumEventAgeInSeconds: 3600
+      Policies:
+        - !Ref TradingDataPolicy
+        - !Ref SecretsReadPolicy
+        - !Ref NotifyPolicy
+
+  McpFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'trade-agent-${Environment}-mcp'
+      Handler: trade_agent.handlers.mcp_handler.handler
+      CodeUri: .
+      Timeout: 30
+      EventInvokeConfig:
+        MaximumRetryAttempts: 0
+      FunctionUrlConfig:
+        # Anthropic's servers cannot sign SigV4, so the URL is unauthenticated
+        # at the infrastructure layer and the bearer check in mcp/auth.py is
+        # mandatory (spec 16.3). Never remove that check.
+        AuthType: NONE
+        InvokeMode: BUFFERED
+      Policies:
+        - !Ref TradingDataPolicy
+        # Deliberately NOT SecretsReadPolicy: this function must not be able to
+        # read the bitbank credentials (spec 12/16.3). It reads only its own
+        # bearer token.
+        - Statement:
+            - Effect: Allow
+              Action: [ssm:GetParameter]
+              Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/trade-agent/mcp/*'
+            - Effect: Allow
+              Action: [kms:Decrypt]
+              Resource: '*'
+              Condition:
+                StringEquals:
+                  kms:ViaService: !Sub 'ssm.${AWS::Region}.amazonaws.com'
+
+  # --------------------------------------------------------------- policies
+
+  TradingDataPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: DynamoDB tables and the S3 data bucket.
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - dynamodb:GetItem
+              - dynamodb:PutItem
+              - dynamodb:UpdateItem
+              - dynamodb:DeleteItem
+              - dynamodb:Query
+              - dynamodb:Scan
+            Resource:
+              - !GetAtt StateTable.Arn
+              - !GetAtt OrdersTable.Arn
+              - !GetAtt LocksTable.Arn
+              - !GetAtt TradesTable.Arn
+              - !GetAtt AgentCallsTable.Arn
+              - !GetAtt LessonsTable.Arn
+              - !GetAtt EquityCurveTable.Arn
+              - !GetAtt DailyReportsTable.Arn
+              - !GetAtt AuditTable.Arn
+          - Effect: Allow
+            Action: [s3:GetObject, s3:PutObject, s3:ListBucket]
+            Resource:
+              - !GetAtt DataBucket.Arn
+              - !Sub '${DataBucket.Arn}/*'
+
+  SecretsReadPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: >
+        bitbank and Anthropic credentials. Granted to tick/screen/decide/reflect
+        only — never to the internet-facing mcp function (spec 12).
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: [ssm:GetParameter, ssm:GetParameters]
+            Resource:
+              - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/trade-agent/bitbank/*'
+              - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/trade-agent/anthropic/*'
+          - Effect: Allow
+            Action: [kms:Decrypt]
+            Resource: '*'
+            Condition:
+              StringEquals:
+                kms:ViaService: !Sub 'ssm.${AWS::Region}.amazonaws.com'
+
+  NotifyPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      Description: Emergency email (spec 16.4). Recipient is pinned by config.
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action: [ses:SendEmail]
+            Resource: '*'
+            Condition:
+              StringEquals:
+                ses:FromAddress: !Ref SenderEmail
+
+  # ------------------------------------------------------- alarms & budget
+
+  AlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub 'trade-agent-${Environment}-alarms'
+      Subscription:
+        - Protocol: email
+          Endpoint: !Ref OwnerEmail
+
+  # Spec 17.3: the dead-man's switch. With no exchange-side OCO, a tick that
+  # stops running is a position with no stop loss. Missing data breaches on
+  # purpose — silence is the failure being detected.
+  TickHeartbeatAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'trade-agent-${Environment}-tick-heartbeat'
+      AlarmDescription: >
+        The 5-minute tick has not run for 15 minutes. Stop-loss monitoring may
+        be down. Treat with the same urgency as the kill switch.
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions:
+        - {Name: FunctionName, Value: !Ref TickFunction}
+      Statistic: Sum
+      Period: 900
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: [!Ref AlarmTopic]
+      OKActions: [!Ref AlarmTopic]
+
+  TickErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'trade-agent-${Environment}-tick-errors'
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - {Name: FunctionName, Value: !Ref TickFunction}
+      Statistic: Sum
+      Period: 900
+      EvaluationPeriods: 1
+      Threshold: 2
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+
+  DecideErrorAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub 'trade-agent-${Environment}-decide-errors'
+      Namespace: AWS/Lambda
+      MetricName: Errors
+      Dimensions:
+        - {Name: FunctionName, Value: !Ref DecideFunction}
+      Statistic: Sum
+      Period: 3600
+      EvaluationPeriods: 1
+      Threshold: 2
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref AlarmTopic]
+
+  CostBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub 'trade-agent-${Environment}'
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        BudgetLimit: {Amount: !Ref MonthlyBudgetUSD, Unit: USD}
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 80
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - {SubscriptionType: EMAIL, Address: !Ref OwnerEmail}
+        - Notification:
+            NotificationType: FORECASTED
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - {SubscriptionType: EMAIL, Address: !Ref OwnerEmail}
+
+  # Spec 17.2: 30-day retention. Permanent records live in S3.
+  TickLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/trade-agent-${Environment}-tick'
+      RetentionInDays: !Ref LogRetentionDays
+  ScreenLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/trade-agent-${Environment}-screen'
+      RetentionInDays: !Ref LogRetentionDays
+  DecideLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/trade-agent-${Environment}-decide'
+      RetentionInDays: !Ref LogRetentionDays
+  ReflectLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/trade-agent-${Environment}-reflect'
+      RetentionInDays: !Ref LogRetentionDays
+  McpLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/trade-agent-${Environment}-mcp'
+      RetentionInDays: !Ref LogRetentionDays
+
+Outputs:
+  McpEndpoint:
+    Description: >
+      Register this as a custom connector in claude.ai with the bearer token
+      stored at /trade-agent/mcp/bearer-token.
+    Value: !GetAtt McpFunctionUrl.FunctionUrl
+  DataBucketName:
+    Value: !Ref DataBucket
+  AlarmTopicArn:
+    Value: !Ref AlarmTopic
+  PaperTradingFlag:
+    Description: Phase 1 guard. 'true' means no live order can be placed.
+    Value: !Ref PaperTrading

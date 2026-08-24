@@ -1,0 +1,162 @@
+# Trade Agent — default configuration.
+#
+# Every number the spec calls out as "configurable" lives here. Nothing in the
+# source hard-codes an exchange constant, a risk limit or a schedule.
+#
+# Overrides, highest priority last:
+#   1. this file
+#   2. config/<environment>.yaml   (environment = TA_ENV, default "dev")
+#   3. environment variables       TA_<SECTION>__<KEY> (e.g. TA_SYSTEM__PAPER_TRADING=false)
+
+system:
+  environment: dev
+  # Phase 1 (paper trading) kill-flag. While true the executor logs orders and
+  # never reaches the exchange's private API. Spec 17.3.
+  paper_trading: true
+  # 1 = paper, 2 = minimum-lot live, 3 = full risk sizing. Spec 13.
+  phase: 1
+  display_timezone: Asia/Tokyo
+  log_level: INFO
+
+exchange:
+  name: bitbank
+  pair: btc_jpy
+  public_base_url: https://public.bitbank.cc
+  private_base_url: https://api.bitbank.cc/v1
+  # Spec 2. Verified at runtime against GET /v1/spot/pairs by
+  # `trade-agent verify-pair` and (when enabled) on executor start-up.
+  min_order_btc: "0.0001"
+  amount_digits: 8
+  price_digits: 0
+  maker_fee_rate: "-0.0002"   # -0.02% (rebate)
+  taker_fee_rate: "0.0012"    # +0.12%
+  verify_pair_settings: true
+  http_timeout_seconds: 10
+  max_retries: 4
+  retry_base_delay_seconds: 1.0
+  rate_limit:
+    query_per_second: 10      # bitbank documented QUERY limit
+    update_per_second: 6      # bitbank documented UPDATE limit (order/cancel)
+  private_failure_threshold: 3   # consecutive failures before "stand down + notify"
+
+capital:
+  initial_equity_jpy: 10000
+  monthly_target_pct: 10      # target, never a constraint (spec 0/1)
+
+risk:
+  per_trade_risk_pct: 1.0
+  probe_risk_pct: 0.5
+  daily_loss_limit_pct: 3.0
+  losing_streak_limit: 3
+  losing_streak_pause_hours: 24
+  flash_move_pct: 3.0
+  flash_move_window_minutes: 15
+  flash_move_pause_hours: 1
+  killswitch_drawdown_pct: 20.0
+  max_concurrent_positions: 1
+
+boredom:
+  enabled: true
+  no_trade_hours: 72
+  relaxed_consensus_min: 1     # 1/3 instead of 2/3
+  probe_sl_pct: 0.7            # SL within -0.7% of entry
+  monthly_probe_loss_limit_pct: 2.0
+  mechanical_probe_vwap_hours: 24
+  mechanical_probe_discount_pct: 0.2   # limit price = VWAP * (1 - 0.2%)
+
+guard:
+  max_retries: 3
+  entry_max_deviation_pct: 2.0
+  # Quoted indicator values must match the snapshot within this relative
+  # tolerance, otherwise the agent is judged to have fabricated a number.
+  indicator_tolerance_pct: 0.5
+
+execution:
+  requote_max_deviation_pct: 0.3
+  post_only_timeout_minutes: 60
+  tp_exit_timeout_minutes: 30
+  lock_lease_seconds: 600
+  pending_order_stale_minutes: 90
+
+schedule:
+  tick_minutes: 5
+  screen_minutes: 30
+  full_debate_cooldown_minutes: 30
+  daily_full_debate_limit: 8
+  floor_times_jst: ["09:00", "21:00"]
+  daily_report_time_jst: "21:00"
+
+screening:
+  breakout_lookback_hours: 24
+  rsi_period: 14
+  rsi_low: 30
+  rsi_high: 70
+  volume_spike_multiple: 2.0
+  vwap_deviation_pct: 1.0
+  scout_mode: false            # spec 9: optional 1-call LLM scout, default OFF
+
+snapshot:
+  candle_type: 1hour
+  candle_limit: 200
+  short_candle_type: 5min
+  short_candle_limit: 120
+  depth_levels: 10
+  lessons_in_prompt: 12
+
+llm:
+  provider: anthropic
+  model: claude-haiku-4-5
+  # Spec 4.2: swap one of the three strategists onto a different model so the
+  # trio does not share one base model's blind spots. null = same model.
+  contrarian_model: null
+  max_tokens: 2000
+  timeout_seconds: 60
+  max_api_retries: 2
+  use_prompt_cache: true
+  # claude-haiku-4-5 will not create a cache entry below this prefix size.
+  # Prefixes shorter than this silently cost full price - we log a warning.
+  cache_min_tokens: 4096
+  structured_output: true       # messages.parse(output_format=...)
+  batch_api_for_reflect: true   # spec 11: A7 may use the 50%-off Batch API
+  pricing:
+    input_per_mtok_usd: 1.00
+    output_per_mtok_usd: 5.00
+    cache_write_multiplier: 1.25
+    cache_read_multiplier: 0.10
+    batch_multiplier: 0.50
+  usd_jpy_rate: 155.0
+
+cost:
+  total_budget_jpy: 3000
+  infra_cost_jpy: 100          # spec 1: conservative fixed value, update from AWS Budgets
+  degrade_threshold_pct: 80    # -> one full debate per day
+  stop_threshold_pct: 100      # -> no LLM calls at all (tick/SL/TP keep running)
+  degraded_daily_debate_limit: 1
+
+reflect:
+  min_trades_for_lessons: 20   # spec 9: aggregate statistics, never single-trade verdicts
+  lookback_trades: 60
+  max_lessons_per_run: 5
+
+storage:
+  backend: dynamodb            # dynamodb | memory
+  table_prefix: trade-agent
+  s3_bucket: ""
+  agent_log_prefix: agent-logs/
+  backup_prefix: backups/
+
+notify:
+  enabled: true
+  ses_region: ap-northeast-1
+  from_address: ""
+  to_address: ""
+
+mcp:
+  server_name: trade-agent
+  protocol_version: "2025-06-18"
+  ssm_bearer_token_param: /trade-agent/mcp/bearer-token
+
+secrets:
+  ssm_bitbank_api_key: /trade-agent/bitbank/api-key
+  ssm_bitbank_api_secret: /trade-agent/bitbank/api-secret
+  ssm_anthropic_api_key: /trade-agent/anthropic/api-key

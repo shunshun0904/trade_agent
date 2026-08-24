@@ -1,0 +1,200 @@
+# trade-agent — BTC/JPY マルチエージェント自動売買システム
+
+bitbank 現物 BTC/JPY を対象とした、LLM マルチエージェント方式のデイトレード
+システム。AWS サーバーレス構成で動作する。
+
+> **現在のフェーズ: Phase 1(ペーパートレード)**
+> `system.paper_trading` が `true` の間、執行層は bitbank の Private 注文 API に
+> **構造的に到達できない**。Phase 2 への移行にはオーナーの明示承認が必要
+> (仕様 §13)。
+
+---
+
+## 0. 安全に関する前提(必読)
+
+### bitbank API キーには出金権限を付与しない
+
+本システムが必要とするのは **参照(照会)** と **取引** の権限だけである。
+出金権限を持つキーを設定してはならない。コード側にも出金 API を呼ぶ経路は
+一切存在しない(`exchange/base.py` の `ExchangeClient` に出金メソッドがない)。
+
+キー・シークレットは **SSM Parameter Store(SecureString)** にのみ置く。
+リポジトリ、設定ファイル、環境変数ファイル、チャットに貼らないこと。
+
+```bash
+aws ssm put-parameter --type SecureString --name /trade-agent/bitbank/api-key    --value '...'
+aws ssm put-parameter --type SecureString --name /trade-agent/bitbank/api-secret --value '...'
+aws ssm put-parameter --type SecureString --name /trade-agent/anthropic/api-key  --value '...'
+aws ssm put-parameter --type SecureString --name /trade-agent/mcp/bearer-token   --value "$(openssl rand -base64 32)"
+```
+
+**キーが第三者の目に触れた場合(スクリーンショット共有を含む)は、
+必ず bitbank 管理画面で削除し、新しいキーを再発行すること。**
+一度でも露出したキーは、権限が限定されていても再利用してはならない。
+
+### 退屈防止ルール(3日ルール)について
+
+72時間無取引を作らないという **オーナーのエンタメ要求** に基づく機能であり、
+**統計的な優位性を持たない**(仕様 §7)。実装上は次のように隔離してある。
+
+- 発注は最小ロット固定(0.0001 BTC)、リスク上限 0.5%、損切りは entry から -0.7% 以内
+- `probe=true` フラグが付き、戦略成績の集計から常に除外される
+- キルスイッチ・連敗ブレーキ・日次損失上限・急変動停止のいずれかが作動中は**発火しない**
+- probe の月間累計損失が equity の 2% に達した時点で、当月は自動停止しオーナーへ通知
+
+### 収益について
+
+月利10%は **目標(target)** であって保証でも制約でもない。本システムのいかなる
+出力もそれを約束しない。第1期(3ヶ月)は検証・学習フェーズであり、稼働費を含めた
+黒字化は目標に含まれない(仕様 §1)。
+
+---
+
+## 1. これは何をするか
+
+30分ごとに市況を機械的にスクリーニングし(LLM 不使用・コスト0円)、条件が
+成立したときだけ 9体の LLM エージェントによるフル議論を1サイクル回す。
+
+```
+市況分析(A1)
+   ↓
+戦略3案(A2a 順張り / A2b 逆張り / A2c 悲観)  ← 相互不可視で独立提案
+   ↓
+相互批判(匿名化した他2案を1ラウンド)
+   ↓
+合意ルール(Python が判定: 3案中2案以上が buy でなければ no_trade)
+   ↓
+裁定(A3) → サイズ算出(Python) → リスク査定(A4) → 検査(A5) → 指揮(A6)
+   ↓
+決定論ガード → 再クオート → 冪等発注
+```
+
+決済後は A7 が **直近20件以上の集計統計** から教訓を抽出し、次サイクルの
+コンテキストに載せる。1トレードから断定させることはしない。
+
+### 設計の中心にある3つの決定
+
+1. **数値は LLM に計算させない。** 価格・指標・数量・損益はすべて Python が
+   確定させ、JSON でモデルに渡す。モデルの仕事は解釈・判断・批判・文章化だけ。
+   引用された指標値は決定論ガードがスナップショットの実値と照合し、
+   食い違えば出力を棄却する。
+2. **合意ルールは Python が数える。** 裁定者が自分で言いくるめられるルールは
+   ルールではない。
+3. **安全装置は LLM の前に評価する。** 停止中のシステムは1トークンも消費しない。
+
+---
+
+## 2. すぐ試す(AWS 不要)
+
+```bash
+make install
+make test                                    # 232 tests
+PYTHONPATH=src python -m trade_agent.cli --local decide    # 1サイクルをオフライン実行
+```
+
+`--local` はインメモリストアと決定論的なオフライン LLM を使う。API キーも
+AWS アカウントも不要で、仕様 §14 の受け入れ基準はすべてこの状態で再現できる。
+
+### 取引所定数の再確認(仕様 §2)
+
+最小注文数量と手数料は `config/default.yaml` に置いてあるが、正しさの根拠は
+取引所側にある。次のコマンドが `GET /v1/spot/pairs`(認証不要)と設定値を
+突き合わせ、差分があれば終了コード 2 を返す。
+
+```bash
+make verify-pair
+```
+
+**Phase 2(実弾)へ移行する前に必ず実行すること。** この値は全注文の
+サイズ計算に効く。
+
+---
+
+## 3. 主なコマンド
+
+| コマンド | 内容 |
+|---|---|
+| `trade-agent verify-pair` | 取引所定数と設定値の差分検査 |
+| `trade-agent snapshot --prompt` | エージェントが実際に受け取る JSON を表示 |
+| `trade-agent status` | オーナー向けステータス(MCP の `get_status` と同じ) |
+| `trade-agent tick` | 5分監視パスを1回 |
+| `trade-agent screen` | 30分スクリーニングを1回 |
+| `trade-agent decide` | フル議論を1サイクル |
+| `trade-agent reflect` | 決済後の集計分析 |
+| `trade-agent backfill --days 60` | ヒストリカルローソク足の取得 |
+| `trade-agent backtest` | 決定論レイヤのリプレイ |
+| `trade-agent mcp get_status` | MCP ツールをローカル実行 |
+
+---
+
+## 4. 構成
+
+| 層 | モジュール | LLM | 概要 |
+|---|---|---|---|
+| ① データ | `data/`, `exchange/` | — | ローソク足・板・残高 → MarketSnapshot |
+| ② オーケストレータ | `orchestrator/` | — | 状態遷移、差し戻しループ、ロック |
+| ③ エージェント | `agents/` | ✓ | A1〜A7 |
+| ④ 決定論ガード | `guards/` | — | スキーマ検証と数値照合 |
+| ⑤ 執行 | `execution/` | — | 冪等発注、再クオート、SL/TP 監視 |
+| ⑥ オーナー対話 | `mcp/` | — | リモート MCP サーバー(プル型) |
+| ⑥' 緊急通知 | `notify/` | — | SES メール(プッシュ) |
+| ⑦ 記憶 | `storage/` | — | DynamoDB + S3 |
+
+Lambda は5本(`tick` / `screen` / `decide` / `reflect` / `mcp`)。
+詳細は [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)。
+
+---
+
+## 5. コスト
+
+| 項目 | 月額 |
+|---|---|
+| LLM(Anthropic 直 API) | 実測。予算 **2,900円** |
+| AWS インフラ | 0〜100円(常時無料枠内の設計) |
+| **合計上限** | **3,000円** |
+
+消化率 80% で判断サイクルを1日1回に縮退、100% で当月の LLM 呼び出しを停止する。
+**縮退・停止しても5分tickと損切り監視は動き続ける**(仕様 §11)。
+AWS Budgets が $2 超過で警告メールを送る。
+
+> **既知の注意点:** `claude-haiku-4-5` は共通プレフィックスが 4,096 トークン
+> 未満だとキャッシュエントリを作らない(エラーにはならず、静かに全額課金される)。
+> 現状の共通プレフィックスは約 2,000 トークンで、この閾値を下回る。
+> `agent_calls` テーブルの `cache_read_tokens` が 0 のままなら効いていない。
+> 対策は docs/ARCHITECTURE.md の「プロンプトキャッシュ」節を参照。
+
+---
+
+## 6. オーナーとの対話(MCP)
+
+`mcp` Lambda の Function URL を claude.ai の「カスタムコネクタ」として登録する。
+Bearer トークン認証必須。**プル型**であり、オーナーが質問したときだけ情報が流れる。
+緊急イベントの即時通知はメールが担う(仕様 §16.1)。
+
+| ツール | 種別 |
+|---|---|
+| `get_status` / `get_daily_report` / `get_trades` / `get_agent_log` / `get_lessons` | 読取 |
+| `pause_trading` / `resume_trading` | 操作(`confirm=true` 必須) |
+
+MCP から発注はできない。できる最大の操作は「停止」と「再開」まで。
+`mcp` Lambda の IAM ロールには bitbank 秘密鍵の読取権限を与えていない(仕様 §12/§16.3)。
+
+---
+
+## 7. やらないこと(仕様 §15)
+
+- ショート・レバレッジ・信用取引(現物ロングオンリー)
+- BTC/JPY 以外の通貨ペア
+- 秒単位の高頻度取引
+- VPS・常駐サーバー・Kubernetes での運用
+- AWS Bedrock 経由の LLM 呼び出し(Anthropic 直 API を使う)
+- 収益の保証
+
+---
+
+## 8. ドキュメント
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 設計判断とその理由
+- [docs/DEPLOY.md](docs/DEPLOY.md) — デプロイ手順とフェーズ移行
+- [docs/RUNBOOK.md](docs/RUNBOOK.md) — 障害対応
+- [docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md) — **仕様の曖昧点とこちらの暫定判断(要確認)**
