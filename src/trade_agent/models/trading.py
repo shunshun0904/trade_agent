@@ -29,6 +29,15 @@ class Side(StrEnum):
 class OrderType(StrEnum):
     LIMIT = "limit"
     MARKET = "market"
+    # Trigger orders. bitbank's `take_profit` / `stop_loss` types are position
+    # -close orders for margin trading (they take no `amount`, and error 60019
+    # requires them to be "in the close direction"), so spot uses these two.
+    STOP = "stop"                # market on trigger
+    STOP_LIMIT = "stop_limit"    # limit on trigger
+
+    @property
+    def is_trigger(self) -> bool:
+        return self in {OrderType.STOP, OrderType.STOP_LIMIT}
 
 
 class OrderPurpose(StrEnum):
@@ -42,6 +51,9 @@ class OrderStatus(StrEnum):
     crash between write and call is recoverable (spec 8)."""
 
     PENDING = "pending"
+    # A trigger order that is placed but not yet armed (bitbank `INACTIVE`).
+    # It is live and protective, but it holds no place on the book yet.
+    INACTIVE = "inactive"
     SUBMITTED = "submitted"
     PARTIALLY_FILLED = "partially_filled"
     FILLED = "filled"
@@ -55,13 +67,20 @@ class OrderStatus(StrEnum):
 
     @property
     def is_open(self) -> bool:
-        return self in {OrderStatus.PENDING, OrderStatus.SUBMITTED,
-                        OrderStatus.PARTIALLY_FILLED, OrderStatus.UNKNOWN}
+        return self in {OrderStatus.PENDING, OrderStatus.INACTIVE,
+                        OrderStatus.SUBMITTED, OrderStatus.PARTIALLY_FILLED,
+                        OrderStatus.UNKNOWN}
+
+    @property
+    def is_protective(self) -> bool:
+        """Still capable of closing the position if the market reaches it."""
+        return self in {OrderStatus.INACTIVE, OrderStatus.SUBMITTED,
+                        OrderStatus.PARTIALLY_FILLED}
 
 
 # bitbank order status -> local status
 EXCHANGE_STATUS_MAP = {
-    "INACTIVE": OrderStatus.SUBMITTED,
+    "INACTIVE": OrderStatus.INACTIVE,
     "UNFILLED": OrderStatus.SUBMITTED,
     "PARTIALLY_FILLED": OrderStatus.PARTIALLY_FILLED,
     "FULLY_FILLED": OrderStatus.FILLED,
@@ -89,6 +108,8 @@ class OrderIntent(_Model):
     post_only: bool = True
     purpose: OrderPurpose = OrderPurpose.ENTRY
     probe: bool = False
+    trigger_price: Decimal | None = Field(
+        default=None, description="required for stop / stop_limit orders")
     trade_id: str | None = Field(
         default=None, description="the trade this order belongs to; set on exits")
 
@@ -109,6 +130,7 @@ class OrderRecord(_Model):
     post_only: bool = True
     purpose: OrderPurpose = OrderPurpose.ENTRY
     probe: bool = False
+    trigger_price: Decimal | None = None
     trade_id: str | None = None
     status: OrderStatus = OrderStatus.PENDING
     exchange_order_id: str | None = None
@@ -134,6 +156,7 @@ class OrderRecord(_Model):
             post_only=intent.post_only,
             purpose=intent.purpose,
             probe=intent.probe,
+            trigger_price=intent.trigger_price,
             trade_id=intent.trade_id,
             created_at=now,
             updated_at=now,
@@ -161,6 +184,20 @@ class Position(_Model):
     exit_order_id: str | None = Field(
         default=None, description="client_order_id of the in-flight exit, if any")
     exit_reason: str | None = None
+
+    # Hand-rolled OCO (spec 8). Both legs live on the exchange; whichever fills
+    # first causes the other to be cancelled.
+    stop_order_id: str | None = None
+    take_profit_order_id: str | None = None
+    protection_generation: int = Field(
+        default=0,
+        description="bumped every time the legs are re-armed, so a retired "
+                    "leg's deterministic id cannot collide with its successor")
+    protection: str = Field(
+        default="local",
+        description="local | exchange_oco | exchange_stop_only — what is "
+                    "actually protecting this position right now, which is not "
+                    "always what was configured")
 
     def unrealized_pnl_jpy(self, price) -> Decimal:
         return (dec(price) - self.entry_price) * self.qty_btc

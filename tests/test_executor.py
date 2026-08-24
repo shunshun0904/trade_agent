@@ -193,3 +193,22 @@ def test_an_expired_lease_can_be_taken_over(ctx, clock, config):
     assert first.acquire_lock(LOCK_EXECUTION)
     clock.advance(seconds=config.execution.lock_lease_seconds + 1)
     assert second.acquire_lock(LOCK_EXECUTION)
+
+
+def test_an_order_that_fills_on_placement_records_its_price(ctx):
+    """A create-order response can already carry a fill.
+
+    Recording the quantity without the price books the trade at zero, which
+    turns any immediate fill into a total loss on paper.
+    """
+    executor = ctx.executor()
+    intent = OrderIntent(
+        client_order_id="instant", cycle_id="c", pair="btc_jpy", side=Side.BUY,
+        order_type=OrderType.LIMIT, qty_btc=E("0.0003"),
+        price=ctx.exchange.market.price, post_only=True,
+        purpose=OrderPurpose.ENTRY)
+
+    record = executor.submit(intent)
+    if record.executed_qty_btc > 0:
+        assert record.average_price is not None and record.average_price > 0
+        assert record.fee_jpy != 0

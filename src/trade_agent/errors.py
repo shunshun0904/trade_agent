@@ -30,7 +30,29 @@ class ExchangeRateLimited(ExchangeError):
 
 
 class InsufficientFunds(ExchangeError):
-    """Balance too small for the requested order."""
+    """Balance too small for the requested order.
+
+    On a spot account this is the expected answer when a second sell is placed
+    against a balance an existing sell already reserves — which is how the OCO
+    layer discovers that only one protective leg can exist (spec 8).
+    """
+
+
+class OrderNotCancelable(ExchangeError):
+    """The order can no longer be cancelled — it almost certainly just filled.
+
+    In the OCO flow this is not an error but a signal: the leg we were about to
+    cancel won the race.
+    """
+
+
+class StopOrderRefused(ExchangeError):
+    """The exchange refused a trigger order.
+
+    Either the trigger would fire immediately (bitbank 60018) or stop orders are
+    temporarily suspended (70022/70023). Both mean: do not retry, protect the
+    position another way.
+    """
 
 
 class LockNotAcquired(TradeAgentError):

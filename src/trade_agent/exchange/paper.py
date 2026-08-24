@@ -22,7 +22,7 @@ from typing import Callable
 
 from pydantic import BaseModel, ConfigDict
 
-from ..errors import ExchangeError, InsufficientFunds
+from ..errors import ExchangeError, InsufficientFunds, StopOrderRefused
 from ..models.market import Candle
 from ..models.trading import OrderIntent, OrderType, Side
 from ..money import ZERO, dec
@@ -40,6 +40,8 @@ class PaperOrder(BaseModel):
     price: Decimal | None
     amount: Decimal
     post_only: bool
+    trigger_price: Decimal | None = None
+    reserved: bool = False
     status: str = "UNFILLED"
     executed_amount: Decimal = ZERO
     average_price: Decimal | None = None
@@ -73,7 +75,8 @@ class PaperExchange:
                  initial_jpy: Decimal,
                  load_account: Callable[[], PaperAccount | None] | None = None,
                  save_account: Callable[[PaperAccount], None] | None = None,
-                 now: Callable[[], datetime] | None = None):
+                 now: Callable[[], datetime] | None = None,
+                 reserve_on_placement: bool = True):
         self.public = public
         self.pair = pair
         self.maker_fee_rate = dec(maker_fee_rate)
@@ -82,6 +85,7 @@ class PaperExchange:
         self._load = load_account
         self._save = save_account
         self._now = now or (lambda: datetime.now(UTC))
+        self.reserve_on_placement = reserve_on_placement
         loaded = load_account() if load_account else None
         self.account = loaded or PaperAccount(jpy_free=dec(initial_jpy))
 
@@ -123,19 +127,32 @@ class PaperExchange:
                 f"amount {intent.qty_btc} below minimum {self.min_order_btc}")
         acc = self.account
         now = self._now()
+        is_trigger = intent.order_type.is_trigger
+        reserves_now = (not is_trigger) or self.reserve_on_placement
+
+        if is_trigger:
+            if intent.trigger_price is None:
+                raise ExchangeError("trigger order requires a trigger_price")
+            # bitbank 60018: a trigger that would fire immediately is refused.
+            market = dec(self.public.get_ticker()["last"])
+            if intent.side is Side.SELL and market <= intent.trigger_price:
+                raise StopOrderRefused(
+                    f"trigger {intent.trigger_price} is already through the "
+                    f"market at {market}", code=60018)
+
         if intent.side is Side.BUY:
             if intent.order_type is not OrderType.LIMIT or intent.price is None:
                 raise ExchangeError("paper entries must be limit orders")
             cost = intent.price * intent.qty_btc
             if cost > acc.jpy_free:
                 raise InsufficientFunds(
-                    f"need {cost} JPY, have {acc.jpy_free}")
+                    f"need {cost} JPY, have {acc.jpy_free}", code=60001)
             acc.jpy_free -= cost
             acc.jpy_locked += cost
-        else:
+        elif reserves_now:
             if intent.qty_btc > acc.btc_free:
                 raise InsufficientFunds(
-                    f"need {intent.qty_btc} BTC, have {acc.btc_free}")
+                    f"need {intent.qty_btc} BTC, have {acc.btc_free}", code=60001)
             acc.btc_free -= intent.qty_btc
             acc.btc_locked += intent.qty_btc
 
@@ -144,19 +161,29 @@ class PaperExchange:
         acc.orders[order_id] = PaperOrder(
             order_id=order_id, pair=intent.pair, side=intent.side,
             order_type=intent.order_type, price=intent.price,
-            amount=intent.qty_btc, post_only=intent.post_only, ordered_at=now)
+            amount=intent.qty_btc, post_only=intent.post_only,
+            trigger_price=intent.trigger_price, reserved=reserves_now,
+            status="INACTIVE" if is_trigger else "UNFILLED", ordered_at=now)
         self._settle()
         return self._as_exchange_dict(acc.orders[order_id])
 
     def cancel_order(self, exchange_order_id: str) -> dict:
+        from ..errors import OrderNotCancelable
+
+        self._settle()
         acc = self.account
         order = acc.orders.get(str(exchange_order_id))
         if order is None:
             raise ExchangeError(f"unknown order {exchange_order_id}", code=50008)
-        if order.status == "UNFILLED":
+        if order.status in {"UNFILLED", "INACTIVE"}:
             self._release(order)
             order.status = "CANCELED_UNFILLED"
             self._persist()
+            return self._as_exchange_dict(order)
+        if order.status == "FULLY_FILLED":
+            # bitbank 50010. The OCO layer reads this as "the sibling won".
+            raise OrderNotCancelable(
+                f"order {exchange_order_id} already filled", code=50010)
         return self._as_exchange_dict(order)
 
     def get_order(self, exchange_order_id: str) -> dict:
@@ -169,7 +196,7 @@ class PaperExchange:
     def get_active_orders(self) -> list[dict]:
         self._settle()
         return [self._as_exchange_dict(o) for o in self.account.orders.values()
-                if o.status in {"UNFILLED", "PARTIALLY_FILLED"}]
+                if o.status in {"UNFILLED", "PARTIALLY_FILLED", "INACTIVE"}]
 
     def get_trades_for_order(self, exchange_order_id: str) -> list[dict]:
         order = self.account.orders.get(str(exchange_order_id))
@@ -192,7 +219,8 @@ class PaperExchange:
 
     def _settle(self) -> None:
         """Advance every resting order against the market since it was placed."""
-        open_orders = [o for o in self.account.orders.values() if o.status == "UNFILLED"]
+        open_orders = [o for o in self.account.orders.values()
+                       if o.status in {"UNFILLED", "INACTIVE"}]
         if not open_orders:
             return
         candles = self._recent_candles(min(o.ordered_at for o in open_orders))
@@ -200,6 +228,10 @@ class PaperExchange:
         changed = False
         for order in open_orders:
             window = [c for c in candles if c.opened_at >= order.ordered_at]
+            if order.status == "INACTIVE":
+                if self._trigger(order, window):
+                    changed = True
+                continue
             if order.order_type is OrderType.MARKET:
                 if ticker is None:
                     ticker = self.public.get_ticker()
@@ -217,6 +249,41 @@ class PaperExchange:
                 changed = True
         if changed:
             self._persist()
+
+    def _trigger(self, order: PaperOrder, window: list[Candle]) -> bool:
+        """Arm a stop order once the market trades through its trigger."""
+        if not window or order.trigger_price is None:
+            return False
+        if order.side is Side.SELL:
+            if min(c.low for c in window) > order.trigger_price:
+                return False
+        elif max(c.high for c in window) < order.trigger_price:
+            return False
+
+        acc = self.account
+        if not order.reserved:
+            # Reservation deferred to trigger time. If another sell has taken
+            # the balance in the meantime, the stop is rejected — the failure
+            # mode the OCO layer's backstop exists for.
+            if order.amount > acc.btc_free:
+                order.status = "REJECTED"
+                return True
+            acc.btc_free -= order.amount
+            acc.btc_locked += order.amount
+            order.reserved = True
+
+        if order.order_type is OrderType.STOP:
+            # Fill at the worse of the trigger and the current bid. A stop that
+            # filled at a price the market had already recovered to would make
+            # every stop look better than it is.
+            ticker = self.public.get_ticker()
+            price = min(dec(order.trigger_price), dec(ticker["buy"])) \
+                if order.side is Side.SELL \
+                else max(dec(order.trigger_price), dec(ticker["sell"]))
+            self._fill(order, price, taker=True)
+        else:  # stop_limit becomes a resting limit order
+            order.status = "UNFILLED"
+        return True
 
     def _recent_candles(self, since: datetime) -> list[Candle]:
         """1-minute candles from `since` to now, across a day boundary if needed."""
@@ -253,6 +320,8 @@ class PaperExchange:
 
     def _release(self, order: PaperOrder) -> None:
         acc = self.account
+        if not order.reserved:
+            return
         if order.side is Side.BUY:
             reserved = (order.price or ZERO) * order.amount
             acc.jpy_locked -= reserved
@@ -279,4 +348,6 @@ class PaperExchange:
             "average_price": str(order.average_price or 0),
             "ordered_at": to_ms(order.ordered_at),
             "status": order.status,
+            **({"trigger_price": str(order.trigger_price)}
+               if order.trigger_price is not None else {}),
         }

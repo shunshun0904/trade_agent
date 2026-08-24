@@ -78,6 +78,27 @@ execution:
   lock_lease_seconds: 600
   pending_order_stale_minutes: 90
 
+  # Hand-rolled OCO (spec 8). bitbank has no OCO endpoint, so the two legs are
+  # placed separately and the survivor is cancelled when one fills.
+  #   local        - no exchange-side legs; the 5-minute tick evaluates SL/TP.
+  #   exchange_oco - place both legs on the exchange.
+  #   auto         - try exchange_oco, fall back per-position if the second leg
+  #                  is refused (a spot balance can only back one sell).
+  # Default `auto`: it is the only setting that is correct whichever way
+  # bitbank reserves balance for an INACTIVE stop order — a question that can
+  # only be settled against the live exchange. See docs/OPEN-QUESTIONS.md A-1.
+  oco_mode: auto
+  # `stop` = market on trigger (certain exit, uncertain price).
+  # `stop_limit` = limit on trigger (certain price, may not fill at all).
+  # Spec 8 permits taker execution for stops, and a stop that does not fill is
+  # the worse failure, so `stop` is the default.
+  stop_order_type: stop
+  # For stop_limit only: how far below the trigger to place the limit.
+  stop_limit_offset_pct: 0.3
+  # Local evaluation stays armed even when the exchange holds the legs, so a
+  # rejected or vanished stop cannot leave the position unprotected.
+  local_backstop: true
+
 schedule:
   tick_minutes: 5
   screen_minutes: 30

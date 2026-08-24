@@ -14,7 +14,7 @@ import json
 import os
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, model_validator
@@ -108,6 +108,10 @@ class ExecutionConfig(_Section):
     tp_exit_timeout_minutes: int = 30
     lock_lease_seconds: int = 600
     pending_order_stale_minutes: int = 90
+    oco_mode: Literal["local", "exchange_oco", "auto"] = "auto"
+    stop_order_type: Literal["stop", "stop_limit"] = "stop"
+    stop_limit_offset_pct: Decimal = Decimal("0.3")
+    local_backstop: bool = True
 
 
 class ScheduleConfig(_Section):

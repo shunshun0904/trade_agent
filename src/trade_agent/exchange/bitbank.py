@@ -21,7 +21,13 @@ from decimal import Decimal
 
 import requests
 
-from ..errors import ExchangeError, ExchangeRateLimited, InsufficientFunds
+from ..errors import (
+    ExchangeError,
+    ExchangeRateLimited,
+    InsufficientFunds,
+    OrderNotCancelable,
+    StopOrderRefused,
+)
 from ..models.market import Candle
 from ..models.trading import OrderIntent, OrderType
 from ..money import dec, to_str
@@ -34,8 +40,19 @@ log = logging.getLogger(__name__)
 DAILY_ADDRESSED = {"1min", "5min", "15min", "30min", "1hour"}
 
 # bitbank error codes worth branching on. Full list: errors.md in the API docs.
-CODE_INSUFFICIENT_FUNDS = {60001, 60002, 60011}
-CODE_ORDER_NOT_FOUND = {50008, 50009, 50010}
+CODE_INSUFFICIENT_FUNDS = {60001, 60002}
+CODE_ORDER_NOT_FOUND = {50008, 50009}
+# 50010: the order reached a state where cancelling is no longer possible —
+# in practice, it filled between our read and our cancel. Central to the OCO
+# race in execution/protection.py.
+CODE_NOT_CANCELABLE = {50010}
+# 60018: the trigger price would fire immediately. A stop placed below a market
+# that has already fallen through it is refused rather than triggered.
+CODE_TRIGGER_IMMEDIATE = {60018}
+# Trigger orders can be suspended independently of ordinary ones.
+CODE_STOP_RESTRICTED = {70022, 70023}
+# 60011: too many simultaneous orders (limit 30). Not a funding problem.
+CODE_TOO_MANY_ORDERS = {60011}
 
 
 class BitbankClient:
@@ -132,6 +149,9 @@ class BitbankClient:
     def create_order(self, intent: OrderIntent) -> dict:
         body: dict[str, object] = {
             "pair": intent.pair,
+            # `amount` is required for every type this system uses. bitbank
+            # omits it only for `take_profit` / `stop_loss`, which are margin
+            # position-close orders and are never placed here.
             "amount": to_str(intent.qty_btc),
             "side": str(intent.side),
             "type": str(intent.order_type),
@@ -143,6 +163,15 @@ class BitbankClient:
             # post_only is only meaningful on a limit order, and bitbank ignores
             # it outside NORMAL circuit-break mode.
             body["post_only"] = bool(intent.post_only)
+        elif intent.order_type.is_trigger:
+            if intent.trigger_price is None:
+                raise ExchangeError(
+                    f"{intent.order_type} order requires a trigger_price")
+            body["trigger_price"] = to_str(intent.trigger_price)
+            if intent.order_type is OrderType.STOP_LIMIT:
+                if intent.price is None:
+                    raise ExchangeError("stop_limit order requires a price")
+                body["price"] = to_str(intent.price)
         return self._private("POST", "/user/spot/order", body=body)
 
     def cancel_order(self, exchange_order_id: str) -> dict:
@@ -275,6 +304,10 @@ class BitbankClient:
         message = f"bitbank error code {code}"
         if code in CODE_INSUFFICIENT_FUNDS:
             raise InsufficientFunds(message, code=code, status=response.status_code)
+        if code in CODE_NOT_CANCELABLE:
+            raise OrderNotCancelable(message, code=code, status=response.status_code)
+        if code in CODE_TRIGGER_IMMEDIATE or code in CODE_STOP_RESTRICTED:
+            raise StopOrderRefused(message, code=code, status=response.status_code)
         raise ExchangeError(message, code=code, status=response.status_code)
 
 

@@ -291,6 +291,14 @@ class Executor:
         record.status = EXCHANGE_STATUS_MAP.get(response.get("status", ""),
                                                 OrderStatus.SUBMITTED)
         record.executed_qty_btc = dec(response.get("executed_amount") or 0)
+        # An order can fill inside the create call — a stop whose trigger is
+        # already through the market, or a marketable limit. Capturing only the
+        # quantity here and not the price would book the fill at zero.
+        average = response.get("average_price")
+        if average is not None and dec(average) > 0:
+            record.average_price = dec(average)
+        if record.executed_qty_btc > 0:
+            record.fee_jpy = self._fee_for(record)
         record.submitted_at = self.clock.now()
         record.updated_at = record.submitted_at
         self.store.orders.update(record)

@@ -1,4 +1,8 @@
-"""Position lifecycle: fills, stops, targets, partial fills (spec 8)."""
+"""Position lifecycle under *local* stop evaluation (spec 8).
+
+These pin the fallback path — the one that runs when the exchange holds no
+protective legs. The hand-rolled OCO path has its own suite in test_oco.py.
+"""
 
 from decimal import Decimal
 
@@ -20,6 +24,7 @@ def state(clock, config):
 
 def _open_position(ctx, state, *, probe=False):
     """Place an entry, let it fill, and promote it to a position."""
+    ctx.config.execution.oco_mode = "local"
     entry = ctx.exchange.market.price
     plan = ExecutionPlan(
         cycle_id="cyc-1", trade_id="trd-1", entry=entry,

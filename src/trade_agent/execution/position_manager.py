@@ -1,12 +1,17 @@
 """Position lifecycle and the self-managed OCO (spec 8).
 
-bitbank has `stop_loss` and `take_profit` order types, but on a spot account a
-resting take-profit sell and a stop-loss sell would each need to reserve the
-same BTC, so only one of the two can exist on the exchange at a time. There is
-no native OCO. The stops are therefore evaluated locally on every 5-minute tick
-(spec 9), which is also why the dead-man's-switch alarm on that tick is a
-safety requirement rather than an operational nicety (spec 17.3): if the tick
-stops running, nothing is watching the stop.
+Exits come from two places, and which one is in force depends on what the
+exchange accepted (see `protection.py`):
+
+* **exchange legs** — a `stop` sell and a limit sell placed as a hand-rolled
+  OCO. When these hold, a stop survives even if this process stops running.
+* **local evaluation** — the 5-minute tick compares price against the levels
+  and sends the closing order itself. This is the fallback, and it is also the
+  backstop: it stays armed for whichever level the exchange is *not* holding,
+  so a rejected leg cannot leave a position naked.
+
+Local evaluation never acts on a level an exchange leg is still protecting;
+otherwise the same position would be sold twice.
 
 Priority when both levels are breached inside one tick interval: the stop wins.
 We cannot tell from a 5-minute bar which came first, and assuming the profitable
@@ -21,7 +26,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from ..config import Config
-from ..errors import ExchangeError
+from ..errors import ExchangeError, InsufficientFunds
 from ..models.trading import (
     ExecutionPlan,
     OrderIntent,
@@ -37,6 +42,7 @@ from ..money import ZERO, dec, quantize_price
 from ..risk.rules import RiskEngine
 from ..timeutil import Clock
 from .executor import Executor, build_position
+from .protection import LOCAL, ProtectionManager, ProtectionResult, weighted_exit
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +52,7 @@ class PositionUpdate:
     opened: Position | None = None
     closed: TradeRecord | None = None
     exit_submitted: OrderRecord | None = None
+    protection: str | None = None
     notes: list[str] = None  # type: ignore[assignment]
 
     def __post_init__(self) -> None:
@@ -63,6 +70,9 @@ class PositionManager:
         self.executor = executor
         self.risk = RiskEngine(config)
         self.notifier = notifier
+        self.protection = ProtectionManager(
+            exchange=exchange, store=store, config=config, clock=clock,
+            executor=executor, notifier=notifier)
 
     def step(self, state, *, last_price: Decimal, best_bid: Decimal,
              best_ask: Decimal, plan: ExecutionPlan | None = None) -> PositionUpdate:
@@ -71,7 +81,16 @@ class PositionManager:
         position: Position | None = state.open_position
 
         if position is None:
-            position = self._promote_filled_entry(state, plan, update)
+            position = self._promote_filled_entry(
+                state, plan, update, last_price=last_price)
+            if position is None:
+                return update
+
+        if position.protection != LOCAL:
+            if self._poll_exchange_legs(state, position, update,
+                                        last_price=last_price):
+                return update
+            position = state.open_position
             if position is None:
                 return update
 
@@ -83,10 +102,36 @@ class PositionManager:
                          best_bid=best_bid, best_ask=best_ask)
         return update
 
+    # -- exchange-held legs -------------------------------------------------
+
+    def _poll_exchange_legs(self, state, position: Position,
+                            update: PositionUpdate, *,
+                            last_price: Decimal) -> bool:
+        """Returns True when the position closed on an exchange leg."""
+        result = self.protection.poll(position, last_price=last_price)
+        update.notes.extend(result.notes)
+        update.protection = result.protection
+
+        if result.protection != position.protection:
+            position.protection = result.protection
+            state.open_position = position
+
+        if not result.closed:
+            return False
+
+        trade = self._close_trade(state, position, result.filled,
+                                  reason=result.exit_reason)
+        update.closed = trade
+        update.notes.append(
+            f"position closed on the exchange leg: {trade.net_pnl_jpy} JPY "
+            f"({trade.exit_reason})")
+        return True
+
     # -- entry -> position -------------------------------------------------
 
     def _promote_filled_entry(self, state, plan: ExecutionPlan | None,
-                              update: PositionUpdate) -> Position | None:
+                              update: PositionUpdate, *,
+                              last_price: Decimal) -> Position | None:
         """An entry that has filled (even partially) becomes the position.
 
         This scans recent entries rather than *open* ones on purpose: an order
@@ -117,12 +162,57 @@ class PositionManager:
             update.notes.append(
                 f"position opened: {position.qty_btc} BTC @ {position.entry_price}")
             self._write_trade(position, record)
+            self._arm_protection(state, position, update, last_price=last_price)
             self._notify("約定(新規建て)",
                          f"{position.qty_btc} BTC @ {position.entry_price} JPY\n"
                          f"SL {position.stop_loss} / TP {position.take_profit}\n"
                          f"probe={position.probe}")
             return position
         return None
+
+    def _arm_protection(self, state, position: Position, update: PositionUpdate,
+                        *, last_price: Decimal) -> None:
+        """Place the protective legs the moment the position exists.
+
+        Ordering matters: the trade row and the position are already persisted,
+        so a crash between here and the next tick leaves a recoverable state
+        rather than an untracked position.
+        """
+        try:
+            result = self.protection.arm(position, last_price=last_price)
+        except Exception as exc:  # noqa: BLE001 - never lose the position over this
+            log.exception("arming protection failed for %s", position.trade_id)
+            update.notes.append(f"arming protection failed ({exc}); local only")
+            position.protection = LOCAL
+            state.open_position = position
+            return
+
+        update.notes.extend(result.notes)
+        update.protection = result.protection
+        position.protection = result.protection
+        position.stop_order_id = (result.stop_order.client_order_id
+                                  if result.stop_order else None)
+        position.take_profit_order_id = (
+            result.take_profit_order.client_order_id
+            if result.take_profit_order else None)
+        state.open_position = position
+
+        if result.close_immediately:
+            update.notes.extend(
+                self.force_close(state, position, result.exit_reason or "stop_loss").notes)
+
+    def _rearm_if_unprotected(self, state, position: Position,
+                              update: PositionUpdate) -> None:
+        """Put the exchange legs back after a retained position lost them."""
+        if self.protection.mode == LOCAL or position.stop_order_id:
+            return
+        try:
+            ticker = self.exchange.get_ticker()
+        except ExchangeError as exc:
+            update.notes.append(f"could not re-arm protection: {exc}")
+            return
+        self._arm_protection(state, position, update,
+                             last_price=dec(ticker["last"]))
 
     def _plan_from_record(self, record: OrderRecord) -> ExecutionPlan | None:
         """Recover the plan from the trade row written when the order went out.
@@ -149,14 +239,19 @@ class PositionManager:
                     last_price: Decimal, best_bid: Decimal,
                     best_ask: Decimal) -> None:
         cfg = self.config
-        if last_price <= position.stop_loss:
+        if self._exchange_holds(position, OrderPurpose.STOP_LOSS) and \
+                self._exchange_holds(position, OrderPurpose.TAKE_PROFIT):
+            return
+        if last_price <= position.stop_loss and \
+                not self._exchange_holds(position, OrderPurpose.STOP_LOSS):
             intent = OrderIntent(
                 cycle_id=position.cycle_id, pair=position.pair, side=Side.SELL,
                 order_type=OrderType.MARKET, qty_btc=position.qty_btc,
                 price=None, post_only=False, purpose=OrderPurpose.STOP_LOSS,
                 probe=position.probe, trade_id=position.trade_id)
             reason = "stop_loss"
-        elif last_price >= position.take_profit:
+        elif last_price >= position.take_profit and \
+                not self._exchange_holds(position, OrderPurpose.TAKE_PROFIT):
             # Maker exit: rest at or above the best ask so the order does not
             # cross. Spec 8 allows taker execution for stops only.
             price = quantize_price(max(dec(position.take_profit), dec(best_ask)),
@@ -170,20 +265,79 @@ class PositionManager:
         else:
             return
 
+        # An exchange leg reserves the very BTC this order wants to sell, so
+        # the legs come off before the local exit goes on. Between the two the
+        # position is briefly unprotected, which is why this only ever runs on
+        # a level the exchange is *not* already holding — a stop that is live
+        # keeps its balance and does the work itself.
+        # The leg ids are kept until the exit order is actually accepted: if
+        # the first attempt is refused for want of balance, they are the only
+        # handle on whatever is still holding it.
+        if position.stop_order_id or position.take_profit_order_id:
+            update.notes.extend(self.protection.disarm(
+                position, f"freeing the balance for a local {reason} exit"))
+
         try:
             record = self.executor.submit(intent)
+        except InsufficientFunds as exc:
+            # Something is still holding the balance. Most likely a leg our
+            # records believe is finished but the exchange does not. Ask the
+            # exchange to let go, then try once more.
+            update.notes.append(f"exit refused for want of balance ({exc}); "
+                                "force-releasing the protective legs")
+            update.notes.extend(self.protection.force_release(
+                position, f"local {reason} exit"))
+            retry = intent.model_copy(deep=True)
+            retry.client_order_id = f"{intent.client_order_id}-retry"
+            try:
+                record = self.executor.submit(retry)
+            except ExchangeError as retry_exc:
+                log.error("exit order failed for %s after force-release: %s",
+                          position.trade_id, retry_exc)
+                update.notes.append(f"exit order failed: {retry_exc}")
+                self._notify(
+                    "決済注文の発注に失敗",
+                    f"trade_id={position.trade_id} reason={reason}\n{retry_exc}\n\n"
+                    "保護注文を取り消したうえで再試行しましたが失敗しました。"
+                    "建玉が無保護の可能性があります。取引所の画面を確認してください。")
+                self._forget_legs(state, position)
+                return
         except ExchangeError as exc:
             log.error("exit order failed for %s: %s", position.trade_id, exc)
             update.notes.append(f"exit order failed: {exc}")
             self._notify("決済注文の発注に失敗",
                          f"trade_id={position.trade_id} reason={reason}\n{exc}")
+            # The legs were just taken off to make room for an order that never
+            # went out. Put protection back rather than leaving it naked.
+            self._arm_protection(state, position, update, last_price=last_price)
             return
 
+        self._forget_legs(state, position)
         position.exit_order_id = record.client_order_id
         position.exit_reason = reason
         state.open_position = position
         update.exit_submitted = record
         update.notes.append(f"exit submitted ({reason}) @ {intent.price or 'market'}")
+
+    def _forget_legs(self, state, position: Position) -> None:
+        """Drop the protective legs from the position and fall back to local."""
+        position.stop_order_id = None
+        position.take_profit_order_id = None
+        position.protection = LOCAL
+        state.open_position = position
+
+    def _exchange_holds(self, position: Position, purpose: OrderPurpose) -> bool:
+        """Is a live exchange leg already covering this level?
+
+        The backstop exists precisely for when the answer is no, so this has to
+        check the leg's actual status rather than trusting the mode label.
+        """
+        order_id = (position.stop_order_id if purpose is OrderPurpose.STOP_LOSS
+                    else position.take_profit_order_id)
+        if not order_id:
+            return False
+        record = self.store.orders.get(order_id)
+        return record is not None and record.status.is_protective
 
     def _settle_exit(self, state, position: Position,
                      update: PositionUpdate) -> None:
@@ -212,6 +366,8 @@ class PositionManager:
                 position.exit_reason = None
                 state.open_position = position
                 update.notes.append("take-profit exit expired; position retained")
+                # The balance is free again, so the stop can go back on.
+                self._rearm_if_unprotected(state, position, update)
             return
 
         if record.status.is_terminal and record.status is not OrderStatus.FILLED:
@@ -224,6 +380,7 @@ class PositionManager:
                 position.exit_reason = None
                 state.open_position = position
                 update.notes.append("exit order canceled; position retained")
+                self._rearm_if_unprotected(state, position, update)
 
     def force_close(self, state, position: Position, reason: str) -> PositionUpdate:
         """Liquidate now, at market (spec 6: the kill switch closes everything).
@@ -233,6 +390,14 @@ class PositionManager:
         to be flat, certainty of execution beats the fee.
         """
         update = PositionUpdate()
+        # Cancel the protective legs first, or the market sell and a surviving
+        # stop would both be trying to sell the same BTC.
+        update.notes.extend(self.protection.disarm(position, reason))
+        position.stop_order_id = None
+        position.take_profit_order_id = None
+        position.protection = LOCAL
+        state.open_position = position
+
         if position.exit_order_id:
             update.notes.append("an exit order is already in flight")
             return update
@@ -249,6 +414,7 @@ class PositionManager:
             self._notify("強制決済に失敗",
                          f"trade_id={position.trade_id} reason={reason}\n{exc}")
             return update
+        self._forget_legs(state, position)
         position.exit_order_id = record.client_order_id
         position.exit_reason = reason
         state.open_position = position
@@ -278,12 +444,25 @@ class PositionManager:
         self.store.trades.put(trade)
 
     def _close_trade(self, state, position: Position,
-                     exit_record: OrderRecord) -> TradeRecord:
+                     exit_records: OrderRecord | list[OrderRecord], *,
+                     reason: str | None = None) -> TradeRecord:
+        """Book the exit from what actually executed.
+
+        Takes a list because an OCO close can span both legs: if the market
+        gaps through the stop and the target in the same interval, the exit is
+        the volume-weighted combination of the two, not whichever one is
+        noticed first.
+        """
+        if isinstance(exit_records, OrderRecord):
+            exit_records = [exit_records]
         now = self.clock.now()
-        exit_qty = exit_record.executed_qty_btc or position.qty_btc
-        exit_price = exit_record.average_price or exit_record.price or ZERO
+        exit_qty, exit_price, exit_fees = weighted_exit(exit_records)
+        if exit_qty <= 0:
+            exit_qty = position.qty_btc
+            exit_price = dec(exit_records[0].price or ZERO)
+            exit_fees = sum((r.fee_jpy for r in exit_records), ZERO)
         gross = (dec(exit_price) - position.entry_price) * exit_qty
-        fees = position.entry_fee_jpy + exit_record.fee_jpy
+        fees = position.entry_fee_jpy + exit_fees
         net = gross - fees
 
         trade = self.store.trades.get(position.trade_id) or TradeRecord(
@@ -293,9 +472,9 @@ class PositionManager:
             entry_at=position.opened_at, stop_loss=position.stop_loss,
             take_profit=position.take_profit)
         trade.exit_price = dec(exit_price)
-        trade.exit_order_id = exit_record.client_order_id
+        trade.exit_order_id = ", ".join(r.client_order_id for r in exit_records)
         trade.exit_at = now
-        trade.exit_reason = position.exit_reason
+        trade.exit_reason = reason or position.exit_reason
         trade.fee_jpy = fees
         trade.gross_pnl_jpy = gross
         trade.net_pnl_jpy = net

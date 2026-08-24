@@ -67,10 +67,24 @@ aws ssm put-parameter --type SecureString --name /trade-agent/mcp/bearer-token  
 裁定(A3) → サイズ算出(Python) → リスク査定(A4) → 検査(A5) → 指揮(A6)
    ↓
 決定論ガード → 再クオート → 冪等発注
+   ↓
+自作OCO(損切りを取引所側に発注、利確はローカル評価)
 ```
 
 決済後は A7 が **直近20件以上の集計統計** から教訓を抽出し、次サイクルの
 コンテキストに載せる。1トレードから断定させることはしない。
+
+### 損切りは取引所側に置く
+
+bitbank に OCO エンドポイントは無いため自作している(仕様 §8)。
+現物残高は売り注文を1つしか裏付けられないので、**損切りを取引所側の
+`stop` 注文として置き、利確は5分tickがローカル評価する**。
+
+これにより **このプロセスが停止しても損切りは働く**。
+ローカル評価はバックストップとして残り、取引所側の脚が拒否・消失した
+水準だけを引き継ぐ(二重売却はしない)。
+
+詳細と未検証事項は [docs/OPEN-QUESTIONS.md](docs/OPEN-QUESTIONS.md) A-1。
 
 ### 設計の中心にある3つの決定
 
@@ -88,7 +102,7 @@ aws ssm put-parameter --type SecureString --name /trade-agent/mcp/bearer-token  
 
 ```bash
 make install
-make test                                    # 232 tests
+make test                                    # 277 tests
 PYTHONPATH=src python -m trade_agent.cli --local decide    # 1サイクルをオフライン実行
 ```
 
