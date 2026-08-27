@@ -29,10 +29,12 @@ head_() { printf '\n%s%s%s\n' "$BOLD" "$*" "$RESET"; }
 
 command -v aws >/dev/null || { echo "run this in AWS CloudShell"; exit 2; }
 
-START="$(date -u -d "-${WINDOW_MIN} min" +%Y-%m-%dT%H:%M:%SZ)"
 END="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+START="$(date -u -d "-${WINDOW_MIN} min" +%Y-%m-%dT%H:%M:%SZ)"
 VERDICT_TRADING=0   # a tick ran and did not error
 VERDICT_BROKEN=0    # something invoked and threw
+VERDICT_PENDING=0   # too soon after a deploy to have data
+SINCE_DEPLOY=0
 
 metric_sum() {  # metric_sum <metric> <function>
     local value
@@ -74,9 +76,28 @@ LAST_DEPLOY="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" \
     --region "$REGION" --query 'Stacks[0].LastUpdatedTime' --output text 2>/dev/null)"
 note "last deployed: ${LAST_DEPLOY:-unknown}"
 
+# Metrics from code that is no longer deployed are not evidence about the code
+# that is. Without this, a deploy that *fixes* a crash reads as broken for the
+# next hour: the window still holds every failure from before it.
+if [[ -n "$LAST_DEPLOY" && "$LAST_DEPLOY" != "None" ]]; then
+    DEPLOY_EPOCH="$(date -u -d "$LAST_DEPLOY" +%s 2>/dev/null || echo 0)"
+    WINDOW_EPOCH="$(date -u -d "-${WINDOW_MIN} min" +%s)"
+    if (( DEPLOY_EPOCH > WINDOW_EPOCH )); then
+        START="$(date -u -d "@${DEPLOY_EPOCH}" +%Y-%m-%dT%H:%M:%SZ)"
+        SINCE_DEPLOY=1
+        MINUTES_LIVE=$(( ($(date -u +%s) - DEPLOY_EPOCH) / 60 ))
+        note "measuring from the deploy, not the last ${WINDOW_MIN} min"
+        note "(${MINUTES_LIVE} min of data; earlier failures were other code)"
+    fi
+fi
+
 # ------------------------------------------------------------- the functions
 
-head_ "2. Functions  (last ${WINDOW_MIN} min)"
+if (( SINCE_DEPLOY )); then
+    head_ "2. Functions  (since the deploy)"
+else
+    head_ "2. Functions  (last ${WINDOW_MIN} min)"
+fi
 
 for fn in tick screen decide reflect mcp; do
     name="trade-agent-${ENVIRONMENT}-${fn}"
@@ -84,7 +105,10 @@ for fn in tick screen decide reflect mcp; do
     err="$(metric_sum Errors "$name")"
 
     if (( inv == 0 )); then
-        if [[ "$fn" == "tick" ]]; then
+        if [[ "$fn" == "tick" && ${MINUTES_LIVE:-999} -lt 6 ]]; then
+            warn "$(printf '%-8s' "$fn") no data yet — the 5-minute tick has not come round"
+            VERDICT_PENDING=1
+        elif [[ "$fn" == "tick" ]]; then
             bad "$(printf '%-8s' "$fn") not invoked at all — it should run every 5 min"
         else
             note "$(printf '%-8s' "$fn") not invoked (may be normal for this window)"
@@ -121,8 +145,11 @@ done
 
 head_ "4. Has it actually done anything?"
 
+# "state", matching STATE_KEY in storage/dynamo.py. It was "system" here, which
+# is nothing, so this reported "no tick has ever finished its work" against a
+# table that had one. tests/test_status_script.py holds the two together now.
 STATE="$(aws dynamodb get-item --table-name "trade-agent-${ENVIRONMENT}-state" \
-    --key '{"pk":{"S":"system"}}' --region "$REGION" \
+    --key '{"pk":{"S":"state"}}' --region "$REGION" \
     --query 'Item' --output json 2>/dev/null)"
 if [[ -n "$STATE" && "$STATE" != "null" ]]; then
     equity="$(printf '%s' "$STATE" | grep -o '"equity_jpy":[^,}]*' | head -1)"
@@ -162,10 +189,17 @@ fi
 # ------------------------------------------------------------------ verdict
 
 printf '\n%s%s%s\n' "$BOLD" "$(printf '=%.0s' {1..58})" "$RESET"
-if (( VERDICT_BROKEN )); then
-    printf '%s  NOT RUNNING — invocations are failing%s\n' "$BOLD$RED" "$RESET"
-elif (( VERDICT_TRADING )); then
+# The tick is the system. screen/decide/reflect failing is a real problem and
+# is reported above, but it is not the difference between running and not.
+if (( VERDICT_TRADING )); then
     printf '%s  RUNNING — the tick is firing and completing%s\n' "$BOLD$GREEN" "$RESET"
+    if (( VERDICT_BROKEN )); then
+        printf '%s  (but another function is failing — see section 2)%s\n' "$YELLOW" "$RESET"
+    fi
+elif (( ${VERDICT_PENDING:-0} )); then
+    printf '%s  TOO EARLY TO SAY — wait for the next 5-minute tick%s\n' "$BOLD$YELLOW" "$RESET"
+elif (( VERDICT_BROKEN )); then
+    printf '%s  NOT RUNNING — invocations are failing%s\n' "$BOLD$RED" "$RESET"
 else
     printf '%s  NOT RUNNING — the tick has not fired in this window%s\n' "$BOLD$RED" "$RESET"
 fi
