@@ -227,13 +227,15 @@ aws ssm get-parameter --with-decryption \
   --query Parameter.Value --output text
 ```
 
-疎通確認:
+疎通確認は CloudShell で:
 
 ```bash
-curl -sS -X POST "https://<関数ID>.lambda-url.ap-northeast-1.on.aws/mcp/<トークン>" \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | head -40
+cd ~/trade_agent && bash scripts/check_mcp.sh
 ```
+
+URL とトークンを自分で組み立てる必要はなく、認証あり・なし両方を確認して、
+最後に貼り付ける URL を表示する。手で curl を組むと引用符で嵌まる
+([MCP.md](MCP.md) の「curl の落とし穴」)。
 
 ## 3.5 手動でデプロイする場合
 

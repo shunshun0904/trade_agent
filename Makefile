@@ -1,6 +1,6 @@
 .PHONY: install test cov lint build deploy verify-pair snapshot backfill backtest \
         build-TickFunction build-ScreenFunction build-DecideFunction \
-        build-ReflectFunction build-McpFunction verify-artifact
+        build-ReflectFunction build-McpFunction verify-artifact check-mcp
 
 install:
 	pip install -r requirements-dev.txt
@@ -40,6 +40,10 @@ build-ReflectFunction build-McpFunction:
 	bash scripts/build_lambda.sh "$(ARTIFACTS_DIR)"
 
 # Same check the deploy script runs before uploading.
+# Check the deployed MCP endpoint and print the claude.ai connector URL.
+check-mcp:
+	bash scripts/check_mcp.sh
+
 verify-artifact:
 	python3 scripts/verify_artifact.py .aws-sam/build/TickFunction
 

@@ -80,26 +80,72 @@ echo "$NEW_TOKEN"
 
 ## 疎通確認
 
-登録前に、URL が生きていることを確かめられる。
+**AWS CloudShell で、これを実行する。**
 
 ```bash
-URL="https://<関数ID>.lambda-url.ap-northeast-1.on.aws/mcp/<トークン>"
-
-curl -sS -X POST "$URL" \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | head -40
+cd ~/trade_agent && bash scripts/check_mcp.sh
 ```
 
-7つのツールが並べば成功。`{"error":"missing bearer token"}` が返るなら、パスの形が `/mcp/<token>` になっていない。
+URL とトークンを自分で組み立てる必要はない。スクリプトが CloudFormation の
+出力と SSM から取ってきて、3つを確認する。
 
-ヘッダ経由でも同じ結果になる(Claude Code から使う場合はこちら):
+```
+✓ token in the path  (claude.ai):          HTTP 200, 7 tool(s)
+✓ Authorization header (curl / Claude Code): HTTP 200, 7 tool(s)
+✓ no token: HTTP 401 (correctly refused)
+```
+
+最後に、claude.ai に貼る完成形の URL を表示する。
+
+3つ目が 401 以外なら、**登録してはいけない。** 誰でも URL さえ知っていれば
+停止・再開を叩ける状態ということなので、先に原因を潰す。
+
+### なぜスクリプトなのか(curl の落とし穴)
+
+同じことを手で curl すると、シェルによっては次のエラーになる。
+
+```
+curl: (3) URL rejected: Port number was not a decimal number between 0 and 65535
+```
+
+**ポートの話ではない。** リクエストボディの JSON が `-d` のデータではなく
+**URL として** curl に渡っていて、`"jsonrpc":"2.0"` の `:` をホストとポートの
+区切りと解釈し、`"2.0"` はポート番号ではないと言っている。
+
+原因は単一引用符が効いていないこと。Windows の `cmd` は `'...'` を引用符として
+扱わないため、JSON が複数の引数にばらけて curl に渡る。PowerShell も引用の
+規則が違う。**bash(CloudShell)で実行すれば起きない。**
+
+`check_mcp.sh` はボディを一時ファイルに書いて `-d @file` で渡すので、
+引用の問題自体が発生しない。
+
+### どうしても手で叩く場合
+
+bash(CloudShell、macOS、Linux)なら:
 
 ```bash
-curl -sS -X POST "https://<関数ID>.lambda-url.ap-northeast-1.on.aws/" \
-  -H "Authorization: Bearer <トークン>" \
-  -H 'Content-Type: application/json' \
-  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | head -40
+URL="$(aws cloudformation describe-stacks --stack-name trade-agent-prod \
+  --region ap-northeast-1 \
+  --query "Stacks[0].Outputs[?OutputKey=='McpEndpoint'].OutputValue" --output text)"
+TOKEN="$(aws ssm get-parameter --with-decryption \
+  --name /trade-agent/mcp/bearer-token --region ap-northeast-1 \
+  --query Parameter.Value --output text)"
+
+printf '%s' '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' > /tmp/mcp.json
+curl -sS -X POST "${URL%/}/mcp/${TOKEN}" \
+  -H 'Content-Type: application/json' -d @/tmp/mcp.json
 ```
+
+Windows の `cmd` なら、JSON をファイルに置いて `-d @` で渡す。
+`"` を `\"` にエスケープして1行に押し込むのは、ここでは避けたほうがよい。
+
+```cmd
+echo {"jsonrpc":"2.0","id":1,"method":"tools/list"} > mcp.json
+curl -sS -X POST "https://<関数ID>.lambda-url.ap-northeast-1.on.aws/mcp/<トークン>" -H "Content-Type: application/json" -d @mcp.json
+```
+
+7つのツールが並べば成功。`{"error":"missing bearer token"}` が返るなら、
+パスの形が `/mcp/<token>` になっていない。
 
 ## 登録後にできること
 
