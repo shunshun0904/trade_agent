@@ -59,6 +59,97 @@ confirm() {  # confirm <question> ; returns 0 for yes
     [[ "$reply" =~ ^[Yy]$ ]]
 }
 
+# ------------------------------------------------------ CloudFormation state
+
+stack_status() {  # echoes the stack's status, or nothing if it does not exist
+    aws cloudformation describe-stacks \
+        --stack-name "$STACK_NAME" --region "$REGION" \
+        --query 'Stacks[0].StackStatus' --output text 2>/dev/null || true
+}
+
+# The reason a stack rolled back is one line in a long event list, and by the
+# time `sam deploy` reports failure it has usually scrolled away. Every other
+# resource reports "Resource creation cancelled", which is noise: the useful
+# events are the ones with a real reason.
+failure_reasons() {
+    aws cloudformation describe-stack-events \
+        --stack-name "$STACK_NAME" --region "$REGION" \
+        --query "StackEvents[?ResourceStatus=='CREATE_FAILED'
+                   || ResourceStatus=='UPDATE_FAILED'
+                   || ResourceStatus=='DELETE_FAILED'].
+                 [LogicalResourceId,ResourceType,ResourceStatusReason]" \
+        --output text 2>/dev/null \
+        | grep -v 'Resource creation cancelled' || true
+}
+
+show_failure_reasons() {
+    local reasons
+    reasons="$(failure_reasons)"
+    if [[ -z "$reasons" ]]; then
+        warn "CloudFormation reported no specific resource failure"
+        return
+    fi
+    printf '\n    %sWhy CloudFormation rolled back:%s\n\n' "$BOLD" "$RESET"
+    # Oldest last in the API response; the first failure is the real cause and
+    # the rest are usually consequences, so show it at the top.
+    printf '%s\n' "$reasons" | tac | while IFS=$'\t' read -r id type reason; do
+        printf '    %s%s%s  (%s)\n' "$BOLD" "$id" "$RESET" "$type"
+        printf '      %s\n\n' "$reason"
+    done
+}
+
+# A stack whose *first* create failed is left as an empty ROLLBACK_COMPLETE
+# shell. CloudFormation will not update it — it can only be deleted and
+# recreated — so a retry fails with a confusing "cannot be updated" until it
+# is cleared. Do that here rather than making the owner discover it.
+clear_rolled_back_stack() {
+    local status="$1"
+    warn "the stack is in ${status} — a previous deploy failed"
+    show_failure_reasons
+
+    note "CloudFormation cannot update a stack in this state; it has to be"
+    note "deleted first. The stack holds no data yet (the rollback already"
+    note "removed every resource it created)."
+    if ! confirm "delete the failed stack and retry?"; then
+        die "leaving ${STACK_NAME} in ${status}. Fix the cause above, then re-run."
+    fi
+
+    aws cloudformation delete-stack --stack-name "$STACK_NAME" --region "$REGION" \
+        || die "could not delete ${STACK_NAME}"
+    note "waiting for the delete to finish"
+    aws cloudformation wait stack-delete-complete \
+        --stack-name "$STACK_NAME" --region "$REGION" 2>/dev/null \
+        || die "delete did not complete. Check the stack in the CloudFormation console."
+    ok "failed stack removed"
+}
+
+# CloudFormation refuses to create a resource that already exists outside the
+# stack. For this template that means the Lambda log groups: Lambda creates
+# them by itself the first time a function is invoked, and once a failed deploy
+# has left one behind, every later deploy fails on it identically. They are
+# orphans holding only the failed attempt's logs, so offer to clear them.
+clear_orphaned_log_groups() {
+    local groups
+    groups="$(aws logs describe-log-groups \
+        --log-group-name-prefix "/aws/lambda/trade-agent-${ENVIRONMENT}-" \
+        --region "$REGION" --query 'logGroups[].logGroupName' --output text 2>/dev/null || true)"
+    [[ -n "$groups" && "$groups" != "None" ]] || return 0
+
+    warn "log groups left over from the failed attempt:"
+    for group in $groups; do note "  $group"; done
+    note "CloudFormation cannot create these while they exist, and it does not"
+    note "own them, so the next deploy would fail on them too."
+    if ! confirm "delete them? (they contain only the failed attempt's logs)"; then
+        warn "keeping them; the deploy may fail with 'already exists'"
+        return 0
+    fi
+    for group in $groups; do
+        aws logs delete-log-group --log-group-name "$group" --region "$REGION" 2>/dev/null \
+            || warn "could not delete $group"
+    done
+    ok "orphaned log groups removed"
+}
+
 # --------------------------------------------------------------- 0. preflight
 
 step "0/5  Environment"
@@ -213,6 +304,29 @@ note "Phase 1 (paper trading) is the only supported first deploy: the executor"
 note "physically cannot reach bitbank's order API while it is on."
 printf '\n'
 
+# Clear the wreckage of a previous failed deploy before building, so the build
+# time is not spent on a deploy that cannot start.
+STACK_STATE="$(stack_status)"
+case "$STACK_STATE" in
+    ROLLBACK_COMPLETE|ROLLBACK_FAILED|CREATE_FAILED)
+        clear_rolled_back_stack "$STACK_STATE"
+        clear_orphaned_log_groups
+        ;;
+    UPDATE_ROLLBACK_FAILED)
+        show_failure_reasons
+        die "the stack needs manual recovery (continue-update-rollback) in the CloudFormation console."
+        ;;
+    *_IN_PROGRESS)
+        die "another deploy of ${STACK_NAME} is in progress (${STACK_STATE}). Wait for it to finish."
+        ;;
+    "")
+        note "no existing stack; this is a first deploy"
+        ;;
+    *)
+        ok "existing stack is ${STACK_STATE}; applying the difference"
+        ;;
+esac
+
 sam build || die "sam build failed"
 ok "build complete"
 
@@ -248,7 +362,13 @@ sam deploy \
         "SenderEmail=${SENDER_EMAIL}" \
         "PaperTrading=true" \
         "Phase=1" \
-    || die "sam deploy failed. The CloudFormation events above say why."
+    || {
+        show_failure_reasons
+        note "Nothing was left half-built: CloudFormation rolled the stack back."
+        note "Fix the cause above and re-run this script — it will clear the"
+        note "failed stack for you."
+        die "sam deploy failed"
+    }
 ok "stack deployed"
 
 MCP_URL="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" \

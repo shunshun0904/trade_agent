@@ -61,7 +61,51 @@ CloudFormation スタックは差分だけが適用される。
 | ディスク不足 | `rm -rf ~/trade_agent/.aws-sam` して再実行 |
 | `refusing to deploy a package that will not start` | 成果物の検証で落ちた。表示される問題(ABIタグ不一致・欠損ファイル)をそのまま直す |
 | `PythonPipBuilder:Validation - Binary validation failed for python ... runtime: python3.11` | 古い版のスクリプトで実行している。`rm -rf ~/trade_agent` して貼り直す(現在は makefile ビルダーを使うため、ホストの Python 版は不問) |
-| `sam deploy failed` | 直前の CloudFormation イベントに理由が出る |
+| `sam deploy failed` | スクリプトが失敗したリソースと理由を抽出して表示する。下の「スタックがロールバックしたとき」も参照 |
+| `Waiter StackCreateComplete failed ... ROLLBACK_COMPLETE` | 初回作成が失敗した。スタックは空の抜け殻として残り、**更新できない**。再実行すれば自動で削除される |
+| `Stack ... is in ROLLBACK_COMPLETE state and can not be updated` | 同上。古い版のスクリプトで手が止まっている場合は下のコマンドで削除する |
+| `... already exists` | 前回の失敗が残したリソースを掴んでいる。ロググループなら再実行時に削除を提案される |
+
+### スタックがロールバックしたとき
+
+CloudFormation の**初回作成**が失敗すると、スタックは全リソースを巻き戻した
+うえで `ROLLBACK_COMPLETE` という空の抜け殻として残る。この状態のスタックは
+**更新できない**(AWS の仕様)。削除して作り直すしかないため、そのまま
+`sam deploy` を再実行すると
+
+```
+Stack:trade-agent-prod is in ROLLBACK_COMPLETE state and can not be updated.
+```
+
+という、元の失敗とは無関係なエラーに変わって原因が見えなくなる。
+
+スクリプトは 4/5 の冒頭でスタックの状態を見て、この状態なら**元の失敗理由を
+表示してから削除を提案する**。したがって普通は貼り直すだけでよい。
+
+手で調べる場合:
+
+```bash
+# なぜ落ちたか(「Resource creation cancelled」は巻き添えなので除く)
+aws cloudformation describe-stack-events --stack-name trade-agent-prod \
+  --region ap-northeast-1 \
+  --query "StackEvents[?ResourceStatus=='CREATE_FAILED'].[LogicalResourceId,ResourceStatusReason]" \
+  --output text | grep -v 'Resource creation cancelled'
+
+# 抜け殻を消す
+aws cloudformation delete-stack --stack-name trade-agent-prod --region ap-northeast-1
+aws cloudformation wait stack-delete-complete --stack-name trade-agent-prod --region ap-northeast-1
+```
+
+巻き戻しは CloudFormation が作ったリソースだけを消す。**CloudFormation が
+作っていないものは残る**。この構成で該当するのは Lambda のロググループで、
+関数は初回実行時に `/aws/lambda/<関数名>` を自分で作るため、デプロイ中に
+スケジュールが発火するとテンプレート側の作成と競合して
+`already exists` で落ちうる。しかも残ったロググループは以後のデプロイを
+同じ理由で落とし続ける。
+
+テンプレートでは各関数に `DependsOn: <対応するロググループ>` を付けて、
+ロググループが先に存在することを保証してある。すでに孤児が残っている場合は、
+スクリプトが再実行時に一覧を出して削除を提案する。
 
 環境変数で挙動を変えられる(通常は不要):
 

@@ -191,6 +191,13 @@ Resources:
 
   TickFunction:
     Type: AWS::Serverless::Function
+    # Lambda creates /aws/lambda/<name> by itself the first time a function
+    # runs, and CloudFormation cannot create a log group that already exists.
+    # The schedules below can fire while the stack is still being built, so
+    # without this ordering the deploy can lose a race against its own first
+    # invocation and roll back with "already exists" — and the orphaned log
+    # group then fails every retry the same way.
+    DependsOn: TickLogGroup
     Metadata:
       # Build with scripts/build_lambda.sh, not SAM's Python builder:
       # that one needs a python3.11 binary on PATH, which the build
@@ -220,6 +227,13 @@ Resources:
 
   ScreenFunction:
     Type: AWS::Serverless::Function
+    # Lambda creates /aws/lambda/<name> by itself the first time a function
+    # runs, and CloudFormation cannot create a log group that already exists.
+    # The schedules below can fire while the stack is still being built, so
+    # without this ordering the deploy can lose a race against its own first
+    # invocation and roll back with "already exists" — and the orphaned log
+    # group then fails every retry the same way.
+    DependsOn: ScreenLogGroup
     Metadata:
       # Build with scripts/build_lambda.sh, not SAM's Python builder:
       # that one needs a python3.11 binary on PATH, which the build
@@ -265,6 +279,13 @@ Resources:
 
   DecideFunction:
     Type: AWS::Serverless::Function
+    # Lambda creates /aws/lambda/<name> by itself the first time a function
+    # runs, and CloudFormation cannot create a log group that already exists.
+    # The schedules below can fire while the stack is still being built, so
+    # without this ordering the deploy can lose a race against its own first
+    # invocation and roll back with "already exists" — and the orphaned log
+    # group then fails every retry the same way.
+    DependsOn: DecideLogGroup
     Metadata:
       # Build with scripts/build_lambda.sh, not SAM's Python builder:
       # that one needs a python3.11 binary on PATH, which the build
@@ -288,6 +309,13 @@ Resources:
 
   ReflectFunction:
     Type: AWS::Serverless::Function
+    # Lambda creates /aws/lambda/<name> by itself the first time a function
+    # runs, and CloudFormation cannot create a log group that already exists.
+    # The schedules below can fire while the stack is still being built, so
+    # without this ordering the deploy can lose a race against its own first
+    # invocation and roll back with "already exists" — and the orphaned log
+    # group then fails every retry the same way.
+    DependsOn: ReflectLogGroup
     Metadata:
       # Build with scripts/build_lambda.sh, not SAM's Python builder:
       # that one needs a python3.11 binary on PATH, which the build
@@ -308,6 +336,13 @@ Resources:
 
   McpFunction:
     Type: AWS::Serverless::Function
+    # Lambda creates /aws/lambda/<name> by itself the first time a function
+    # runs, and CloudFormation cannot create a log group that already exists.
+    # The schedules below can fire while the stack is still being built, so
+    # without this ordering the deploy can lose a race against its own first
+    # invocation and roll back with "already exists" — and the orphaned log
+    # group then fails every retry the same way.
+    DependsOn: McpLogGroup
     Metadata:
       # Build with scripts/build_lambda.sh, not SAM's Python builder:
       # that one needs a python3.11 binary on PATH, which the build
