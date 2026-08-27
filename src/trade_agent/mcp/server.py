@@ -97,8 +97,13 @@ class MCPServer:
 
 
 def handle_request(ctx: AppContext, *, method: str, headers: dict,
-                   body: str | None) -> tuple[int, dict, str]:
-    """HTTP-level entry point. Returns (status, headers, body)."""
+                   body: str | None, path: str | None = None
+                   ) -> tuple[int, dict, str]:
+    """HTTP-level entry point. Returns (status, headers, body).
+
+    `path` is read only for the credential it may carry (see mcp/auth.py);
+    this server has exactly one endpoint and does not route on it.
+    """
     json_headers = {"Content-Type": "application/json"}
 
     if method.upper() == "GET":
@@ -109,7 +114,7 @@ def handle_request(ctx: AppContext, *, method: str, headers: dict,
         return 405, {**json_headers, "Allow": "POST"}, json.dumps(
             {"error": "method not allowed"})
 
-    auth = authenticate(ctx.config, headers, ctx.secrets)
+    auth = authenticate(ctx.config, headers, ctx.secrets, path)
     if not auth:
         return 401, {**json_headers, "WWW-Authenticate": WWW_AUTHENTICATE}, \
             json.dumps({"error": auth.reason})

@@ -29,12 +29,16 @@ def handler(event=None, context=None, *, ctx: AppContext | None = None) -> dict:
               .get("http", {})
               .get("method", event.get("httpMethod", "POST")))
     headers = event.get("headers") or {}
+    # Function URLs send payload v2 (`rawPath`); `path` is the v1 spelling.
+    # The path can carry the bearer token when the client has no way to set a
+    # header — see mcp/auth.py. Never log it.
+    path = event.get("rawPath") or event.get("path")
     body = event.get("body")
     if body and event.get("isBase64Encoded"):
         body = base64.b64decode(body).decode()
 
     status, response_headers, response_body = handle_request(
-        app, method=method, headers=headers, body=body)
+        app, method=method, headers=headers, body=body, path=path)
     return {
         "statusCode": status,
         "headers": response_headers,

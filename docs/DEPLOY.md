@@ -204,8 +204,22 @@ aws cloudwatch describe-alarms --alarm-names trade-agent-prod-tick-heartbeat \
 
 ## 3. MCP コネクタの登録
 
-デプロイ出力の `MCP endpoint` と `Bearer token` を、claude.ai の
-「カスタムコネクタ」に登録する。トークンを再表示するには:
+**詳細は [MCP.md](MCP.md)。** 要点だけ:
+
+- URL は Function URL の末尾に `mcp/<トークン>` を足したもの
+- **Authentication は「None」**を選ぶ
+
+```
+https://<関数ID>.lambda-url.ap-northeast-1.on.aws/mcp/<トークン>
+```
+
+登録画面の Authentication の上2つは OAuth 専用で、このサーバーは OAuth 認可
+サーバーを持たないため選べない。そして None を選ぶと claude.ai は
+`Authorization` ヘッダを送らない(個人アカウントの画面に固定ヘッダの入力欄が
+ない)。そのためトークンはパスで渡す。**この URL 全体が認証情報**である。
+
+デプロイスクリプトの最後に、この完成形の URL がそのまま表示される。
+再表示するには:
 
 ```bash
 aws ssm get-parameter --with-decryption \
@@ -216,8 +230,7 @@ aws ssm get-parameter --with-decryption \
 疎通確認:
 
 ```bash
-curl -sS -X POST "$MCP_URL" \
-  -H "Authorization: Bearer $TOKEN" \
+curl -sS -X POST "https://<関数ID>.lambda-url.ap-northeast-1.on.aws/mcp/<トークン>" \
   -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | head -40
 ```
@@ -230,7 +243,7 @@ curl -sS -X POST "$MCP_URL" \
 aws ssm put-parameter --type SecureString --name /trade-agent/bitbank/api-key    --value '...'
 aws ssm put-parameter --type SecureString --name /trade-agent/bitbank/api-secret --value '...'
 aws ssm put-parameter --type SecureString --name /trade-agent/anthropic/api-key  --value '...'
-aws ssm put-parameter --type SecureString --name /trade-agent/mcp/bearer-token   --value "$(openssl rand -base64 32)"
+aws ssm put-parameter --type SecureString --name /trade-agent/mcp/bearer-token   --value "$(openssl rand -hex 32)"   # hex: the token has to survive a URL path
 
 aws ses verify-email-identity --email-address you@example.com --region ap-northeast-1
 

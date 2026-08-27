@@ -233,13 +233,33 @@ put_secret /trade-agent/bitbank/api-key    "bitbank API key"
 put_secret /trade-agent/bitbank/api-secret "bitbank API secret"
 put_secret /trade-agent/anthropic/api-key  "Anthropic API key (sk-ant-...)"
 
+# 256 bits as hex, not base64. The token has to survive being placed in a URL
+# path, because claude.ai's custom-connector dialog has no field for a static
+# header (see docs/MCP.md); base64's `/` and `+` do not.
 MCP_TOKEN=""
-if aws ssm get-parameter --name /trade-agent/mcp/bearer-token --region "$REGION" \
-        >/dev/null 2>&1; then
-    ok "/trade-agent/mcp/bearer-token kept"
-else
-    MCP_TOKEN="$(openssl rand -base64 32)"
+EXISTING_TOKEN="$(aws ssm get-parameter --name /trade-agent/mcp/bearer-token \
+    --with-decryption --region "$REGION" \
+    --query Parameter.Value --output text 2>/dev/null || true)"
+
+if [[ -z "$EXISTING_TOKEN" ]]; then
+    MCP_TOKEN="$(openssl rand -hex 32)"
     put_secret /trade-agent/mcp/bearer-token "" "$MCP_TOKEN"
+elif [[ "$EXISTING_TOKEN" =~ ^[A-Za-z0-9._~-]+$ ]]; then
+    ok "/trade-agent/mcp/bearer-token kept"
+    MCP_TOKEN="$EXISTING_TOKEN"
+else
+    warn "the stored MCP token contains characters that cannot go in a URL path"
+    note "It still works as an Authorization header, but claude.ai's connector"
+    note "dialog cannot send one, so registering this endpoint there needs a"
+    note "URL-safe token."
+    if confirm "replace it with a URL-safe token?"; then
+        MCP_TOKEN="$(openssl rand -hex 32)"
+        put_secret /trade-agent/mcp/bearer-token "" "$MCP_TOKEN"
+        ok "token rotated"
+    else
+        MCP_TOKEN="$EXISTING_TOKEN"
+        warn "keeping it; the claude.ai connector will not be able to authenticate"
+    fi
 fi
 
 # ------------------------------------------------------------------- 3. email
@@ -401,19 +421,22 @@ printf '%s%s%s\n\n' "$BOLD" "$(printf '=%.0s' {1..62})" "$RESET"
 printf '  Stack        %s (%s)\n' "$STACK_NAME" "$REGION"
 printf '  Mode         paper trading — no live order can be placed\n'
 printf '  MCP endpoint %s\n' "${MCP_URL:-<not found>}"
-if [[ -n "$MCP_TOKEN" ]]; then
-    printf '  Bearer token %s\n' "$MCP_TOKEN"
-    printf '               %sshown once; it is stored in SSM at%s\n' "$DIM" "$RESET"
-    printf '               %s/trade-agent/mcp/bearer-token%s\n' "$DIM" "$RESET"
+if [[ -n "$MCP_TOKEN" && -n "${MCP_URL:-}" ]]; then
+    printf '\n  %sConnector URL%s  — paste this whole line into claude.ai,\n' "$BOLD" "$RESET"
+    printf '  and set Authentication to %sNone%s. The token is in the path\n' "$BOLD" "$RESET"
+    printf '  because that dialog has no field for a header.\n\n'
+    printf '    %smcp/%s\n\n' "${MCP_URL%%/}/" "$MCP_TOKEN"
+    printf '  %sTreat that URL as the credential it is.%s Re-read it with:\n' "$DIM" "$RESET"
+    printf '    aws ssm get-parameter --with-decryption \\\n'
+    printf '      --name /trade-agent/mcp/bearer-token --region %s \\\n' "$REGION"
+    printf '      --query Parameter.Value --output text\n'
 else
-    printf '  Bearer token %skept from the existing SSM parameter%s\n' "$DIM" "$RESET"
-    printf '               aws ssm get-parameter --with-decryption \\\n'
-    printf '                 --name /trade-agent/mcp/bearer-token --region %s\n' "$REGION"
+    printf '  Bearer token %sstored in SSM at /trade-agent/mcp/bearer-token%s\n' "$DIM" "$RESET"
 fi
 
 printf '\n  %sNext%s\n' "$BOLD" "$RESET"
-printf '   1. Register the MCP endpoint in claude.ai as a custom connector,\n'
-printf '      using the bearer token above.\n'
+printf '   1. Register the connector URL above in claude.ai\n'
+printf '      (Settings -> Connectors -> Add custom connector, Authentication: None).\n'
 printf '   2. Check the heartbeat alarm in ~15 minutes:\n'
 printf '      aws cloudwatch describe-alarms --alarm-names %s-tick-heartbeat \\\n' "$STACK_NAME"
 printf '        --region %s --query "MetricAlarms[0].StateValue" --output text\n' "$REGION"

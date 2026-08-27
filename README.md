@@ -25,7 +25,7 @@ bitbank 現物 BTC/JPY を対象とした、LLM マルチエージェント方�
 aws ssm put-parameter --type SecureString --name /trade-agent/bitbank/api-key    --value '...'
 aws ssm put-parameter --type SecureString --name /trade-agent/bitbank/api-secret --value '...'
 aws ssm put-parameter --type SecureString --name /trade-agent/anthropic/api-key  --value '...'
-aws ssm put-parameter --type SecureString --name /trade-agent/mcp/bearer-token   --value "$(openssl rand -base64 32)"
+aws ssm put-parameter --type SecureString --name /trade-agent/mcp/bearer-token   --value "$(openssl rand -hex 32)"
 ```
 
 **キーが第三者の目に触れた場合(スクリーンショット共有を含む)は、
@@ -208,7 +208,12 @@ AWS Budgets が $2 超過で警告メールを送る。
 ## 6. オーナーとの対話(MCP)
 
 `mcp` Lambda の Function URL を claude.ai の「カスタムコネクタ」として登録する。
-Bearer トークン認証必須。**プル型**であり、オーナーが質問したときだけ情報が流れる。
+**Authentication は「None」を選び、トークンは URL のパスに載せる**
+(`.../mcp/<トークン>`) — 理由と手順は [docs/MCP.md](docs/MCP.md)。
+`Authorization: Bearer` ヘッダも受け付ける(curl / Claude Code 用)。
+認証は必須で、トークンのないリクエストは常に 401 になる。
+
+**プル型**であり、オーナーが質問したときだけ情報が流れる。
 緊急イベントの即時通知はメールが担う(仕様 §16.1)。
 
 | ツール | 種別 |

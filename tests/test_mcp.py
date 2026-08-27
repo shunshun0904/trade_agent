@@ -5,7 +5,7 @@ from decimal import Decimal
 
 import pytest
 
-from trade_agent.mcp.auth import extract_bearer
+from trade_agent.mcp.auth import extract_bearer, extract_path_token
 from trade_agent.mcp.server import handle_request
 from trade_agent.mcp.tools import READ_ONLY, TOOLS, ToolError, call_tool
 
@@ -13,12 +13,12 @@ E = Decimal
 AUTH = {"authorization": "Bearer test-token"}
 
 
-def _rpc(ctx, method: str, params=None, request_id=1, headers=None):
+def _rpc(ctx, method: str, params=None, request_id=1, headers=None, path=None):
     body = json.dumps({"jsonrpc": "2.0", "id": request_id, "method": method,
                        "params": params or {}})
     status, _, text = handle_request(ctx, method="POST",
                                      headers=AUTH if headers is None else headers,
-                                     body=body)
+                                     body=body, path=path)
     return status, (json.loads(text) if text else None)
 
 
@@ -39,6 +39,43 @@ def test_the_header_name_is_matched_case_insensitively():
     assert extract_bearer({"Authorization": "Bearer abc"}) == "abc"
     assert extract_bearer({"AUTHORIZATION": "bearer abc"}) == "abc"
     assert extract_bearer({"authorization": "Basic abc"}) is None
+
+
+# claude.ai's custom-connector dialog offers OAuth or nothing — an individual
+# account has nowhere to put a static header — so the token can also ride in
+# the path. See mcp/auth.py for why that tradeoff was taken.
+
+def test_a_token_in_the_path_authenticates(ctx):
+    status, payload = _rpc(ctx, "tools/list", headers={}, path="/mcp/test-token")
+    assert status == 200
+    assert payload["result"]["tools"]
+
+
+def test_a_wrong_token_in_the_path_is_rejected(ctx):
+    status, _ = _rpc(ctx, "tools/list", headers={}, path="/mcp/nope")
+    assert status == 401
+
+
+def test_the_path_prefix_is_required(ctx):
+    """A bare `/<token>` must not authenticate: without a fixed prefix, every
+    request would compare its whole path against the secret."""
+    status, _ = _rpc(ctx, "tools/list", headers={}, path="/test-token")
+    assert status == 401
+
+
+def test_a_header_beats_a_bad_path(ctx):
+    status, _ = _rpc(ctx, "tools/list", headers=AUTH, path="/mcp/nope")
+    assert status == 200
+
+
+def test_path_token_extraction():
+    assert extract_path_token("/mcp/abc") == "abc"
+    assert extract_path_token("/mcp/abc/") == "abc"
+    assert extract_path_token("/mcp/a%2Bb") == "a+b"   # percent-decoded
+    assert extract_path_token("/mcp/") is None
+    assert extract_path_token("/") is None
+    assert extract_path_token("") is None
+    assert extract_path_token(None) is None
 
 
 def test_get_is_not_supported(ctx):
