@@ -18,6 +18,7 @@ REGION="${TA_REGION:-ap-northeast-1}"
 ENVIRONMENT="${TA_ENVIRONMENT:-prod}"
 STACK_NAME="trade-agent-${ENVIRONMENT}"
 WINDOW_MIN="${TA_WINDOW_MIN:-60}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 BOLD=$'\033[1m'; DIM=$'\033[2m'; RED=$'\033[31m'; GREEN=$'\033[32m'
 YELLOW=$'\033[33m'; RESET=$'\033[0m'
@@ -35,6 +36,20 @@ VERDICT_TRADING=0   # a tick ran and did not error
 VERDICT_BROKEN=0    # something invoked and threw
 VERDICT_PENDING=0   # too soon after a deploy to have data
 SINCE_DEPLOY=0
+
+# Budget figures come from config/default.yaml rather than being repeated here.
+# A monitoring script that disagrees with the system it monitors is worse than
+# no monitoring script, and these values decide the Phase 2 go/no-go (spec 14).
+config_number() {  # config_number <key> <fallback>
+    local value
+    value="$(awk -v key="$1:" '$1 == key {print $2; exit}' \
+        "${ROOT}/config/default.yaml" 2>/dev/null)"
+    if [[ "$value" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+        printf '%s' "$value"
+    else
+        printf '%s' "$2"
+    fi
+}
 
 metric_sum() {  # metric_sum <metric> <function>
     local value
@@ -147,14 +162,73 @@ head_ "4. Has it actually done anything?"
 
 # "state", matching STATE_KEY in storage/dynamo.py. It was "system" here, which
 # is nothing, so this reported "no tick has ever finished its work" against a
-# table that had one. tests/test_status_script.py holds the two together now.
-STATE="$(aws dynamodb get-item --table-name "trade-agent-${ENVIRONMENT}-state" \
-    --key '{"pk":{"S":"state"}}' --region "$REGION" \
-    --query 'Item' --output json 2>/dev/null)"
-if [[ -n "$STATE" && "$STATE" != "null" ]]; then
-    equity="$(printf '%s' "$STATE" | grep -o '"equity_jpy":[^,}]*' | head -1)"
+# table that had one.
+#
+# The values are read with --query, not grepped out of the raw response.
+# get-item returns the low-level form, where every value is wrapped in a type
+# descriptor — {"equity_jpy":{"N":"10000"}} — so a grep for the field returns
+# the descriptor instead of the number, and printed a bare `"equity_jpy": {`.
+# --query unwraps it. The paths track models/state.py (SystemState.equity_jpy,
+# MonthlyCounters.llm_cost_jpy, DailyCounters.full_debates); tests/
+# test_status_script.py holds the two together.
+STATE_ROW="$(aws dynamodb get-item --table-name "trade-agent-${ENVIRONMENT}-state" \
+    --key '{"pk":{"S":"state"}}' --region "$REGION" --output text \
+    --query 'Item.[equity_jpy.N, monthly.M.llm_cost_jpy.N, daily.M.full_debates.N, kill_switch.BOOL]' \
+    2>/dev/null || true)"
+
+if [[ -n "$STATE_ROW" && "$STATE_ROW" != "None" ]]; then
+    IFS=$'\t' read -r EQUITY LLM_MONTH DEBATES_TODAY KILLED <<< "$STATE_ROW"
     ok "system state row exists — a tick has completed at least once"
-    [[ -n "$equity" ]] && note "  ${equity}"
+
+    [[ "$EQUITY" == "None" || -z "$EQUITY" ]] && EQUITY=0
+    [[ "$LLM_MONTH" == "None" || -z "$LLM_MONTH" ]] && LLM_MONTH=0
+    [[ "$DEBATES_TODAY" == "None" || -z "$DEBATES_TODAY" ]] && DEBATES_TODAY=0
+
+    # One awk for the arithmetic and the formatting, so the money is rendered
+    # in exactly one place. Two traps are deliberately avoided here:
+    #
+    #   * every `?:` is parenthesised. In `printf "%.1f", budget > 0 ? a : b`
+    #     awk reads `> 0` as output redirection and writes the number to a file
+    #     called "0", leaving the field blank — which is how the percentage and
+    #     the whole budget ladder silently did nothing.
+    #   * thousands separators are built by hand rather than with printf's `'`
+    #     flag, which is a no-op outside a grouping locale and produced bare
+    #     "10000" in CloudShell.
+    mapfile -t SUMMARY < <(awk \
+        -v equity="$EQUITY" -v spent="$LLM_MONTH" \
+        -v total="$(config_number total_budget_jpy 3000)" \
+        -v infra="$(config_number infra_cost_jpy 100)" \
+        -v degrade="$(config_number degrade_threshold_pct 80)" \
+        -v debates="$DEBATES_TODAY" \
+        -v limit="$(config_number daily_full_debate_limit 8)" '
+        function commas(n,   s, out, i, len, sign) {
+            sign = (n < 0 ? "-" : ""); n = (n < 0 ? -n : n)
+            s = sprintf("%.0f", n); len = length(s); out = ""
+            for (i = 0; i < len; i++) {
+                if (i > 0 && i % 3 == 0) out = "," out
+                out = substr(s, len - i, 1) out
+            }
+            return sign out
+        }
+        BEGIN {
+            budget = total - infra
+            pct = (budget > 0 ? spent / budget * 100 : 0)
+            ladder = "normal"
+            if (pct >= 100)          ladder = "STOPPED — no LLM calls this month"
+            else if (pct >= degrade) ladder = "degraded — 1 debate/day"
+            printf "  equity              %s JPY\n", commas(equity)
+            printf "  LLM cost, month     %.2f / %s JPY  (%.1f%%)  %s\n", \
+                   spent, commas(budget), pct, ladder
+            printf "  full debates today  %s / %s\n", debates, limit
+            printf "%s\n", (ladder == "normal" ? "ok" : "alert")
+        }')
+
+    note "${SUMMARY[0]}"
+    # The number that decides whether the budget holds, and with it whether
+    # Phase 2 is affordable (spec 14). Counting agent calls does not answer it.
+    if [[ "${SUMMARY[3]}" == "ok" ]]; then note "${SUMMARY[1]}"; else warn "${SUMMARY[1]# }"; fi
+    note "${SUMMARY[2]}"
+    [[ "$KILLED" == "True" ]] && bad "  kill switch is ENGAGED"
 else
     bad "no system state row — no tick has ever finished its work"
 fi
