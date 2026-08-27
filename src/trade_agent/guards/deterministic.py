@@ -19,7 +19,6 @@ from ..config import Config
 from ..errors import GuardRejection
 from ..models.agent_io import (
     AnalystOutput,
-    AuditorOutput,
     JudgeOutput,
     RiskOutput,
     StrategyOutput,
@@ -188,20 +187,6 @@ class DeterministicGuard:
             violations.append("approved=false のとき adjustments を1つ以上書くこと")
         violations += self._quotes(output.rationale, *output.adjustments)
         _raise(violations, "risk")
-
-    def validate_auditor(self, output: AuditorOutput) -> None:
-        violations: list[str] = []
-        if not output.ok and not output.violations:
-            violations.append("ok=false のとき violations を1つ以上書くこと")
-        if output.ok and output.violations:
-            violations.append("ok=true のとき violations は空配列にすること")
-        if output.ok and output.retry_target != "none":
-            violations.append("ok=true のとき retry_target は none にすること")
-        violations += self._quotes(output.notes, *output.violations)
-        _raise(violations, "auditor")
-
-    def validate_commander(self, output) -> None:
-        _raise(self._quotes(output.headline, output.report_text), "commander")
 
     # -- shared checks -----------------------------------------------------
 

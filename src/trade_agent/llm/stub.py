@@ -18,8 +18,6 @@ from decimal import Decimal
 
 from ..models.agent_io import (
     AnalystOutput,
-    AuditorOutput,
-    CommanderOutput,
     Critique,
     CritiqueOutput,
     JudgeOutput,
@@ -37,13 +35,10 @@ class StubLLMClient:
     """`bias` steers the strategists: "buy", "wait" or "mixed" (default)."""
 
     def __init__(self, *, bias: str = "mixed", cost_meter=None,
-                 approve_risk: bool = True, audit_ok: bool = True,
-                 commander_go: bool = True):
+                 approve_risk: bool = True):
         self.bias = bias
         self.cost_meter = cost_meter
         self.approve_risk = approve_risk
-        self.audit_ok = audit_ok
-        self.commander_go = commander_go
         self.calls: list[LLMRequest] = []
 
     def complete(self, request: LLMRequest) -> LLMResponse:
@@ -80,7 +75,9 @@ class StubLLMClient:
         return AnalystOutput(
             regime=regime, confidence=confidence,
             key_indicators=["rsi", "sma_short", "vwap_24h"],
-            summary=f"RSI {rsi} を中心にレジームを {regime} と判断した。",
+            # Rounded the way a model would write it; the guard's tolerance
+            # accepts it, which is itself worth exercising offline.
+            summary=f"RSIは{rsi:.1f}で、レジームを {regime} と判断した。",
             risks=["ボラティリティ拡大", "出来高の細り"])
 
     def _strategy(self, request, facts) -> StrategyOutput:
@@ -133,19 +130,6 @@ class StubLLMClient:
                       else "リスクが上限を超える。",
             # The guard requires a rejection to say what would fix it.
             adjustments=[] if self.approve_risk else ["損切り幅を縮めること"])
-
-    def _auditor(self, request, facts) -> AuditorOutput:
-        return AuditorOutput(
-            ok=self.audit_ok,
-            violations=[] if self.audit_ok else ["レジーム判定と戦略方向が矛盾"],
-            retry_target="none" if self.audit_ok else "judge",
-            notes="論理整合を確認した。")
-
-    def _commander(self, request, facts) -> CommanderOutput:
-        return CommanderOutput(
-            go=self.commander_go,
-            headline="発注を承認" if self.commander_go else "見送り",
-            report_text="サイクルの結論と根拠を記載したレポート本文。")
 
     def _reflect(self, request, facts) -> ReflectOutput:
         return ReflectOutput(

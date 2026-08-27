@@ -32,7 +32,7 @@ TOOLS = [
     },
     {
         "name": "get_daily_report",
-        "description": "指定日の日次レポート(A6生成)を返す。日付を省略すると最新。",
+        "description": "指定日の日次レポートを返す。日付を省略すると最新。",
         "inputSchema": {
             "type": "object",
             "properties": {"date": {"type": "string",

@@ -112,20 +112,20 @@ def test_a_risk_rejection_stops_the_trade(ctx, llm):
     assert ctx.exchange.orders_sent == []
 
 
-def test_an_auditor_rejection_stops_the_trade(ctx, llm):
-    llm.audit_ok = False
-    outcome = _cycle(ctx, cycle_id="cyc-k").run()
-    assert not outcome.traded
-    assert "auditor" in outcome.no_trade_reason
-    assert ctx.exchange.orders_sent == []
+def test_the_risk_agent_is_the_last_agent_in_the_chain(ctx, llm):
+    """Nothing runs after A4. The remaining gates are all deterministic."""
+    _cycle(ctx, cycle_id="cyc-k").run()
+    agents = [c.agent for c in ctx.store.agent_calls.list_for_cycle("cyc-k")]
+    assert agents[-1] == "risk"
+    assert "auditor" not in agents
+    assert "commander" not in agents
 
 
-def test_a_commander_veto_stops_the_trade(ctx, llm):
-    llm.commander_go = False
+def test_a_cycle_costs_nine_calls(ctx, llm):
+    """1 analyst + 3 proposals + 3 critiques + 1 judge + 1 risk."""
     outcome = _cycle(ctx, cycle_id="cyc-l").run()
-    assert not outcome.traded
-    assert "commander" in outcome.no_trade_reason
-    assert ctx.exchange.orders_sent == []
+    assert outcome.traded
+    assert outcome.llm_calls == 9
 
 
 def test_the_cycle_records_its_own_cost(ctx, llm):

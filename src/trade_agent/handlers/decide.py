@@ -67,11 +67,12 @@ def _trigger_from(event: dict) -> CycleTrigger:
 
 
 def _maybe_write_daily_report(ctx: AppContext, outcome: CycleOutcome) -> None:
-    """Spec 9: A6's report is stored after the 21:00 JST cycle.
+    """Spec 9: the daily report is stored after the 21:00 JST cycle.
 
-    The commander has already written the text as part of the cycle, so no
-    extra LLM call is made here — the report is assembled from what the cycle
-    produced plus the counters the owner asks about (spec 16.2).
+    No LLM call happens here. The cycle already composed its report from the
+    agents' structured output (orchestrator/report.py); this adds the counters
+    the owner asks about — equity, P&L, spend, consensus rate, idle time
+    (spec 16.2).
     """
     now = ctx.clock.now()
     state = ctx.load_state()

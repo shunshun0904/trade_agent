@@ -5,7 +5,7 @@
       -> A2a/A2b/A2c independent proposals   (mutually blind)
       -> A2 cross-critique                   (anonymised)
       -> consensus rule                      (Python, not the model)
-      -> A3 judge -> sizing (Python) -> A4 risk -> A5 auditor -> A6 commander
+      -> A3 judge -> sizing (Python) -> A4 risk
       -> execute
 
 Three things are deliberately not the model's job. The consensus rule is
@@ -13,6 +13,10 @@ counted in Python, because a rule the judge could talk itself out of is not a
 rule. Position size is computed in Python and the risk agent is checked against
 it. And every safety gate is evaluated before the first token is spent, so a
 halted system costs nothing to keep running.
+
+The owner-facing report is assembled in Python too (see `report.py`), from the
+structured output the agents have already produced. There is no separate agent
+writing prose about a decision it did not make.
 """
 
 from __future__ import annotations
@@ -28,8 +32,6 @@ from ..agents.base import AgentRunner
 from ..agents.roster import (
     STRATEGISTS,
     run_analyst,
-    run_auditor,
-    run_commander,
     run_critique,
     run_judge,
     run_risk,
@@ -50,6 +52,7 @@ from ..risk.boredom import (
 )
 from ..storage.base import LOCK_DECIDE
 from ..timeutil import iso
+from .report import compose_no_trade, compose_traded
 
 log = logging.getLogger(__name__)
 
@@ -109,6 +112,8 @@ class DecisionCycle:
         self.invocation_id = f"{self.cycle_id}:{uuid.uuid4().hex[:8]}"
         self.outcome = CycleOutcome(cycle_id=self.cycle_id, trigger=trigger,
                                     started_at=iso(self.clock.now()))
+        # Kept so an abort after A1 can still say what the market looked like.
+        self._analyst: AnalystOutput | None = None
 
     # -- entry point -------------------------------------------------------
 
@@ -221,6 +226,7 @@ class DecisionCycle:
 
         try:
             analyst = run_analyst(runner, validator=guard.validate_analyst)
+            self._analyst = analyst
             out.regime = analyst.regime
             proposals = self._collect_proposals(runner, guard, analyst,
                                                 probe=boredom.triggered)
@@ -365,8 +371,16 @@ class DecisionCycle:
     def _review(self, runner: AgentRunner, guard: DeterministicGuard,
                 state: SystemState, snapshot: MarketSnapshot,
                 plan: ExecutionPlan, analyst: AnalystOutput) -> bool:
-        """A4 sizing review, A5 audit, A6 final call, then the last structural
-        check on the exact numbers that would go to the exchange."""
+        """A4 sizing review, then the last structural check on the exact
+        numbers that would go to the exchange.
+
+        This is the end of the agent chain. What used to follow — an auditor
+        looking for contradictions and a commander casting a final vote — was
+        a model checking models, downstream of four gates that do not guess:
+        the consensus count, the sizing calculation, the per-agent guard, and
+        `check_executable` below. Removing them removed two ways for a cycle
+        to be talked out of a decision Python had already settled.
+        """
         out = self.outcome
         limits = {
             "per_trade_risk_jpy": float(self.ctx.risk.risk_limit_jpy(
@@ -392,37 +406,6 @@ class DecisionCycle:
             out.no_trade_reason = f"risk management rejected the plan: {risk_out.rationale}"
             return False
 
-        auditor = run_auditor(runner, digest={
-            "market_read": analyst.model_dump(),
-            "adopted_plan": {"entry": float(plan.entry),
-                             "stop_loss": float(plan.stop_loss),
-                             "take_profit": float(plan.take_profit),
-                             "qty_btc": float(plan.qty_btc),
-                             "probe": plan.probe, "thesis": plan.thesis},
-            "risk_assessment": risk_out.model_dump(),
-        }, validator=guard.validate_auditor)
-        if not auditor.ok:
-            out.no_trade_reason = ("auditor found unresolved contradictions: "
-                                   + "; ".join(auditor.violations))
-            return False
-
-        safety = self._safety_digest(state)
-        commander = run_commander(
-            runner,
-            digest={"regime": analyst.regime, "consensus": float(out.consensus or 0),
-                    "buy_proposals": out.buy_count, "probe": plan.probe,
-                    "plan": {"entry": float(plan.entry),
-                             "stop_loss": float(plan.stop_loss),
-                             "take_profit": float(plan.take_profit),
-                             "qty_btc": float(plan.qty_btc),
-                             "risk_jpy": float(plan.risk_jpy)}},
-            safety=safety, validator=guard.validate_commander)
-        out.report_text = commander.report_text
-        out.headline = commander.headline
-        if not commander.go:
-            out.no_trade_reason = f"commander said no: {commander.headline}"
-            return False
-
         violations = guard.check_executable(
             entry=plan.entry, stop_loss=plan.stop_loss, take_profit=plan.take_profit,
             qty_btc=plan.qty_btc, jpy_available=snapshot.account.jpy_free,
@@ -430,7 +413,21 @@ class DecisionCycle:
         if violations:
             out.no_trade_reason = "final structural check failed: " + "; ".join(violations)
             return False
+
+        out.headline, out.report_text = compose_traded(
+            analyst=analyst, plan=plan, risk=risk_out, state=state,
+            buy_count=out.buy_count, proposal_count=len(STRATEGISTS),
+            consensus=out.consensus,
+            protection_note=self._protection_note())
         return True
+
+    def _protection_note(self) -> str:
+        """How this position will be protected, in one line for the report."""
+        mode = self.config.execution.oco_mode
+        if mode == "local":
+            return "損切り・利確とも5分tickがローカル評価"
+        return ("損切りは取引所側の stop 注文、利確は5分tickが監視"
+                "(取引所が両脚を裏付ける場合は両方を取引所側に置く)")
 
     # -- execution ---------------------------------------------------------
 
@@ -512,16 +509,6 @@ class DecisionCycle:
             parts.append(f"退屈防止ルール発動中(合意閾値 {boredom.consensus_min}/3)")
         return " / ".join(parts)
 
-    def _safety_digest(self, state: SystemState) -> dict:
-        return {
-            "kill_switch": state.kill_switch,
-            "owner_paused": state.owner_paused,
-            "losing_streak": state.losing_streak,
-            "daily_loss_pct": float(state.daily_loss_pct()),
-            "full_debates_today": state.daily.full_debates,
-            "probe_rule_suspended": state.monthly.probe_rule_suspended,
-        }
-
     # -- bookkeeping -------------------------------------------------------
 
     def _finish_llm_accounting(self, state: SystemState,
@@ -542,6 +529,11 @@ class DecisionCycle:
         out = self.outcome
         out.traded = False
         out.no_trade_reason = reason
+        out.headline, out.report_text = compose_no_trade(
+            reason=reason, analyst=self._analyst, state=state,
+            buy_count=out.buy_count, proposal_count=len(STRATEGISTS)
+            if self._analyst is not None else 0,
+            consensus=out.consensus)
         if save:
             now = self.clock.now()
             if out.llm_calls:

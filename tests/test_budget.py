@@ -62,7 +62,8 @@ def test_degraded_rung_caps_the_daily_debates(config):
 
 
 def test_a_realistic_cycle_fits_the_monthly_budget(config):
-    """Nine calls a cycle, eight cycles a day, thirty days must fit 2,900 JPY."""
+    """Nine calls a cycle (1 analyst + 3 proposals + 3 critiques + judge +
+    risk), eight cycles a day, thirty days must fit 2,900 JPY."""
     m = meter(config)
     per_call = m.cost_jpy(TokenUsage(input_tokens=2500, output_tokens=250,
                                      cache_read_tokens=2000))

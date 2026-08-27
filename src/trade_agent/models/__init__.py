@@ -2,8 +2,6 @@
 
 from .agent_io import (  # noqa: F401
     AnalystOutput,
-    AuditorOutput,
-    CommanderOutput,
     CritiqueOutput,
     JudgeOutput,
     Lesson,

@@ -98,23 +98,6 @@ class RiskOutput(_AgentModel):
     adjustments: list[str]
 
 
-class AuditorOutput(_AgentModel):
-    """A5 — cross-agent logical consistency."""
-
-    ok: bool
-    violations: list[str]
-    retry_target: Literal["analyst", "strategy", "judge", "risk", "none"]
-    notes: str
-
-
-class CommanderOutput(_AgentModel):
-    """A6 — final GO/NO-GO plus the owner-facing text."""
-
-    go: bool
-    headline: str = Field(description="one line, Japanese")
-    report_text: str = Field(description="owner-facing report, Japanese")
-
-
 class Lesson(_AgentModel):
     text: str
     regime_tag: Regime | Literal["all"]
@@ -143,8 +126,6 @@ AGENT_OUTPUT_MODELS = {
     "critique": CritiqueOutput,
     "judge": JudgeOutput,
     "risk": RiskOutput,
-    "auditor": AuditorOutput,
-    "commander": CommanderOutput,
     "reflect": ReflectOutput,
     "scout": ScoutOutput,
 }

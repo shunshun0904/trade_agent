@@ -13,8 +13,6 @@ from typing import Callable
 
 from ..models.agent_io import (
     AnalystOutput,
-    AuditorOutput,
-    CommanderOutput,
     CritiqueOutput,
     JudgeOutput,
     ReflectOutput,
@@ -100,24 +98,6 @@ def run_risk(runner: AgentRunner, *, plan: dict, account: dict, limits: dict,
         RiskOutput, saw_agents=["judge"], validator=validator,
         instructions=("採択案のサイズ・損切り・利確を査定せよ。"
                       "数量とリスク額は算出済みである。作り直さず、妥当性を判断せよ。"))
-
-
-def run_auditor(runner: AgentRunner, *, digest: dict,
-                validator: Validator = None) -> AuditorOutput:
-    return runner.run(
-        "auditor", digest, AuditorOutput,
-        saw_agents=["analyst", *STRATEGISTS, "critique", "judge", "risk"],
-        validator=validator,
-        instructions="A1〜A4の出力間に論理的矛盾がないか監査せよ。")
-
-
-def run_commander(runner: AgentRunner, *, digest: dict, safety: dict,
-                  validator: Validator = None) -> CommanderOutput:
-    return runner.run(
-        "commander", {"cycle": digest, "safety_state": safety}, CommanderOutput,
-        saw_agents=["analyst", *STRATEGISTS, "critique", "judge", "risk", "auditor"],
-        validator=validator,
-        instructions="最終GO/NO-GOを決め、オーナー向け報告文を書け。")
 
 
 def run_reflect(runner: AgentRunner, *, statistics: dict,

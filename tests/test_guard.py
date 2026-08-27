@@ -8,7 +8,6 @@ from trade_agent.errors import GuardRejection
 from trade_agent.guards.deterministic import DeterministicGuard, check_quoted_indicators
 from trade_agent.models.agent_io import (
     AnalystOutput,
-    AuditorOutput,
     JudgeOutput,
     RiskOutput,
     StrategyOutput,
@@ -133,12 +132,6 @@ def test_risk_output_must_match_the_python_numbers(guard, snapshot):
                             expected_risk_jpy=Decimal("90"), entry=entry,
                             stop_loss=stop)
     assert any("qty_btc" in v for v in excinfo.value.violations)
-
-
-def test_auditor_must_justify_a_rejection(guard):
-    with pytest.raises(GuardRejection):
-        guard.validate_auditor(AuditorOutput(ok=False, violations=[],
-                                             retry_target="judge", notes=""))
 
 
 def test_executable_check_rejects_a_non_lot_multiple(guard, snapshot):
