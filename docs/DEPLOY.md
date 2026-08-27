@@ -57,15 +57,36 @@ CloudFormation スタックは差分だけが適用される。
 | 症状 | 対処 |
 |---|---|
 | `no usable AWS credentials` | CloudShell 以外で実行している。CloudShell から実行する |
-| `clone failed` | リポジトリが private。CloudShell に git 認証を設定する |
-| ディスク不足 | `rm -rf ~/trade_agent/.aws-sam` して再実行 |
+| `Unable to read current working directory` / `getcwd` | 消えたディレクトリの中にシェルが残っている。`cd ~` を打つ。`rm -rf ~/trade_agent` をその中で実行すると起きる |
+| `clone failed` | git の出力がそのまま表示される。認証・ネットワーク・宛先の重複を切り分けて表示する |
+| ディスク不足 | `cd ~ && rm -rf ~/trade_agent/.aws-sam` して再実行 |
 | `refusing to deploy a package that will not start` | 成果物の検証で落ちた。表示される問題(ABIタグ不一致・欠損ファイル)をそのまま直す |
-| `PythonPipBuilder:Validation - Binary validation failed for python ... runtime: python3.11` | 古い版のスクリプトで実行している。`rm -rf ~/trade_agent` して貼り直す(現在は makefile ビルダーを使うため、ホストの Python 版は不問) |
+| `PythonPipBuilder:Validation - Binary validation failed for python ... runtime: python3.11` | 古い版のスクリプトで実行している。`cd ~ && rm -rf ~/trade_agent` して貼り直す(現在は makefile ビルダーを使うため、ホストの Python 版は不問) |
 | `sam deploy failed` | スクリプトが失敗したリソースと理由を抽出して表示する。下の「スタックがロールバックしたとき」も参照 |
 | `Waiter StackCreateComplete failed ... ROLLBACK_COMPLETE` | 初回作成が失敗した。スタックは空の抜け殻として残り、**更新できない**。再実行すれば自動で削除される |
 | `Stack ... is in ROLLBACK_COMPLETE state and can not be updated` | 同上。古い版のスクリプトで手が止まっている場合は下のコマンドで削除する |
 | `... already exists` | 前回の失敗が残したリソースを掴んでいる。ロググループなら再実行時に削除を提案される |
 | `Value at 'description' failed to satisfy constraint` | IAM の説明文に制御文字が入っている。YAML で `Description: >` ではなく `>-` を使う(`>` は末尾に改行を残す)。`tests/test_template.py` が検出する |
+
+### やり直すときは先に `cd ~`
+
+作業ディレクトリを消して貼り直す場合、**その中にいる状態で消さないこと。**
+
+```bash
+cd ~ && rm -rf ~/trade_agent
+```
+
+`~/trade_agent` の中にいるまま `rm -rf` すると、シェルは存在しないディレクトリに
+取り残される。以後すべての子プロセスが `getcwd()` で失敗し、git は
+
+```
+fatal: Unable to read current working directory: No such file or directory
+```
+
+で落ちる。認証やネットワークの問題に見えるが、そうではない。`cd ~` を打てば直る。
+
+スクリプト自身も、起動時にこの状態を検出して `$HOME` に退避するようになっている
+(`curl | bash` は呼び出し元の作業ディレクトリを引き継ぐため)。
 
 ### スタックがロールバックしたとき
 

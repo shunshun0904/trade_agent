@@ -29,6 +29,20 @@ WORKDIR="${TA_WORKDIR:-$HOME/trade_agent}"
 BOLD=$'\033[1m'; DIM=$'\033[2m'; RED=$'\033[31m'; GREEN=$'\033[32m'
 YELLOW=$'\033[33m'; BLUE=$'\033[34m'; RESET=$'\033[0m'
 
+# Get out of a deleted directory before doing anything else. This script is
+# normally run as `curl ... | bash`, which inherits the caller's working
+# directory — and the documented way to start over is `rm -rf ~/trade_agent`,
+# which leaves the shell inside a directory that no longer exists if it was
+# already there. Every child process then fails on getcwd(), and git fails
+# with "Unable to read current working directory", which reads like a
+# permissions or credentials problem and is not one.
+if ! pwd -P >/dev/null 2>&1; then
+    cd "$HOME" 2>/dev/null || cd / || true
+    STARTED_IN_A_DELETED_DIRECTORY=1
+else
+    STARTED_IN_A_DELETED_DIRECTORY=0
+fi
+
 step()  { printf '\n%s==> %s%s\n' "$BOLD$BLUE" "$*" "$RESET"; }
 ok()    { printf '    %s✓%s %s\n' "$GREEN" "$RESET" "$*"; }
 warn()  { printf '    %s!%s %s\n' "$YELLOW" "$RESET" "$*"; }
@@ -154,6 +168,12 @@ clear_orphaned_log_groups() {
 
 step "0/5  Environment"
 
+if (( STARTED_IN_A_DELETED_DIRECTORY )); then
+    warn "the shell's working directory no longer exists — switched to ${HOME}"
+    note "(that happens after 'rm -rf ~/trade_agent' from inside it; harmless"
+    note " here, but run 'cd ~' in your own shell afterwards)"
+fi
+
 command -v aws >/dev/null || die "the AWS CLI is not on PATH. Run this in AWS CloudShell."
 
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text 2>/dev/null)" \
@@ -195,8 +215,22 @@ if [[ -d "${WORKDIR}/.git" ]]; then
     git -C "$WORKDIR" reset --hard --quiet "origin/${BRANCH}"
     ok "updated ${WORKDIR} to origin/${BRANCH}"
 else
-    git clone --quiet --branch "$BRANCH" "$REPO_URL" "$WORKDIR" \
-        || die "clone failed. For a private repo, set up git credentials first."
+    CLONE_ERROR="$(git clone --quiet --branch "$BRANCH" "$REPO_URL" "$WORKDIR" 2>&1)" || {
+        printf '\n'
+        note "git said: ${CLONE_ERROR}"
+        case "$CLONE_ERROR" in
+            *"current working directory"*|*getcwd*)
+                die "the shell is in a directory that no longer exists. Run 'cd ~' and try again." ;;
+            *"Authentication"*|*"could not read Username"*|*"Permission denied"*|*403*)
+                die "git could not authenticate. For a private repo, set up git credentials first." ;;
+            *"Could not resolve host"*|*"unable to access"*)
+                die "could not reach ${REPO_URL}. Check network access from this shell." ;;
+            *"already exists"*)
+                die "${WORKDIR} exists but is not a git checkout. Move or remove it, then re-run." ;;
+            *)
+                die "clone failed. The git output above says why." ;;
+        esac
+    }
     ok "cloned into ${WORKDIR}"
 fi
 cd "$WORKDIR"
