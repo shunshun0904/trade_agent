@@ -191,6 +191,11 @@ Resources:
 
   TickFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      # Build with scripts/build_lambda.sh, not SAM's Python builder:
+      # that one needs a python3.11 binary on PATH, which the build
+      # host (CloudShell ships 3.13) usually does not have.
+      BuildMethod: makefile
     Properties:
       FunctionName: !Sub 'trade-agent-${Environment}-tick'
       Handler: trade_agent.handlers.tick.handler
@@ -215,6 +220,11 @@ Resources:
 
   ScreenFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      # Build with scripts/build_lambda.sh, not SAM's Python builder:
+      # that one needs a python3.11 binary on PATH, which the build
+      # host (CloudShell ships 3.13) usually does not have.
+      BuildMethod: makefile
     Properties:
       FunctionName: !Sub 'trade-agent-${Environment}-screen'
       Handler: trade_agent.handlers.screen.handler
@@ -255,6 +265,11 @@ Resources:
 
   DecideFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      # Build with scripts/build_lambda.sh, not SAM's Python builder:
+      # that one needs a python3.11 binary on PATH, which the build
+      # host (CloudShell ships 3.13) usually does not have.
+      BuildMethod: makefile
     Properties:
       FunctionName: !Sub 'trade-agent-${Environment}-decide'
       Handler: trade_agent.handlers.decide.handler
@@ -273,6 +288,11 @@ Resources:
 
   ReflectFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      # Build with scripts/build_lambda.sh, not SAM's Python builder:
+      # that one needs a python3.11 binary on PATH, which the build
+      # host (CloudShell ships 3.13) usually does not have.
+      BuildMethod: makefile
     Properties:
       FunctionName: !Sub 'trade-agent-${Environment}-reflect'
       Handler: trade_agent.handlers.reflect.handler
@@ -288,6 +308,11 @@ Resources:
 
   McpFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      # Build with scripts/build_lambda.sh, not SAM's Python builder:
+      # that one needs a python3.11 binary on PATH, which the build
+      # host (CloudShell ships 3.13) usually does not have.
+      BuildMethod: makefile
     Properties:
       FunctionName: !Sub 'trade-agent-${Environment}-mcp'
       Handler: trade_agent.handlers.mcp_handler.handler

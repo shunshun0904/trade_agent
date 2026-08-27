@@ -23,6 +23,10 @@ CloudShell を使う理由は、AWS 認証情報が最初から通っている�
 `jiter` はアーキテクチャ別のバイナリを持つため、テンプレートは CloudShell と
 同じ x86_64 を指定してある(無料枠は 400,000 GB秒で arm64 と同じ)。
 
+**CloudShell の Python が 3.11 でなくても動く。** ビルドは SAM 標準の Python
+ビルダーではなく `scripts/build_lambda.sh`(makefile ビルダー)を使う。詳細は
+[1.1](#11-ビルド方式makefile-ビルダー)。
+
 聞かれるのは4つだけ:
 
 | 入力 | 備考 |
@@ -41,7 +45,7 @@ MCP の Bearer トークンは自動生成される。
 1/5  ソース    リポジトリの clone / 更新
 2/5  シークレット  SSM Parameter Store へ SecureString で保存
 3/5  メール    SES のアドレス検証(検証メールのリンクを押す)
-4/5  デプロイ  sam build → 成果物の起動チェック → sam deploy
+4/5  デプロイ  sam build → 成果物の検証 → sam deploy
 5/5  検証      取引所定数・APIキー・残高の preflight
 ```
 
@@ -55,7 +59,8 @@ CloudFormation スタックは差分だけが適用される。
 | `no usable AWS credentials` | CloudShell 以外で実行している。CloudShell から実行する |
 | `clone failed` | リポジトリが private。CloudShell に git 認証を設定する |
 | ディスク不足 | `rm -rf ~/trade_agent/.aws-sam` して再実行 |
-| `refusing to deploy a package that will not start` | ビルド成果物の起動チェックで落ちた。表示される import エラーを見る |
+| `refusing to deploy a package that will not start` | 成果物の検証で落ちた。表示される問題(ABIタグ不一致・欠損ファイル)をそのまま直す |
+| `PythonPipBuilder:Validation - Binary validation failed for python ... runtime: python3.11` | 古い版のスクリプトで実行している。`rm -rf ~/trade_agent` して貼り直す(現在は makefile ビルダーを使うため、ホストの Python 版は不問) |
 | `sam deploy failed` | 直前の CloudFormation イベントに理由が出る |
 
 環境変数で挙動を変えられる(通常は不要):
@@ -64,6 +69,63 @@ CloudFormation スタックは差分だけが適用される。
 TA_REGION=ap-northeast-1 TA_ENVIRONMENT=prod \
 TA_BRANCH=claude/trade-agent-spec-mtwldk bash scripts/deploy.sh
 ```
+
+## 1.1 ビルド方式(makefile ビルダー)
+
+SAM 標準の Python ビルダーは、pip を回すために **ランタイムと同じ版の
+`python3.11` バイナリ**をホストに要求する。CloudShell が積んでいる Python は
+その時々の版(執筆時点で 3.13)なので、標準ビルダーだと何もしないうちに
+
+```
+PythonPipBuilder:Validation - Binary validation failed for python,
+searched for python in following locations : [...] which did not satisfy
+constraints for runtime: python3.11
+```
+
+で止まる。CloudShell に別版の Python を入れるのは、常に無料枠で完結させる
+という前提に合わない。
+
+そこで `template.yaml` の5つの関数はすべて `BuildMethod: makefile` を宣言し、
+`Makefile` の `build-<LogicalId>` ターゲット経由で `scripts/build_lambda.sh`
+を呼ぶ。pip は **ターゲットの interpreter である必要はなく**、wheel の解決先を
+指定できる:
+
+```
+--platform manylinux2014_x86_64 --implementation cp
+--python-version 3.11 --only-binary=:all: --target <artifacts>
+```
+
+これで、ホストが 3.11 でも 3.13 でもその先でも、成果物には
+`cpython-311-x86_64-linux-gnu` の拡張モジュールが入る。
+
+副作用として、ホスト側で誤った版の wheel を掴んでも **デプロイは成功して
+しまう**(壊れるのは数分後、最初の invoke で import が落ちたとき)。それを
+ビルド時のエラーに変えるのが `scripts/verify_artifact.py` で、アップロード前に
+次を確認する。
+
+| 検査 | 落ちたときに本番で起きること |
+|---|---|
+| `.so` の ABI タグがランタイム版と一致するか | 全関数が import 時に落ちる |
+| `.so` の ELF `e_machine` がアーキテクチャと一致するか | 同上 |
+| `config/default.yaml` があるか | 設定を読めず起動時に落ちる |
+| 5つの handler モジュールがあるか | 該当関数だけが `Runtime.ImportModuleError` |
+| 依存パッケージがあるか | import 時に落ちる |
+
+成果物を **import せずに** 判定しているのは意図的で、ホストの Python が
+ランタイムと違う場合、正しい成果物ほど import に失敗するからである。
+ABI タグはどのホストからでも読める。
+
+単体でも回せる:
+
+```bash
+make build-TickFunction ARTIFACTS_DIR=.aws-sam/build/TickFunction
+make verify-artifact
+```
+
+ランタイム版やアーキテクチャを変えるときは、`template.yaml` の
+`Runtime` / `Architectures`、`scripts/build_lambda.sh` の
+`TA_LAMBDA_PYTHON` / `TA_LAMBDA_PLATFORM` の既定値、
+`verify_artifact.py` の `--runtime` / `--arch` を揃える。
 
 ## 2. デプロイ後の確認
 

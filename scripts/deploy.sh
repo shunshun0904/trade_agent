@@ -72,6 +72,9 @@ ok "account ${ACCOUNT_ID}"
 note "identity: ${CALLER}"
 ok "deploying into ${REGION} (stack: ${STACK_NAME})"
 
+note "python $(python3 -V 2>&1 | awk '{print $2}') (any version works — the"
+note "Lambda package is built for its own runtime, not this one)"
+
 if ! command -v sam >/dev/null; then
     warn "SAM CLI not found; installing it into ~/.local (a few minutes)"
     python3 -m pip install --quiet --user --upgrade aws-sam-cli \
@@ -213,26 +216,23 @@ printf '\n'
 sam build || die "sam build failed"
 ok "build complete"
 
-# Import the built artifact exactly the way Lambda will, before uploading it.
-# The package sits at <task>/src and the dependencies at <task>/, which is what
-# the PYTHONPATH in template.yaml stitches together — and a mismatch here means
-# every function fails to start, minutes after a deploy that looked fine.
-BUILT="${WORKDIR}/.aws-sam/build/TickFunction"
-[[ -d "$BUILT" ]] || die "sam build produced no TickFunction artifact"
-if PYTHONPATH="${BUILT}:${BUILT}/src" python3 - <<'PY' >/dev/null 2>&1
-import trade_agent.handlers.tick          # noqa: F401
-import trade_agent.handlers.mcp_handler   # noqa: F401
-from trade_agent.config import load_config
-load_config(use_env=False)
-PY
-then
-    ok "built artifact imports and loads its config"
-else
-    warn "the built artifact could not be imported locally"
-    note "Usually a missing dependency or a config/ that did not get copied."
-    PYTHONPATH="${BUILT}:${BUILT}/src" python3 -c \
-        "import trade_agent.handlers.tick" 2>&1 | tail -5 | sed 's/^/      /'
-    die "refusing to deploy a package that will not start"
+# Check the packages before uploading them. A wrong ABI, a missing config or a
+# missing handler all deploy cleanly and then crash every function on import,
+# minutes later, with CloudFormation showing success.
+CHECKED=0
+for fn in TickFunction ScreenFunction DecideFunction ReflectFunction McpFunction; do
+    BUILT="${WORKDIR}/.aws-sam/build/${fn}"
+    # SAM builds functions that share a build definition once and points the
+    # rest at the same artifact, so some of these directories may not exist.
+    if [[ -d "$BUILT" ]]; then
+        printf '  %-16s ' "$fn"
+        python3 "${WORKDIR}/scripts/verify_artifact.py" "$BUILT" \
+            || die "refusing to deploy a package that will not start"
+        CHECKED=$(( CHECKED + 1 ))
+    fi
+done
+if (( CHECKED == 0 )); then
+    die "sam build produced no function artifacts under .aws-sam/build"
 fi
 
 sam deploy \

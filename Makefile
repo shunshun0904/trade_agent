@@ -1,4 +1,6 @@
-.PHONY: install test lint build deploy verify-pair backtest
+.PHONY: install test cov lint build deploy verify-pair snapshot backfill backtest \
+        build-TickFunction build-ScreenFunction build-DecideFunction \
+        build-ReflectFunction build-McpFunction verify-artifact
 
 install:
 	pip install -r requirements-dev.txt
@@ -26,6 +28,20 @@ backtest:
 
 build:
 	sam build
+
+# SAM's makefile builder. It runs `make build-<FunctionLogicalId>` with
+# ARTIFACTS_DIR set, once per function. We use it instead of SAM's built-in
+# Python builder because that one requires a `python3.11` binary on PATH to run
+# pip, and the build host rarely has the same Python as the Lambda runtime —
+# AWS CloudShell ships 3.13. `build_lambda.sh` resolves wheels for the target
+# runtime from whatever Python is available.
+build-TickFunction build-ScreenFunction build-DecideFunction \
+build-ReflectFunction build-McpFunction:
+	bash scripts/build_lambda.sh "$(ARTIFACTS_DIR)"
+
+# Same check the deploy script runs before uploading.
+verify-artifact:
+	python3 scripts/verify_artifact.py .aws-sam/build/TickFunction
 
 deploy:
 	sam deploy --guided
