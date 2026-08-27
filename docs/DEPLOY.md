@@ -65,6 +65,7 @@ CloudFormation スタックは差分だけが適用される。
 | `Waiter StackCreateComplete failed ... ROLLBACK_COMPLETE` | 初回作成が失敗した。スタックは空の抜け殻として残り、**更新できない**。再実行すれば自動で削除される |
 | `Stack ... is in ROLLBACK_COMPLETE state and can not be updated` | 同上。古い版のスクリプトで手が止まっている場合は下のコマンドで削除する |
 | `... already exists` | 前回の失敗が残したリソースを掴んでいる。ロググループなら再実行時に削除を提案される |
+| `Value at 'description' failed to satisfy constraint` | IAM の説明文に制御文字が入っている。YAML で `Description: >` ではなく `>-` を使う(`>` は末尾に改行を残す)。`tests/test_template.py` が検出する |
 
 ### スタックがロールバックしたとき
 

@@ -413,7 +413,10 @@ Resources:
   SecretsReadPolicy:
     Type: AWS::IAM::ManagedPolicy
     Properties:
-      Description: >
+      # `>-`, not `>`: IAM validates this against
+      # [\p{L}\p{M}\p{Z}\p{S}\p{N}\p{P}]*, which admits no control
+      # characters, and a plain folded block keeps a trailing newline.
+      Description: >-
         bitbank and Anthropic credentials. Granted to tick/screen/decide/reflect
         only — never to the internet-facing mcp function (spec 12).
       PolicyDocument:
@@ -462,7 +465,7 @@ Resources:
     Type: AWS::CloudWatch::Alarm
     Properties:
       AlarmName: !Sub 'trade-agent-${Environment}-tick-heartbeat'
-      AlarmDescription: >
+      AlarmDescription: >-
         The 5-minute tick has not run for 15 minutes. Stop-loss monitoring may
         be down. Treat with the same urgency as the kill switch.
       Namespace: AWS/Lambda
