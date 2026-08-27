@@ -8,26 +8,35 @@ from the logs rather than taken on trust.
 
 Roles and calls are different numbers, which is worth stating because they get
 confused. Spec 4 defines nine roles; the inspector (A5) and the commander (A6)
-are not implemented (see docs/OPEN-QUESTIONS.md A-5), leaving seven. A full
-debate nonetheless makes **nine LLM calls**, because each of the three
-strategists speaks twice — once to propose, once to critique the other two:
+are not implemented (see docs/OPEN-QUESTIONS.md A-5), leaving seven.
+
+A cycle makes **seven or nine calls**, not one fixed number, because the three
+strategists each speak twice — once to propose, once to critique the other two
+— and because the last two agents are conditional:
 
     analyst            1
     strategy × 3       3   (phase 1, independent proposals)
     critique  × 3      3   (phase 2, same three agents, anonymised inputs)
-    judge              1
-    risk               1
+                      ---
+                       7   ← every cycle gets this far
+    judge              1   ┐ only when at least `consensus_min` strategists
+    risk               1   ┘ proposed a buy (2 of 3 normally, 1 during a probe)
                       ---
                        9
 
+`Cycle._adjudicate` applies that consensus rule before calling the judge:
+with nothing to adjudicate, there is nothing to pay a judge for. So a
+no-consensus cycle — the common case, and a normal outcome under spec 4.1 —
+costs seven calls, not nine.
+
 The scout is a separate opt-in call in the screen function and is off by
 default (`screening.scout_mode`); the reflector runs in its own function on its
-own schedule. Neither is part of the nine.
+own schedule. Neither is part of the count above.
 
 Stored rows are a third number again: `AgentRunner.run` records every attempt,
 so a call the guard rejects and retries leaves more than one row in
 `agent_calls`. A row count is therefore attempts, not calls — filter on `ok`
-to count calls.
+to count calls, and group by `cycle_id` to count cycles.
 """
 
 from __future__ import annotations
