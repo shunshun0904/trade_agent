@@ -1,10 +1,33 @@
-"""The nine agents, wired to their inputs (spec 4).
+"""The agents, wired to their inputs (spec 4).
 
 Each function decides exactly what its agent is allowed to see. That narrowing
 is the whole point of phase 1 in the debate protocol: a strategist that can see
 another strategist's proposal is not an independent proposal, it is an echo
 (spec 4.1). `saw_agents` records what was visible so the property is auditable
 from the logs rather than taken on trust.
+
+Roles and calls are different numbers, which is worth stating because they get
+confused. Spec 4 defines nine roles; the inspector (A5) and the commander (A6)
+are not implemented (see docs/OPEN-QUESTIONS.md A-5), leaving seven. A full
+debate nonetheless makes **nine LLM calls**, because each of the three
+strategists speaks twice — once to propose, once to critique the other two:
+
+    analyst            1
+    strategy × 3       3   (phase 1, independent proposals)
+    critique  × 3      3   (phase 2, same three agents, anonymised inputs)
+    judge              1
+    risk               1
+                      ---
+                       9
+
+The scout is a separate opt-in call in the screen function and is off by
+default (`screening.scout_mode`); the reflector runs in its own function on its
+own schedule. Neither is part of the nine.
+
+Stored rows are a third number again: `AgentRunner.run` records every attempt,
+so a call the guard rejects and retries leaves more than one row in
+`agent_calls`. A row count is therefore attempts, not calls — filter on `ok`
+to count calls.
 """
 
 from __future__ import annotations
