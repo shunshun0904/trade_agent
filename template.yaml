@@ -43,7 +43,12 @@ Parameters:
 Globals:
   Function:
     Runtime: python3.11
-    Architectures: [arm64]
+    # x86_64, not arm64, so `sam build` works natively in AWS CloudShell.
+    # pydantic-core and jiter ship per-architecture binary wheels, and CloudShell
+    # is x86_64 with no Docker — an arm64 target would need --use-container and
+    # silently produce a package that fails to import at runtime. The Lambda
+    # free tier is 400,000 GB-seconds either way, so this costs nothing.
+    Architectures: [x86_64]
     MemorySize: 256
     Timeout: 60
     Tracing: Active

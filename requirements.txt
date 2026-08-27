@@ -1,7 +1,9 @@
-# Runtime dependencies (Lambda). boto3 is provided by the Lambda runtime but is
-# pinned here so local runs and tests match.
+# Lambda deployment manifest — `sam build` installs exactly this.
+#
+# boto3/botocore are deliberately absent: the Lambda Python runtime already
+# provides them, and bundling them adds ~50MB to every upload for nothing. They
+# are in requirements-dev.txt so local runs and tests still have them.
 anthropic>=1.0.0,<2.0.0
 pydantic>=2.7,<3.0
 requests>=2.31,<3.0
 PyYAML>=6.0,<7.0
-boto3>=1.34,<2.0

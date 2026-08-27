@@ -2,64 +2,140 @@
 
 ## 前提
 
-- AWS アカウントは **有料プラン(従量課金)** で作成する。クレジット制の
-  「無料プラン」は6ヶ月で閉鎖されるため使用禁止(仕様 §17.2)
-- リージョンは東京(`ap-northeast-1`)
-- SAM CLI と Python 3.11
-- SES で送信元・送信先アドレスを検証済みにしておく(サンドボックス状態でも
-  検証済みアドレス同士なら送信できる)
+- **AWSアカウントは有料プラン(従量課金)で作成する。** クレジット制の
+  「無料プラン」は6ヶ月で閉鎖されるため使用禁止(仕様 §17.2)。
+  運用自体は常時無料枠に収まる設計である
+- **AWS CloudShell を使う。** ローカルに AWS CLI も SAM CLI も入れる必要はない
+- bitbank の API キー(**参照 + 取引のみ。出金権限なし**)
+- Anthropic の API キー
 
-## 1. シークレットを SSM に置く
+## 1. 一発デプロイ(AWS CloudShell)
 
-コードとリポジトリへの直書きは禁止(仕様 §12)。
+AWS マネジメントコンソール右上の **CloudShell** アイコンを開き、次の1行を貼る。
+対話形式で必要事項を聞かれる。
 
 ```bash
-aws ssm put-parameter --type SecureString --name /trade-agent/bitbank/api-key    --value '...'
-aws ssm put-parameter --type SecureString --name /trade-agent/bitbank/api-secret --value '...'
-aws ssm put-parameter --type SecureString --name /trade-agent/anthropic/api-key  --value '...'
-aws ssm put-parameter --type SecureString --name /trade-agent/mcp/bearer-token   --value "$(openssl rand -base64 32)"
+curl -fsSL https://raw.githubusercontent.com/shunshun0904/trade_agent/claude/trade-agent-spec-mtwldk/scripts/deploy.sh | bash
 ```
 
-bitbank のキーは **参照 + 取引のみ。出金権限を付けないこと。**
+CloudShell を使う理由は、AWS 認証情報が最初から通っていること、そして
+**ビルドがそこで完結すること**である。Lambda に載せる `pydantic-core` と
+`jiter` はアーキテクチャ別のバイナリを持つため、テンプレートは CloudShell と
+同じ x86_64 を指定してある(無料枠は 400,000 GB秒で arm64 と同じ)。
 
-## 2. デプロイ
+聞かれるのは4つだけ:
 
-```bash
-sam build
-sam deploy --guided \
-  --parameter-overrides \
-    Environment=prod \
-    OwnerEmail=you@example.com \
-    SenderEmail=bot@example.com \
-    PaperTrading=true \
-    Phase=1
+| 入力 | 備考 |
+|---|---|
+| bitbank API キー | **参照 + 取引のみ。出金権限は付けない** |
+| bitbank API シークレット | 入力は画面に表示されない |
+| Anthropic API キー | `sk-ant-...` |
+| 通知先メールアドレス | 送信元は既定で同じアドレス |
+
+MCP の Bearer トークンは自動生成される。
+
+スクリプトが行うこと:
+
+```
+0/5  環境      リージョン・認証情報の確認、SAM CLI が無ければ導入
+1/5  ソース    リポジトリの clone / 更新
+2/5  シークレット  SSM Parameter Store へ SecureString で保存
+3/5  メール    SES のアドレス検証(検証メールのリンクを押す)
+4/5  デプロイ  sam build → 成果物の起動チェック → sam deploy
+5/5  検証      取引所定数・APIキー・残高の preflight
 ```
 
-`PaperTrading=true` の間、執行層は bitbank の Private 注文 API に到達できない。
+**何度でも再実行できる。** 既にある SSM パラメータは上書き前に確認され、
+CloudFormation スタックは差分だけが適用される。
 
-出力される `McpEndpoint` を claude.ai の「カスタムコネクタ」として登録し、
-Bearer トークンに上で生成した値を設定する。
+### 途中で失敗したら
 
-コンソールでの手作業変更は禁止(仕様 §17.3)。変更は必ず IaC 経由で行う。
+| 症状 | 対処 |
+|---|---|
+| `no usable AWS credentials` | CloudShell 以外で実行している。CloudShell から実行する |
+| `clone failed` | リポジトリが private。CloudShell に git 認証を設定する |
+| ディスク不足 | `rm -rf ~/trade_agent/.aws-sam` して再実行 |
+| `refusing to deploy a package that will not start` | ビルド成果物の起動チェックで落ちた。表示される import エラーを見る |
+| `sam deploy failed` | 直前の CloudFormation イベントに理由が出る |
 
-## 3. デプロイ直後の確認
+環境変数で挙動を変えられる(通常は不要):
 
 ```bash
-# 取引所定数が設定と一致しているか(Phase 2 前の必須項目)
-make verify-pair
+TA_REGION=ap-northeast-1 TA_ENVIRONMENT=prod \
+TA_BRANCH=claude/trade-agent-spec-mtwldk bash scripts/deploy.sh
+```
 
-# エージェントが実際に受け取る JSON
-PYTHONPATH=src python -m trade_agent.cli snapshot --prompt
+## 2. デプロイ後の確認
 
-# MCP が生きているか
+スクリプトの 5/5 が自動で実行するが、いつでも単体で回せる。
+
+```bash
+cd ~/trade_agent
+PYTHONPATH=src python3 -m trade_agent.cli preflight
+```
+
+チェック内容:
+
+```
+[1/4] public market data              板と価格が取れるか
+[2/4] exchange constants vs config    最小注文数量・手数料の差分(仕様 §2)
+[3/4] bitbank private API credentials キーが通るか、残高はいくらか
+[4/4] Anthropic API key               SSM から読めるか
+```
+
+**Phase 2(実弾)へ移行する前に、[2/4] が `DRIFT` なしであることを必ず確認する。**
+この値は全注文のサイズ計算に効く。
+
+そのうえで、CloudWatch のハートビートアラームを確認する。
+
+```bash
+aws cloudwatch describe-alarms --alarm-names trade-agent-prod-tick-heartbeat \
+  --region ap-northeast-1 --query "MetricAlarms[0].StateValue" --output text
+```
+
+最初の5分tickが回るまでは `INSUFFICIENT_DATA` で正常。15分ほどで `OK` になる。
+
+## 3. MCP コネクタの登録
+
+デプロイ出力の `MCP endpoint` と `Bearer token` を、claude.ai の
+「カスタムコネクタ」に登録する。トークンを再表示するには:
+
+```bash
+aws ssm get-parameter --with-decryption \
+  --name /trade-agent/mcp/bearer-token --region ap-northeast-1 \
+  --query Parameter.Value --output text
+```
+
+疎通確認:
+
+```bash
 curl -sS -X POST "$MCP_URL" \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | head -40
 ```
 
-CloudWatch で `trade-agent-prod-tick-heartbeat` アラームが `OK` になることを
-確認する。`INSUFFICIENT_DATA` のままなら tick が動いていない。
+## 3.5 手動でデプロイする場合
+
+スクリプトを使わない場合の等価な手順。
+
+```bash
+aws ssm put-parameter --type SecureString --name /trade-agent/bitbank/api-key    --value '...'
+aws ssm put-parameter --type SecureString --name /trade-agent/bitbank/api-secret --value '...'
+aws ssm put-parameter --type SecureString --name /trade-agent/anthropic/api-key  --value '...'
+aws ssm put-parameter --type SecureString --name /trade-agent/mcp/bearer-token   --value "$(openssl rand -base64 32)"
+
+aws ses verify-email-identity --email-address you@example.com --region ap-northeast-1
+
+sam build
+sam deploy --stack-name trade-agent-prod --region ap-northeast-1 \
+  --capabilities CAPABILITY_IAM --resolve-s3 --no-confirm-changeset \
+  --parameter-overrides \
+    Environment=prod OwnerEmail=you@example.com SenderEmail=you@example.com \
+    PaperTrading=true Phase=1
+```
+
+コンソールでの手作業変更は禁止(仕様 §17.3)。変更は必ず IaC 経由で行う。
 
 ## 4. フェーズ移行
 
@@ -72,14 +148,17 @@ CloudWatch で `trade-agent-prod-tick-heartbeat` アラームが `OK` になる�
 - [ ] 手数料込みの期待値がプラス
 - [ ] 冪等性・再起動テストに合格(`make test` の `test_acceptance.py`)
 - [ ] 3日ルールの発動が月2回以下
-- [ ] `make verify-pair` が差分なし
+- [ ] `trade-agent preflight` が全項目 OK(特に取引所定数の DRIFT なし)
 - [ ] `agent_calls` の `cache_read_tokens` を確認し、想定どおりのコストか把握した
 - [ ] 月次 LLM 費の実績が予算内
 
 ```bash
-sam deploy --parameter-overrides \
-  Environment=prod OwnerEmail=... SenderEmail=... \
-  PaperTrading=false Phase=2
+cd ~/trade_agent
+sam deploy --stack-name trade-agent-prod --region ap-northeast-1 \
+  --capabilities CAPABILITY_IAM --resolve-s3 --no-confirm-changeset \
+  --parameter-overrides \
+    Environment=prod OwnerEmail=you@example.com SenderEmail=you@example.com \
+    PaperTrading=false Phase=2
 ```
 
 Phase 2 では全トレードが最小ロット(0.0001 BTC)固定になる

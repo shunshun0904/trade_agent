@@ -206,7 +206,27 @@ MCP から発注はできない。できる最大の操作は「停止」と「�
 
 ---
 
-## 8. ドキュメント
+## 8. デプロイ
+
+AWS CloudShell を開いて1行貼るだけ。対話形式で必要事項を聞かれる。
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/shunshun0904/trade_agent/claude/trade-agent-spec-mtwldk/scripts/deploy.sh | bash
+```
+
+シークレットのSSM登録、SESのアドレス検証、ビルド、デプロイ、デプロイ後検証
+までを通しで行う。**何度でも再実行できる。**
+`PaperTrading=true` 固定で入るため、この時点で実発注は起こらない。
+
+デプロイ後の健全性は1コマンドで確認できる:
+
+```bash
+PYTHONPATH=src python -m trade_agent.cli preflight
+```
+
+詳細と手動手順は [docs/DEPLOY.md](docs/DEPLOY.md)。
+
+## 9. ドキュメント
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — 設計判断とその理由
 - [docs/DEPLOY.md](docs/DEPLOY.md) — デプロイ手順とフェーズ移行

@@ -47,6 +47,10 @@ def _parser() -> argparse.ArgumentParser:
                        help="re-check the exchange constants against bitbank")
     p.set_defaults(func=cmd_verify_pair)
 
+    p = sub.add_parser("preflight",
+                       help="check everything a deployment needs before it trades")
+    p.set_defaults(func=cmd_preflight)
+
     p = sub.add_parser("snapshot", help="build and print a MarketSnapshot")
     p.add_argument("--prompt", action="store_true",
                    help="print the exact JSON the agents receive")
@@ -90,6 +94,36 @@ def _parser() -> argparse.ArgumentParser:
 
 # -- commands -------------------------------------------------------------
 
+def pair_drift(config, live) -> list[tuple[str, str, str]]:
+    """(setting, configured, live) for every pair constant spec 2 pins down."""
+    cfg = config.exchange
+    return [
+        ("min_order_btc", str(cfg.min_order_btc), str(live.min_order_btc)),
+        ("price_digits", str(cfg.price_digits), str(live.price_digits)),
+        ("amount_digits", str(cfg.amount_digits), str(live.amount_digits)),
+        ("maker_fee_rate", str(cfg.maker_fee_rate), str(live.maker_fee_rate)),
+        ("taker_fee_rate", str(cfg.taker_fee_rate), str(live.taker_fee_rate)),
+    ]
+
+
+def _report_pair(config, live) -> int:
+    rows = pair_drift(config, live)
+    drift = [name for name, configured, actual in rows if configured != actual]
+    print(f"pair: {live.name}  enabled={live.is_enabled}  "
+          f"orders_suspended={live.stop_order_and_cancel}")
+    print(f"{'setting':<16} {'config':>16} {'exchange':>16}  status")
+    for name, configured, actual in rows:
+        print(f"{name:<16} {configured:>16} {actual:>16}  "
+              f"{'OK' if configured == actual else 'DRIFT'}")
+    if drift:
+        print(f"\n{len(drift)} setting(s) differ from config/default.yaml: "
+              f"{', '.join(drift)}")
+        print("Update the config before trading; these values size every order.")
+        return 2
+    print("\nAll exchange constants match the configuration.")
+    return 0
+
+
 def cmd_verify_pair(args) -> int:
     """Spec 2 asks for the pair constants to be re-checked against bitbank.
 
@@ -98,29 +132,95 @@ def cmd_verify_pair(args) -> int:
     than a note in a document that goes stale.
     """
     ctx = _context(args, needs_trading_credentials=False)
-    live = ctx.exchange.get_pair_settings()
-    cfg = ctx.config.exchange
+    return _report_pair(ctx.config, ctx.exchange.get_pair_settings())
 
-    rows = [
-        ("min_order_btc", cfg.min_order_btc, live.min_order_btc),
-        ("price_digits", cfg.price_digits, live.price_digits),
-        ("amount_digits", cfg.amount_digits, live.amount_digits),
-        ("maker_fee_rate", cfg.maker_fee_rate, live.maker_fee_rate),
-        ("taker_fee_rate", cfg.taker_fee_rate, live.taker_fee_rate),
-    ]
-    drift = [name for name, configured, actual in rows if str(configured) != str(actual)]
-    print(f"pair: {live.name}  enabled={live.is_enabled}  "
-          f"orders_suspended={live.stop_order_and_cancel}")
-    print(f"{'setting':<16} {'config':>16} {'exchange':>16}  status")
-    for name, configured, actual in rows:
-        status = "OK" if str(configured) == str(actual) else "DRIFT"
-        print(f"{name:<16} {str(configured):>16} {str(actual):>16}  {status}")
-    if drift:
-        print(f"\n{len(drift)} setting(s) differ from config/default.yaml: "
-              f"{', '.join(drift)}")
-        print("Update the config before trading; these values size every order.")
-        return 2
-    print("\nAll exchange constants match the configuration.")
+
+def cmd_preflight(args) -> int:
+    """Everything a fresh deployment needs to be right, checked in one go.
+
+    Run this straight after deploying and again before each phase change. It
+    reaches the real exchange with the real credentials, so a wrong key or a
+    drifted constant surfaces here rather than at the first order.
+    """
+    from .exchange.bitbank import BitbankClient
+    from .storage.secrets import default_provider
+
+    config = load_config(args.config) if args.config else load_config()
+    secrets = default_provider()
+    failures: list[str] = []
+
+    print("=" * 62)
+    print(f"trade-agent preflight  env={config.system.environment}  "
+          f"phase={config.system.phase}  paper={config.system.paper_trading}")
+    print("=" * 62)
+
+    def public_client(credentials=None) -> BitbankClient:
+        return BitbankClient(
+            public_base_url=config.exchange.public_base_url,
+            private_base_url=config.exchange.private_base_url,
+            pair=config.exchange.pair, credentials=credentials,
+            timeout=config.exchange.http_timeout_seconds,
+            max_retries=1)
+
+    # 1. Public market data.
+    print("\n[1/4] public market data")
+    try:
+        ticker = public_client().get_ticker()
+        print(f"      OK  last={ticker['last']} JPY  "
+              f"bid={ticker['buy']} ask={ticker['sell']}")
+    except Exception as exc:  # noqa: BLE001 - reported, not raised
+        print(f"      FAIL  {exc}")
+        failures.append("public market data unreachable")
+
+    # 2. Exchange constants (spec 2).
+    print("\n[2/4] exchange constants vs config")
+    try:
+        if _report_pair(config, public_client().get_pair_settings()) != 0:
+            failures.append("exchange constants differ from config")
+    except Exception as exc:  # noqa: BLE001
+        print(f"      FAIL  {exc}")
+        failures.append("could not read the pair settings")
+
+    # 3. Private credentials.
+    print("\n[3/4] bitbank private API credentials")
+    key = secrets.get_optional(config.secrets.ssm_bitbank_api_key)
+    secret = secrets.get_optional(config.secrets.ssm_bitbank_api_secret)
+    if not key or not secret:
+        print("      FAIL  credentials not readable from SSM")
+        failures.append("bitbank credentials missing")
+    else:
+        try:
+            balances = public_client((key, secret)).get_balances()
+            jpy = balances.get(config.exchange.quote_asset)
+            btc = balances.get(config.exchange.base_asset)
+            print(f"      OK  key works. JPY free={jpy.free if jpy else 0} "
+                  f"BTC free={btc.free if btc else 0}")
+            if jpy is not None and jpy.free < config.capital.initial_equity_jpy:
+                print(f"      NOTE  JPY balance is below the configured initial "
+                      f"capital ({config.capital.initial_equity_jpy})")
+        except Exception as exc:  # noqa: BLE001
+            print(f"      FAIL  {exc}")
+            failures.append("bitbank credentials rejected")
+
+    # 4. Anthropic key.
+    print("\n[4/4] Anthropic API key")
+    if secrets.get_optional(config.secrets.ssm_anthropic_api_key):
+        print("      OK  present in SSM")
+    else:
+        print("      FAIL  not readable from SSM")
+        failures.append("Anthropic API key missing")
+
+    print("\n" + "-" * 62)
+    if failures:
+        print(f"{len(failures)} problem(s) found:")
+        for item in failures:
+            print(f"  - {item}")
+        return 1
+    if config.system.paper_trading:
+        print("All checks passed. Paper trading is ON: no live order can be "
+              "placed until it is switched off.")
+    else:
+        print("All checks passed. LIVE TRADING IS ENABLED.")
     return 0
 
 
