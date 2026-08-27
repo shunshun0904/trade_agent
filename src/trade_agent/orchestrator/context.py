@@ -113,19 +113,48 @@ class AppContext:
         return self.cost_meter.evaluate(state.monthly.llm_cost_jpy)
 
 
+class _NoExchange:
+    """Stands in where a context was built without an exchange.
+
+    Returning None would surface as `AttributeError: 'NoneType' object has no
+    attribute 'ticker'` from somewhere deep in a call stack. This says what
+    actually happened.
+    """
+
+    def __getattr__(self, name):
+        raise ConfigError(
+            f"this context was built without an exchange, so {name!r} is not "
+            "available. Build it with needs_exchange=True if it needs one.")
+
+    def __bool__(self) -> bool:
+        return False
+
+
 def build_context(*, config: Config | None = None, clock: Clock | None = None,
                   store: Store | None = None, exchange=None, secrets=None,
                   notifier=None, owner: str = "trade-agent",
                   needs_trading_credentials: bool = True,
+                  needs_exchange: bool = True,
                   offline: bool = False) -> AppContext:
+    """Wire up the collaborators a function actually needs.
+
+    `needs_exchange=False` matters for the mcp function specifically. Building
+    an exchange is not free: it constructs an HTTP client, and under paper
+    trading it also reads the simulated account from S3 before returning. None
+    of the MCP tools touch the exchange — all seven read DynamoDB — so on the
+    one component reachable from the public internet that work buys nothing
+    and can only add ways for a cold start to fail.
+    """
     config = config or get_config()
     clock = clock or Clock()
     secrets = secrets or default_provider()
     store = store if store is not None else _build_store(config)
     notifier = notifier if notifier is not None else build_notifier(config)
-    exchange = exchange if exchange is not None else _build_exchange(
-        config, store, secrets, clock,
-        needs_trading_credentials=needs_trading_credentials, offline=offline)
+    if exchange is None:
+        exchange = _build_exchange(
+            config, store, secrets, clock,
+            needs_trading_credentials=needs_trading_credentials,
+            offline=offline) if needs_exchange else _NoExchange()
     return AppContext(
         config=config, clock=clock, store=store, exchange=exchange,
         secrets=secrets, notifier=notifier,

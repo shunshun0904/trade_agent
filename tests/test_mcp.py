@@ -78,6 +78,92 @@ def test_path_token_extraction():
     assert extract_path_token(None) is None
 
 
+# -- the mcp function's cold start ----------------------------------------
+#
+# All of this runs before authentication, so anything that throws here is a
+# 502 for every caller — including one with no credential at all. Keeping the
+# public endpoint's start-up free of I/O is what makes that unlikely.
+
+def test_the_mcp_context_is_built_without_an_exchange(monkeypatch):
+    """None of the seven tools touch the exchange, so building one would add an
+    HTTP client and (under paper trading) an S3 read to every cold start of the
+    one internet-facing function, in exchange for nothing."""
+    from trade_agent.orchestrator import context as ctx_mod
+
+    def fail(*args, **kwargs):
+        raise AssertionError("the mcp context must not build an exchange")
+
+    monkeypatch.setattr(ctx_mod, "_build_exchange", fail)
+    built = ctx_mod.build_context(
+        owner="mcp-lambda", needs_trading_credentials=False,
+        needs_exchange=False, config=_offline_config(),
+        store=_MemoryStore(), secrets=_NoSecrets(), notifier=object())
+    assert built.exchange is not None
+
+
+def test_touching_a_missing_exchange_says_so(monkeypatch):
+    """A bare None would surface as an AttributeError on NoneType from deep in
+    a call stack; this states what actually happened."""
+    from trade_agent.errors import ConfigError
+    from trade_agent.orchestrator.context import _NoExchange
+
+    with pytest.raises(ConfigError, match="without an exchange"):
+        _NoExchange().ticker()
+
+
+def test_every_read_only_tool_works_without_an_exchange(ctx):
+    """The invariant behind needs_exchange=False, checked against the tools
+    themselves rather than against a comment."""
+    from trade_agent.orchestrator.context import _NoExchange
+
+    ctx.exchange = _NoExchange()
+    for name in sorted(READ_ONLY):
+        call_tool(ctx, name, {})
+
+
+def test_the_handler_asks_for_a_context_with_no_exchange(monkeypatch):
+    """Checked at the call site, because that is what actually ships — the
+    option existing is no use if the handler stops passing it."""
+    from trade_agent.handlers import mcp_handler
+
+    seen = {}
+
+    def spy(**kwargs):
+        seen.update(kwargs)
+        raise RuntimeError("stop here; only the arguments matter")
+
+    monkeypatch.setattr(mcp_handler, "build_context", spy)
+    monkeypatch.setattr(mcp_handler, "_CACHED_CONTEXT", None)
+    with pytest.raises(RuntimeError):
+        mcp_handler._context()
+
+    assert seen.get("needs_exchange") is False
+    assert seen.get("needs_trading_credentials") is False
+
+
+def _offline_config():
+    from trade_agent.config import get_config
+
+    config = get_config()
+    config.storage.backend = "memory"
+    return config
+
+
+class _MemoryStore:
+    def __getattr__(self, name):
+        from trade_agent.storage.memory import MemoryStore
+
+        return getattr(MemoryStore(), name)
+
+
+class _NoSecrets:
+    def get(self, name):
+        return "test-token"
+
+    def get_optional(self, name):
+        return None
+
+
 def test_get_is_not_supported(ctx):
     status, _, _ = handle_request(ctx, method="GET", headers=AUTH, body=None)
     assert status == 405

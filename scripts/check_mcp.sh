@@ -72,6 +72,33 @@ probe() {  # probe <label> <url> [header...]
     return 1
 }
 
+# A 5xx means the function itself failed, and the reason is in its log rather
+# than in the response — Lambda replies "Internal Server Error" and keeps the
+# traceback. Fetching it here saves the round trip of being told to go look.
+show_recent_errors() {
+    local group="/aws/lambda/trade-agent-${ENVIRONMENT}-mcp"
+    local since=$(( ($(date +%s) - 900) * 1000 ))
+    local events
+    events="$(aws logs filter-log-events --log-group-name "$group" \
+        --region "$REGION" --start-time "$since" \
+        --query 'events[].message' --output text 2>/dev/null || true)"
+
+    printf '\n  %sWhat the function logged%s  (last 15 min)\n\n' "$BOLD" "$RESET"
+    if [[ -z "$events" ]]; then
+        note "  nothing in ${group}."
+        note "  An empty log with a 5xx usually means the handler never ran:"
+        note "  a missing module or a syntax error at import time. Check the"
+        note "  function's configuration and the most recent deploy."
+        return
+    fi
+    # Tracebacks and the lines around them, not the INIT/START/END bookkeeping.
+    printf '%s\n' "$events" \
+        | tr '\t' '\n' \
+        | grep -v -E '^(START|END|REPORT|INIT_START|XRAY)' \
+        | tail -n 40 \
+        | sed 's/^/      /'
+}
+
 printf '\n%sMCP endpoint check%s  (%s)\n\n' "$BOLD" "$RESET" "$STACK_NAME"
 
 # The path form is the one claude.ai will use, so it is the one that matters.
@@ -89,6 +116,14 @@ if [[ "$UNAUTH" == "401" ]]; then
     ok "no token: HTTP 401 (correctly refused)"
 else
     warn "no token: HTTP ${UNAUTH} — expected 401. Investigate before registering."
+fi
+
+# 5xx is the function crashing, which is a different problem from a rejected
+# credential and deserves the log rather than the registration advice.
+if [[ "$UNAUTH" =~ ^5 ]]; then
+    show_recent_errors
+    printf '\n'
+    die "the mcp function is failing before it checks the token (HTTP ${UNAUTH})"
 fi
 
 printf '\n'

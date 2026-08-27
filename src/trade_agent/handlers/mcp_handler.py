@@ -4,6 +4,11 @@ This function is built with `needs_trading_credentials=False`: it never asks
 SSM for the bitbank key, and its IAM role has no permission to read it either
 (spec 12). Defence in depth on the one component that is reachable from the
 public internet.
+
+It is also built with `needs_exchange=False`. Every MCP tool reads DynamoDB
+and nothing else, so constructing an exchange would add an HTTP client and —
+under paper trading — an S3 read to every cold start, in exchange for nothing.
+Work not done here cannot fail here.
 """
 
 from __future__ import annotations
@@ -52,5 +57,6 @@ def _context() -> AppContext:
     global _CACHED_CONTEXT
     if _CACHED_CONTEXT is None:
         _CACHED_CONTEXT = build_context(owner="mcp-lambda",
-                                        needs_trading_credentials=False)
+                                        needs_trading_credentials=False,
+                                        needs_exchange=False)
     return _CACHED_CONTEXT
