@@ -14,7 +14,12 @@ venv/
 htmlcov/
 .aws-sam/
 samconfig.local.toml
-data/
+# Anchored to the repository root. Unanchored, this matched *any* directory
+# named `data` at any depth — including src/trade_agent/data/, the package
+# holding the snapshot builder and the indicators. Those four files were never
+# committed, so every clone built a Lambda artifact without them and every
+# function died on import.
+/data/
 *.log
 .DS_Store
 .mypy_cache/

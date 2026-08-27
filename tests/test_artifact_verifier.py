@@ -128,3 +128,67 @@ def test_the_checked_handlers_match_the_template():
                               template))
     checked = {Path(h).stem for h in verify_artifact.HANDLERS}
     assert declared == checked
+
+
+# -- the failure these were written after ---------------------------------
+#
+# .gitignore carried an unanchored `data/`. It matched src/trade_agent/data/
+# exactly as well as the data directory it was meant for, so four source files
+# were never committed. Every clone built an artifact without them, and every
+# Lambda died with Runtime.ImportModuleError. Nothing caught it: the tests pass
+# locally because the files are on disk, and the artifact checks looked only at
+# named handlers and third-party packages.
+
+def test_every_source_file_is_tracked_by_git():
+    """A source file git does not know about does not exist for anyone who
+    clones — which is how the artifact is built."""
+    import subprocess
+
+    tracked = subprocess.run(
+        ["git", "ls-files", "src", "config"],
+        cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
+    tracked = {ROOT / path for path in tracked}
+
+    on_disk = {path for pattern in ("src/**/*.py", "config/**/*.yaml")
+               for path in ROOT.glob(pattern)
+               if "__pycache__" not in path.parts}
+
+    missing = sorted(str(p.relative_to(ROOT)) for p in on_disk - tracked)
+    assert not missing, (
+        "these files exist locally but are not in git, so a fresh clone — and "
+        f"the Lambda artifact built from it — will not have them: {missing}")
+
+
+def test_the_verifier_catches_a_missing_internal_package(tmp_path):
+    """The check that the shipped artifact needed and did not have."""
+    artifact = _minimal_artifact(tmp_path)
+    package = artifact / "src" / "trade_agent"
+    (package / "handlers" / "tick.py").write_text(
+        "from ..data.indicators import rsi\n")
+
+    problems = verify_artifact._check_internal_imports(artifact)
+    assert any("trade_agent.data" in p for p in problems), problems
+
+    (package / "data").mkdir()
+    (package / "data" / "__init__.py").write_text("")
+    (package / "data" / "indicators.py").write_text("def rsi(): ...\n")
+    assert not verify_artifact._check_internal_imports(artifact)
+
+
+def test_an_attribute_import_is_not_mistaken_for_a_module(tmp_path):
+    """`from ..money import dec` imports a name, not trade_agent.money.dec."""
+    artifact = _minimal_artifact(tmp_path)
+    package = artifact / "src" / "trade_agent"
+    (package / "money.py").write_text("def dec(x): return x\n")
+    (package / "handlers" / "tick.py").write_text("from ...money import dec\n")
+
+    assert not verify_artifact._check_internal_imports(artifact)
+
+
+def _minimal_artifact(tmp_path):
+    artifact = tmp_path / "artifact"
+    package = artifact / "src" / "trade_agent"
+    (package / "handlers").mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+    (package / "handlers" / "__init__.py").write_text("")
+    return artifact
