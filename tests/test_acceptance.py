@@ -156,6 +156,9 @@ def test_6_phase_one_proposals_are_independent(ctx, llm):
 
 # 7. The boredom rule cannot fire while the kill switch is engaged.
 def test_7_boredom_rule_is_silent_under_the_kill_switch(config, ctx, clock):
+    # Shipped default is now off (screening.consensus_min is 1, which leaves
+    # this rule no lever). Spec 7's guarantee is still worth checking.
+    config.boredom.enabled = True
     state = ctx.load_state()
     state.last_entry_at = clock.now()
     ctx.save_state(state)
@@ -167,11 +170,15 @@ def test_7_boredom_rule_is_silent_under_the_kill_switch(config, ctx, clock):
         config, state, clock.now(),
         [Halt(reason=HaltReason.KILL_SWITCH, detail="engaged")])
     assert not decision.triggered
-    assert decision.consensus_min == 2  # the threshold is not relaxed either
+    # not relaxed: still whatever the normal threshold is configured to be
+    assert decision.consensus_min == config.screening.consensus_min
 
 
 # 8. At 72 hours and one minute the rule fires and records probe=true.
 def test_8_boredom_rule_fires_at_72h_and_records_a_probe(ctx, llm, clock, config):
+    # Shipped default is now off (screening.consensus_min is 1, which leaves
+    # this rule no lever). Spec 7's guarantee is still worth checking.
+    config.boredom.enabled = True
     state = ctx.load_state()
     state.last_entry_at = clock.now()
     ctx.save_state(state)
@@ -182,7 +189,7 @@ def test_8_boredom_rule_fires_at_72h_and_records_a_probe(ctx, llm, clock, config
     clock.advance(minutes=2)  # 72h 01m
     decision = evaluate_boredom(config, ctx.load_state(), clock.now(), [])
     assert decision.triggered
-    assert decision.consensus_min == 1
+    assert decision.consensus_min == config.boredom.relaxed_consensus_min
 
     llm.bias = "wait"  # not one strategist wants to buy
     outcome = DecisionCycle(ctx, trigger=CycleTrigger.BOREDOM,
@@ -278,6 +285,9 @@ def test_11_daily_debate_cap_blocks_further_cycles(ctx, snapshot, clock, config)
 
 
 def test_11b_the_boredom_rule_is_exempt_from_the_daily_cap(ctx, llm, clock, config):
+    # Shipped default is now off (screening.consensus_min is 1, which leaves
+    # this rule no lever). Spec 7's guarantee is still worth checking.
+    config.boredom.enabled = True
     state = ctx.load_state()
     state.last_entry_at = clock.now()
     state.daily.full_debates = config.schedule.daily_full_debate_limit

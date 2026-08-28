@@ -18,6 +18,16 @@ from trade_agent.timeutil import jst_date_str, jst_month_str
 E = Decimal
 
 
+@pytest.fixture(autouse=True)
+def rule_enabled(config):
+    """The shipped default is now `boredom.enabled: false` — the rule has
+    nothing to do once `screening.consensus_min` is 1. These tests are about
+    the rule's own behaviour, so they switch it on explicitly instead of
+    inheriting a default that is about to change again."""
+    config.boredom.enabled = True
+    return config
+
+
 @pytest.fixture
 def state(clock, config):
     now = clock.now()
@@ -31,14 +41,18 @@ def test_does_not_fire_before_72_hours(config, state, clock):
     clock.advance(hours=71, minutes=59)
     decision = evaluate_boredom(config, state, clock.now(), [])
     assert not decision.triggered
-    assert decision.consensus_min == 2
+    assert decision.consensus_min == config.screening.consensus_min
 
 
 def test_fires_at_72_hours_and_one_minute(config, state, clock):
+    # The shipped normal threshold is also 1, so relaxing has to be made
+    # observable or this assertion passes without testing anything.
+    config.screening.consensus_min = 2
     clock.advance(hours=72, minutes=1)
     decision = evaluate_boredom(config, state, clock.now(), [])
     assert decision.triggered
-    assert decision.consensus_min == config.boredom.relaxed_consensus_min == 1
+    assert decision.consensus_min == config.boredom.relaxed_consensus_min
+    assert decision.consensus_min < config.screening.consensus_min
 
 
 @pytest.mark.parametrize("reason", [
@@ -54,7 +68,7 @@ def test_every_safety_halt_suppresses_the_rule(config, state, clock, reason):
                                 [Halt(reason=reason, detail="x")])
     assert not decision.triggered
     assert decision.blocked_by is reason
-    assert decision.consensus_min == 2
+    assert decision.consensus_min == config.screening.consensus_min
 
 
 def test_an_open_position_stops_the_clock(config, state, clock):

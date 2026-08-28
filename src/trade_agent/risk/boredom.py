@@ -52,7 +52,7 @@ def evaluate_boredom(config: Config, state: SystemState, now: datetime,
                      halts: list[Halt]) -> BoredomDecision:
     """Decide whether the 3-day rule fires this cycle."""
     cfg = config.boredom
-    normal_consensus = 2
+    normal_consensus = config.screening.consensus_min
 
     if not cfg.enabled:
         return BoredomDecision(False, None, "boredom rule disabled",

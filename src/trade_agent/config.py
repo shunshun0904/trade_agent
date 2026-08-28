@@ -126,11 +126,17 @@ class ScheduleConfig(_Section):
 class ScreeningConfig(_Section):
     breakout_lookback_hours: int = 24
     rsi_period: int = 14
-    rsi_low: Decimal = Decimal(30)
-    rsi_high: Decimal = Decimal(70)
-    volume_spike_multiple: Decimal = Decimal("2.0")
-    vwap_deviation_pct: Decimal = Decimal("1.0")
+    rsi_low: Decimal = Decimal(40)
+    rsi_high: Decimal = Decimal(60)
+    volume_spike_multiple: Decimal = Decimal("1.5")
+    vwap_deviation_pct: Decimal = Decimal("0.5")
     scout_mode: bool = False
+    # How many of the three independent proposals must say "buy" before the
+    # judge is called at all. This is the single largest control on how often
+    # the system trades: with the three strategists reaching phase 2 and
+    # stopping here, nothing downstream ever runs. Lived as a hardcoded 2 in
+    # risk/boredom.py until it became the thing being tuned.
+    consensus_min: int = 1
 
 
 class SnapshotConfig(_Section):
@@ -240,6 +246,11 @@ class Config(_Section):
         A probe must never be able to risk more than an ordinary trade, and the
         kill switch must trip before the daily loss limit becomes irrelevant.
         """
+        if not 1 <= self.screening.consensus_min <= 3:
+            raise ConfigError(
+                "screening.consensus_min must be between 1 and 3; there are "
+                "three strategists, so anything else can never be satisfied "
+                "or can never be missed")
         if self.risk.probe_risk_pct > self.risk.per_trade_risk_pct:
             raise ConfigError(
                 "boredom probe risk exceeds the per-trade risk limit; "

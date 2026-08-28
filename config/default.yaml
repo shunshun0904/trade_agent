@@ -56,7 +56,16 @@ risk:
   max_concurrent_positions: 1
 
 boredom:
-  enabled: true
+  # Off. With screening.consensus_min at 1 this rule has nothing left to do:
+  # its only lever is relaxing consensus to `relaxed_consensus_min`, which is
+  # now the same value as the normal path, so firing it would change nothing.
+  # A 72-hour gap without a trade is also no longer expected.
+  #
+  # The code is still here rather than deleted: `boredom`/`probe` reaches 15
+  # modules and `state.monthly.probe_*` is persisted in DynamoDB, so removing
+  # it is its own piece of work, to be done once the new frequency is confirmed
+  # against real data.
+  enabled: false
   no_trade_hours: 72
   relaxed_consensus_min: 1     # 1/3 instead of 2/3
   probe_sl_pct: 0.7            # SL within -0.7% of entry
@@ -110,11 +119,24 @@ schedule:
 screening:
   breakout_lookback_hours: 24
   rsi_period: 14
-  rsi_low: 30
-  rsi_high: 70
-  volume_spike_multiple: 2.0
-  vwap_deviation_pct: 1.0
+  # Loosened from 30/70, 2.0 and 1.0. Those fire on genuine extremes, which is
+  # correct for "is this remarkable" and too strict for "is this worth a look":
+  # over the first days of paper trading no market trigger fired at all, and the
+  # only debates came from the 09:00/21:00 floors.
+  rsi_low: 40
+  rsi_high: 60
+  volume_spike_multiple: 1.5
+  vwap_deviation_pct: 0.5
   scout_mode: false            # spec 9: optional 1-call LLM scout, default OFF
+  # How many of the three independent proposals must say "buy" before the judge
+  # runs. The largest single control on trade frequency: the first cycles all
+  # reached phase 2 and stopped here, 0-1 buys against a required 2.
+  #
+  # At 1 the meaning changes, deliberately. This is no longer a consensus —
+  # one strategist finding a setup is enough, and the other two disagreeing
+  # does not veto it. The three proposals stay independent (spec 4.1) and the
+  # critique round still runs; what they no longer do is outvote each other.
+  consensus_min: 1
 
 snapshot:
   candle_type: 1hour
