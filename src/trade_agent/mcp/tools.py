@@ -83,6 +83,21 @@ TOOLS = [
         },
     },
     {
+        "name": "get_cycles",
+        "description": (
+            "直近の判断サイクルと、その結末を返す。約定しなかった場合はその理由。"
+            "「なぜ取引しないのか」を調べるための入口。"),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "limit": {"type": "integer", "description": "最大件数(既定20)"},
+                "outcome": {"type": "string", "enum": ["all", "traded", "no_trade"],
+                            "description": "既定 all"},
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
         "name": "pause_trading",
         "description": (
             "新規建てを停止する。建玉の損切り・利確監視は継続する。"
@@ -115,6 +130,7 @@ TOOLS = [
 ]
 
 READ_ONLY = {"get_status", "get_daily_report", "get_trades", "get_agent_log",
+             "get_cycles",
              "get_lessons"}
 
 
@@ -304,6 +320,46 @@ def _get_agent_log(ctx: AppContext, args: dict) -> dict:
     }
 
 
+def _get_cycles(ctx: AppContext, args: dict) -> dict:
+    """Recent cycles and how each one ended.
+
+    A cycle can decline to trade for eight different reasons, and they call for
+    completely different responses: 0/3 buy proposals is the strategists seeing
+    nothing worth taking, while a sizing rejection means the account cannot
+    carry the stop the plan asked for. Reading the tally is how the owner tells
+    a quiet market from a system that has talked itself into paralysis.
+    """
+    wanted = args.get("outcome", "all")
+    limit = int(args.get("limit", 20))
+
+    rows = [e for e in ctx.store.audit.list_recent(max(limit * 4, 100))
+            if e.action in ("traded", "no_trade")]
+    if wanted in ("traded", "no_trade"):
+        rows = [e for e in rows if e.action == wanted]
+    rows = rows[:limit]
+
+    tally: dict[str, int] = {}
+    for event in rows:
+        if event.action == "no_trade":
+            # Group by the reason's stem: the counts are the useful part, and
+            # the tail carries prices and rationales that never repeat.
+            stem = event.detail.split(":")[0].split("[")[0].strip()
+            tally[stem] = tally.get(stem, 0) + 1
+
+    return {
+        "count": len(rows),
+        "traded": sum(1 for e in rows if e.action == "traded"),
+        "no_trade_reasons": dict(sorted(tally.items(), key=lambda kv: -kv[1])),
+        "cycles": [{
+            "cycle_id": event.event_id.removeprefix("cycle:"),
+            "at_jst": iso_jst(event.at),
+            "trigger": event.actor.removeprefix("cycle:"),
+            "outcome": event.action,
+            "detail": event.detail,
+        } for event in rows],
+    }
+
+
 def _get_lessons(ctx: AppContext, args: dict) -> dict:
     regime = args.get("regime")
     rows = ctx.store.lessons.list(
@@ -401,6 +457,7 @@ _HANDLERS = {
     "get_trades": _get_trades,
     "get_agent_log": _get_agent_log,
     "get_lessons": _get_lessons,
+    "get_cycles": _get_cycles,
     "pause_trading": _pause_trading,
     "resume_trading": _resume_trading,
 }

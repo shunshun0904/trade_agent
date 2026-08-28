@@ -197,12 +197,60 @@ def test_malformed_json_is_a_parse_error(ctx):
 
 # -- tool surface ---------------------------------------------------------
 
-def test_exactly_the_seven_specified_tools_are_exposed(ctx):
+def test_exactly_the_specified_tools_are_exposed(ctx):
+    """Spec 16 names seven; `get_cycles` is an eighth, added deliberately.
+
+    The reason a cycle declined to trade was reaching the owner through one
+    daily report — whichever cycle happened to cross 21:00 JST — while every
+    other cycle's reason expired with its CloudWatch line. "Why is it not
+    trading" could not be answered from the connector at all.
+
+    The list stays pinned so a tool cannot appear by accident; adding one is a
+    change to the documented surface and should read as such in the diff.
+    """
     _, payload = _rpc(ctx, "tools/list")
     names = {t["name"] for t in payload["result"]["tools"]}
     assert names == {
         "get_status", "get_daily_report", "get_trades", "get_agent_log",
-        "get_lessons", "pause_trading", "resume_trading"}
+        "get_lessons", "get_cycles", "pause_trading", "resume_trading"}
+
+
+def test_get_cycles_reports_why_each_cycle_ended(ctx, llm, clock):
+    from trade_agent.models.state import CycleTrigger
+    from trade_agent.orchestrator.cycle import DecisionCycle
+
+    for n in range(3):
+        DecisionCycle(ctx, trigger=CycleTrigger.MANUAL,
+                      cycle_id=f"cyc-list-{n}").run()
+
+    result = call_tool(ctx, "get_cycles", {})
+    assert result["count"] >= 3
+    assert len(result["cycles"]) >= 3
+
+    first = result["cycles"][0]
+    assert first["outcome"] in {"traded", "no_trade"}
+    assert first["detail"]
+    assert first["trigger"] == "manual"
+    # The tally is the point: which of the eight reasons is actually firing.
+    assert isinstance(result["no_trade_reasons"], dict)
+    if result["traded"] < result["count"]:
+        assert sum(result["no_trade_reasons"].values()) >= 1
+
+
+def test_get_cycles_can_filter_to_the_ones_that_did_not_trade(ctx, llm, clock):
+    from trade_agent.models.state import CycleTrigger
+    from trade_agent.orchestrator.cycle import DecisionCycle
+
+    DecisionCycle(ctx, trigger=CycleTrigger.MANUAL, cycle_id="cyc-f-1").run()
+    result = call_tool(ctx, "get_cycles", {"outcome": "no_trade"})
+    assert all(c["outcome"] == "no_trade" for c in result["cycles"])
+    assert result["traded"] == 0
+
+
+def test_get_cycles_is_read_only(ctx):
+    """It answers a diagnostic question; it must not need confirm."""
+    assert "get_cycles" in READ_ONLY
+    call_tool(ctx, "get_cycles", {})   # no confirm=true, must not raise
 
 
 def test_no_tool_can_place_or_cancel_an_order(ctx):

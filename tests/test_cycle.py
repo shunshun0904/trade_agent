@@ -157,3 +157,41 @@ def test_sizing_never_exceeds_the_per_trade_risk_limit(ctx, llm):
     assert outcome.traded
     limit = ctx.risk.risk_limit_jpy(Decimal(10000), probe=False)
     assert outcome.plan.risk_jpy <= limit
+
+
+def test_every_cycle_records_why_it_did_or_did_not_trade(ctx, llm, clock):
+    """"It is not trading" is the owner's first question, and the answer
+    differs across the eight ways a cycle can end without an order. The reason
+    used to live only in the Lambda's return value and a CloudWatch line, with
+    the daily report keeping whichever cycle happened to cross 21:00 JST."""
+    from trade_agent.models.state import CycleTrigger
+    from trade_agent.orchestrator.cycle import DecisionCycle
+
+    outcome = DecisionCycle(ctx, trigger=CycleTrigger.MANUAL,
+                            cycle_id="cyc-audit-1").run()
+
+    events = [e for e in ctx.store.audit.list_recent(50)
+              if e.event_id == "cycle:cyc-audit-1"]
+    assert len(events) == 1, "exactly one audit row per cycle"
+
+    event = events[0]
+    assert event.action in {"traded", "no_trade"}
+    assert event.action == ("traded" if outcome.traded else "no_trade")
+    # The reason itself, not just the verdict — that is the point.
+    if not outcome.traded:
+        assert outcome.no_trade_reason in event.detail
+    assert f"buys {outcome.buy_count}/3" in event.detail
+
+
+def test_a_failing_audit_write_does_not_sink_the_cycle(ctx, llm, monkeypatch):
+    """Bookkeeping runs after the decision is already made."""
+    from trade_agent.models.state import CycleTrigger
+    from trade_agent.orchestrator.cycle import DecisionCycle
+
+    def explode(_event):
+        raise RuntimeError("dynamo is having a day")
+
+    monkeypatch.setattr(ctx.store.audit, "put", explode)
+    outcome = DecisionCycle(ctx, trigger=CycleTrigger.MANUAL,
+                            cycle_id="cyc-audit-2").run()
+    assert outcome is not None

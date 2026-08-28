@@ -234,8 +234,10 @@ AWS Budgets が $2 超過で警告メールを送る。
 
 | ツール | 種別 |
 |---|---|
-| `get_status` / `get_daily_report` / `get_trades` / `get_agent_log` / `get_lessons` | 読取 |
+| `get_status` / `get_daily_report` / `get_trades` / `get_agent_log` / `get_lessons` / `get_cycles` | 読取 |
 | `pause_trading` / `resume_trading` | 操作(`confirm=true` 必須) |
+
+`get_cycles` は仕様 §16 の7ツールに対する8つ目で、意図的に足したもの。サイクルが約定に至らない理由は8種類あり(合議不成立・裁定者の見送り・サイズ計算の却下・リスク査定の却下・構造チェック・取引所の拒否…)、**それぞれ打つべき手が違う。** 従来その理由は Lambda の戻り値と CloudWatch の1行にしか存在せず、日次レポートが拾うのは21時をまたいだ1サイクルだけだった。
 
 MCP から発注はできない。できる最大の操作は「停止」と「再開」まで。
 `mcp` Lambda の IAM ロールには bitbank 秘密鍵の読取権限を与えていない(仕様 §12/§16.3)。

@@ -50,7 +50,7 @@ from ..risk.boredom import (
     mechanical_probe_plan,
     probe_stop_loss,
 )
-from ..storage.base import LOCK_DECIDE
+from ..storage.base import LOCK_DECIDE, AuditEvent
 from ..timeutil import iso
 from .report import compose_no_trade, compose_traded
 
@@ -122,9 +122,43 @@ class DecisionCycle:
             raise LockNotAcquired(
                 f"another invocation is running (cycle {self.cycle_id})")
         try:
-            return self._run_locked()
+            outcome = self._run_locked()
+            self._record_outcome(outcome)
+            return outcome
         finally:
             self.ctx.store.locks.release(LOCK_DECIDE, self.invocation_id)
+
+    def _record_outcome(self, out: CycleOutcome) -> None:
+        """Why this cycle did or did not trade, kept where it can be read back.
+
+        A cycle can end without trading for eight different reasons — no
+        consensus, the judge declining, sizing, risk, the structural check, the
+        exchange — and until now the reason existed only in the Lambda's return
+        value and its CloudWatch line. The daily report captures one cycle a
+        day, whichever happens to cross 21:00 JST; every other cycle's reason
+        aged out of the logs.
+
+        That is the wrong thing to lose. "It is not trading" is the owner's
+        first question and the answer is different for each of those eight
+        cases: 0/3 proposals is the strategists declining, while a sizing
+        rejection is the account being too small for the stop. Tuning without
+        knowing which one fired is guesswork.
+
+        Recorded here rather than at each exit so a new branch cannot forget.
+        """
+        detail = "traded" if out.traded else (out.no_trade_reason or "no trade")
+        try:
+            self.ctx.store.audit.put(AuditEvent(
+                event_id=f"cycle:{self.cycle_id}",
+                at=self.clock.now(),
+                actor=f"cycle:{self.trigger}",
+                action="traded" if out.traded else "no_trade",
+                detail=(f"{detail} [buys {out.buy_count}/{len(STRATEGISTS)}, "
+                        f"{out.llm_calls} call(s)]")))
+        except Exception:  # noqa: BLE001
+            # Bookkeeping must never sink a cycle that has already decided.
+            log.warning("could not record the outcome of cycle %s",
+                        self.cycle_id, exc_info=True)
 
     def _acquire_locks(self) -> bool:
         """Global decide lock, then a per-cycle lock that is never released.
