@@ -118,7 +118,6 @@ class ScheduleConfig(_Section):
     tick_minutes: int = 5
     screen_minutes: int = 30
     full_debate_cooldown_minutes: int = 30
-    daily_full_debate_limit: int = 8
     floor_times_jst: list[str] = Field(default_factory=lambda: ["09:00", "21:00"])
     daily_report_time_jst: str = "21:00"
 
@@ -174,9 +173,13 @@ class LLMConfig(_Section):
 class CostConfig(_Section):
     total_budget_jpy: Decimal
     infra_cost_jpy: Decimal
-    degrade_threshold_pct: Decimal = Decimal(80)
     stop_threshold_pct: Decimal = Decimal(100)
-    degraded_daily_debate_limit: int = 1
+    # How much of the even daily pace a single day may spend. The budget is
+    # paced as `remaining / days_left`; this multiplier is the slack that lets
+    # a volatile day cost more than a quiet one, which is the whole point —
+    # trade count is not the thing being managed, spend is. Overspending today
+    # shrinks tomorrow's share automatically, so the month still holds.
+    daily_allowance_multiplier: Decimal = Decimal("2.0")
 
     @property
     def llm_budget_jpy(self) -> Decimal:

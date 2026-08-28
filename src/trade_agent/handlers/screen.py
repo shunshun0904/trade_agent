@@ -19,7 +19,7 @@ from ..errors import ExchangeError
 from ..models.state import CycleTrigger
 from ..orchestrator.context import AppContext
 from ..orchestrator.cycle import new_cycle_id
-from ..orchestrator.screening import daily_debate_limit, evaluate_triggers
+from ..orchestrator.screening import evaluate_triggers
 from .common import run_handler
 
 log = logging.getLogger(__name__)
@@ -47,10 +47,8 @@ def run(ctx: AppContext) -> dict:
         except ExchangeError as exc:
             return {"debate": False, "reason": f"market data unavailable: {exc}"}
 
-    limit = daily_debate_limit(ctx.config, budget)
     result = evaluate_triggers(ctx.config, state, snapshot, now, halts=halts,
-                               debates_today=state.daily.full_debates,
-                               daily_limit=limit)
+                               cost_meter=ctx.cost_meter)
 
     if ctx.config.screening.scout_mode and result.should_debate:
         # Optional cheap second opinion before committing to a full debate.
@@ -61,7 +59,11 @@ def run(ctx: AppContext) -> dict:
 
     if not result.should_debate:
         return {"debate": False, "reason": result.summary(),
-                "debates_today": state.daily.full_debates, "limit": limit}
+                "debates_today": state.daily.full_debates,
+                "llm_spent_today_jpy": float(state.daily.llm_cost_jpy),
+                "llm_allowance_today_jpy": float(
+                    ctx.cost_meter.daily_allowance_jpy(
+                        state.monthly.llm_cost_jpy, now))}
 
     cycle_id = new_cycle_id(now, result.trigger)
     invoked = _invoke_decide(ctx, cycle_id, result.trigger)

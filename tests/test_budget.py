@@ -39,13 +39,15 @@ def test_batch_calls_are_half_price(config):
 
 
 def test_ladder_thresholds(config):
+    """Two rungs, not three. The middle one cut the day to a single debate at
+    80% spent — a count standing in for money. Daily pacing does that job
+    continuously now, leaving only the floor: at 100% nothing calls a model."""
     m = meter(config)
     assert m.evaluate(E(0)).ladder is BudgetLadder.NORMAL
-    assert m.evaluate(E(2319)).ladder is BudgetLadder.NORMAL
-    # 80% of 2,900 = 2,320
-    assert m.evaluate(E(2320)).ladder is BudgetLadder.DEGRADED
-    assert m.evaluate(E(2899)).ladder is BudgetLadder.DEGRADED
+    assert m.evaluate(E(2320)).ladder is BudgetLadder.NORMAL      # was DEGRADED
+    assert m.evaluate(E(2899)).ladder is BudgetLadder.NORMAL
     assert m.evaluate(E(2900)).ladder is BudgetLadder.STOPPED
+    assert m.evaluate(E(3000)).ladder is BudgetLadder.STOPPED
 
 
 def test_only_the_stopped_rung_blocks_llm_calls(config):
@@ -55,10 +57,32 @@ def test_only_the_stopped_rung_blocks_llm_calls(config):
     assert not m.evaluate(E(3000)).llm_allowed
 
 
-def test_degraded_rung_caps_the_daily_debates(config):
+def test_the_allowance_paces_the_month_across_its_days(config):
+    """`(budget - spent) / days left * multiplier`. A day that spends heavily
+    leaves less to divide tomorrow, which is what lets busy and quiet days
+    both be correct without any count being involved."""
+    from datetime import datetime, timezone
+
     m = meter(config)
-    assert m.evaluate(E(0)).daily_debate_limit_override is None
-    assert m.evaluate(E(2400)).daily_debate_limit_override == 1
+    budget = config.cost.llm_budget_jpy
+    mid_month = datetime(2026, 8, 15, 3, 0, tzinfo=timezone.utc)   # 17 days left
+
+    fresh = m.daily_allowance_jpy(E(0), mid_month)
+    spent_half = m.daily_allowance_jpy(budget / 2, mid_month)
+    assert spent_half < fresh, "spending must shrink what is left to divide"
+
+    # Later in the month the same remaining sum is spread over fewer days.
+    month_end = datetime(2026, 8, 30, 3, 0, tzinfo=timezone.utc)   # 2 days left
+    assert m.daily_allowance_jpy(E(0), month_end) > fresh
+
+
+def test_an_exhausted_budget_allows_nothing(config):
+    from datetime import datetime, timezone
+
+    m = meter(config)
+    now = datetime(2026, 8, 15, 3, 0, tzinfo=timezone.utc)
+    assert m.daily_allowance_jpy(config.cost.llm_budget_jpy, now) == 0
+    assert m.daily_allowance_jpy(config.cost.llm_budget_jpy * 2, now) == 0
 
 
 def test_a_realistic_cycle_fits_the_monthly_budget(config):
@@ -67,7 +91,10 @@ def test_a_realistic_cycle_fits_the_monthly_budget(config):
     m = meter(config)
     per_call = m.cost_jpy(TokenUsage(input_tokens=2500, output_tokens=250,
                                      cache_read_tokens=2000))
-    monthly = per_call * 9 * config.schedule.daily_full_debate_limit * 30
+    # Eight cycles a day was the old fixed cap; it stays the yardstick here
+    # because the question is whether a realistic day of trading fits, not
+    # what the cap happens to be.
+    monthly = per_call * 9 * 8 * 30
     assert monthly < config.cost.llm_budget_jpy, (
         f"projected {monthly} JPY/month exceeds the "
         f"{config.cost.llm_budget_jpy} JPY budget")

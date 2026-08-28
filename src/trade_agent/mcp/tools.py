@@ -184,7 +184,11 @@ def _get_status(ctx: AppContext, args: dict) -> dict:
         },
         "activity": {
             "full_debates_today": state.daily.full_debates,
-            "daily_debate_limit": ctx.config.schedule.daily_full_debate_limit,
+            # Spend, not a quota. The count is still reported below because it
+            # is interesting, but it is no longer what stops anything.
+            "llm_spent_today_jpy": float(jpy(state.daily.llm_cost_jpy)),
+            "llm_allowance_today_jpy": float(jpy(
+                ctx.cost_meter.daily_allowance_jpy(state.monthly.llm_cost_jpy, now))),
             "last_tick_jst": _jst_or_none(state.last_tick_at),
             "last_full_debate_jst": _jst_or_none(state.last_full_debate_at),
         },

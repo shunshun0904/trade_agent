@@ -89,18 +89,22 @@ def test_the_script_only_reads():
 
 def _summary_awk() -> str:
     """The awk program that formats section 4, lifted out of the script."""
-    match = re.search(r"-v limit=[^']*'(.*?)'\)", SCRIPT, re.S)
+    # Anchored on the mapfile that runs it, not on whichever -v happens to be
+    # last — that anchor broke the moment the variables changed.
+    match = re.search(r"mapfile -t SUMMARY < <\(awk.*?'(.*?)'\)", SCRIPT, re.S)
     assert match, "could not find the section 4 awk program in status.sh"
     return match.group(1)
 
 
 def _run_summary(*, equity="10000", spent="0", total="3000", infra="100",
-                 degrade="80", debates="0", limit="8") -> list[str]:
+                 debates="0", today="0", days_left="15",
+                 mult="2") -> list[str]:
     result = subprocess.run(
         ["awk", "-v", f"equity={equity}", "-v", f"spent={spent}",
          "-v", f"total={total}", "-v", f"infra={infra}",
-         "-v", f"degrade={degrade}", "-v", f"debates={debates}",
-         "-v", f"limit={limit}", _summary_awk()],
+         "-v", f"debates={debates}", "-v", f"today={today}",
+         "-v", f"days_left={days_left}", "-v", f"mult={mult}",
+         _summary_awk()],
         capture_output=True, text=True, check=True, cwd="/tmp")
     return result.stdout.splitlines()
 
@@ -140,13 +144,31 @@ def test_the_percentage_is_actually_computed():
     assert "(0.4%)" in lines[1], lines
 
 
-def test_the_budget_ladder_matches_the_configured_thresholds():
+def test_the_budget_ladder_has_two_rungs():
+    """The 80% "degraded" rung is gone — it cut the day to one debate, a count
+    standing in for money. Pacing does that job continuously now."""
     assert "normal" in _run_summary(spent="100")[1]
-    assert "degraded" in _run_summary(spent="2400")[1]      # 82.8% of 2900
+    assert "normal" in _run_summary(spent="2400")[1]        # 82.8%, still trading
     assert "STOPPED" in _run_summary(spent="2950")[1]       # 101.7%
-    # and the caller is told which of those to colour as a warning
     assert _run_summary(spent="100")[3] == "ok"
-    assert _run_summary(spent="2400")[3] == "alert"
+    assert _run_summary(spent="2950")[3] == "alert"
+
+
+def test_todays_allowance_is_the_remainder_spread_over_the_days_left():
+    """(2900 - 900) / 10 * 2 = 400."""
+    line = _run_summary(spent="900", today="12.5", days_left="10")[2]
+    assert "12.50 / 400.00 JPY" in line, line
+
+
+def test_an_exhausted_budget_leaves_no_allowance():
+    assert "/ 0.00 JPY" in _run_summary(spent="2900", days_left="10")[2]
+
+
+def test_a_large_debate_count_is_reported_but_does_not_cap_anything():
+    """The change this was made for: a busy day is fine if it is paid for."""
+    line = _run_summary(spent="100", today="5", debates="40", days_left="10")[2]
+    assert "40 debate(s)" in line
+    assert _run_summary(spent="100", today="5", debates="40")[3] == "ok"
 
 
 def test_money_is_grouped_without_relying_on_a_locale():
@@ -165,3 +187,4 @@ def test_the_budget_comes_from_config_not_a_repeated_constant():
     budget = config["cost"]["total_budget_jpy"] - config["cost"]["infra_cost_jpy"]
     assert f"{budget:,} JPY" in _run_summary()[1]
     assert "config_number total_budget_jpy" in SCRIPT
+    assert "config_number daily_allowance_multiplier" in SCRIPT

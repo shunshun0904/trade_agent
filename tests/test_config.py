@@ -19,7 +19,7 @@ def test_defaults_match_the_specification(config):
     assert config.risk.killswitch_drawdown_pct == E(20)
     assert config.risk.max_concurrent_positions == 1
     assert config.boredom.no_trade_hours == 72
-    assert config.schedule.daily_full_debate_limit == 8
+    assert config.cost.daily_allowance_multiplier == E("2.0")
     assert config.llm.model == "claude-haiku-4-5"
 
 

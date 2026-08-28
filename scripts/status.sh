@@ -173,16 +173,24 @@ head_ "4. Has it actually done anything?"
 # test_status_script.py holds the two together.
 STATE_ROW="$(aws dynamodb get-item --table-name "trade-agent-${ENVIRONMENT}-state" \
     --key '{"pk":{"S":"state"}}' --region "$REGION" --output text \
-    --query 'Item.[equity_jpy.N, monthly.M.llm_cost_jpy.N, daily.M.full_debates.N, kill_switch.BOOL]' \
+    --query 'Item.[equity_jpy.N, monthly.M.llm_cost_jpy.N, daily.M.full_debates.N, kill_switch.BOOL, daily.M.llm_cost_jpy.N]' \
     2>/dev/null || true)"
 
 if [[ -n "$STATE_ROW" && "$STATE_ROW" != "None" ]]; then
-    IFS=$'\t' read -r EQUITY LLM_MONTH DEBATES_TODAY KILLED <<< "$STATE_ROW"
+    IFS=$'\t' read -r EQUITY LLM_MONTH DEBATES_TODAY KILLED LLM_TODAY <<< "$STATE_ROW"
     ok "system state row exists — a tick has completed at least once"
 
     [[ "$EQUITY" == "None" || -z "$EQUITY" ]] && EQUITY=0
     [[ "$LLM_MONTH" == "None" || -z "$LLM_MONTH" ]] && LLM_MONTH=0
     [[ "$DEBATES_TODAY" == "None" || -z "$DEBATES_TODAY" ]] && DEBATES_TODAY=0
+    [[ "$LLM_TODAY" == "None" || -z "$LLM_TODAY" ]] && LLM_TODAY=0
+
+    # Days left in the JST month, counting today — the same denominator the
+    # system paces against (timeutil.jst_days_remaining_in_month).
+    JST_TODAY="$(date -u -d '+9 hours' +%Y-%m-%d)"
+    DAYS_IN_MONTH="$(date -u -d "${JST_TODAY%-*}-01 +1 month -1 day" +%-d)"
+    DAYS_LEFT=$(( DAYS_IN_MONTH - $(date -u -d "$JST_TODAY" +%-d) + 1 ))
+    (( DAYS_LEFT < 1 )) && DAYS_LEFT=1
 
     # One awk for the arithmetic and the formatting, so the money is rendered
     # in exactly one place. Two traps are deliberately avoided here:
@@ -198,9 +206,9 @@ if [[ -n "$STATE_ROW" && "$STATE_ROW" != "None" ]]; then
         -v equity="$EQUITY" -v spent="$LLM_MONTH" \
         -v total="$(config_number total_budget_jpy 3000)" \
         -v infra="$(config_number infra_cost_jpy 100)" \
-        -v degrade="$(config_number degrade_threshold_pct 80)" \
+        -v today="$LLM_TODAY" -v days_left="$DAYS_LEFT" \
         -v debates="$DEBATES_TODAY" \
-        -v limit="$(config_number daily_full_debate_limit 8)" '
+        -v mult="$(config_number daily_allowance_multiplier 2)" '
         function commas(n,   s, out, i, len, sign) {
             sign = (n < 0 ? "-" : ""); n = (n < 0 ? -n : n)
             s = sprintf("%.0f", n); len = length(s); out = ""
@@ -213,13 +221,20 @@ if [[ -n "$STATE_ROW" && "$STATE_ROW" != "None" ]]; then
         BEGIN {
             budget = total - infra
             pct = (budget > 0 ? spent / budget * 100 : 0)
-            ladder = "normal"
-            if (pct >= 100)          ladder = "STOPPED — no LLM calls this month"
-            else if (pct >= degrade) ladder = "degraded — 1 debate/day"
+            # Two rungs. There is no "degraded" middle any more: spending is
+            # paced daily rather than cut to a fixed debate count at 80%.
+            ladder = (pct >= 100 ? "STOPPED — no LLM calls this month" : "normal")
+
+            # What today may still spend: the remaining monthly budget spread
+            # over the days left, times the slack multiplier. How many debates
+            # that buys is an outcome, not a target; the count is information.
+            allowance = (budget - spent) / days_left * mult
+            if (allowance < 0) allowance = 0
             printf "  equity              %s JPY\n", commas(equity)
             printf "  LLM cost, month     %.2f / %s JPY  (%.1f%%)  %s\n", \
                    spent, commas(budget), pct, ladder
-            printf "  full debates today  %s / %s\n", debates, limit
+            printf "  today               %.2f / %.2f JPY  (%s debate(s), %s day(s) left)\n", \
+                   today, allowance, debates, days_left
             printf "%s\n", (ladder == "normal" ? "ok" : "alert")
         }')
 

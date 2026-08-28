@@ -36,23 +36,35 @@ class ScreenResult:
 def evaluate_triggers(config: Config, state: SystemState,
                       snapshot: MarketSnapshot | None, now: datetime, *,
                       halts: list | None = None,
-                      debates_today: int = 0,
-                      daily_limit: int | None = None) -> ScreenResult:
+                      cost_meter=None) -> ScreenResult:
     """Decide whether to spend an LLM cycle right now.
 
     Order matters: the cheap disqualifiers run before the market conditions, so
     a blocked system never even reads the indicators.
     """
     cfg = config.schedule
-    limit = daily_limit if daily_limit is not None else cfg.daily_full_debate_limit
 
     if state.has_position():
         return ScreenResult(False, suppressed_by="a position is open")
     if halts:
         return ScreenResult(False, suppressed_by=f"halted: {halts[0].reason}")
-    if debates_today >= limit:
-        return ScreenResult(
-            False, suppressed_by=f"daily debate limit reached ({debates_today}/{limit})")
+
+    # Money, not a debate count. What matters is staying inside the monthly
+    # budget; how many debates that buys on any given day is an outcome, not a
+    # target. Overspending today shrinks tomorrow's share on its own, so a
+    # volatile day is free to cost more than a quiet one.
+    if cost_meter is not None:
+        allowance = cost_meter.daily_allowance_jpy(state.monthly.llm_cost_jpy, now)
+        spent_today = dec(state.daily.llm_cost_jpy)
+        if allowance <= 0:
+            return ScreenResult(
+                False, suppressed_by="the monthly LLM budget is spent")
+        if spent_today >= allowance:
+            return ScreenResult(
+                False,
+                suppressed_by=(f"today's LLM allowance is used "
+                               f"({spent_today:.1f}/{allowance:.1f} JPY); "
+                               "it refills at JST midnight"))
 
     cooldown_ok = _cooldown_elapsed(config, state, now)
 
@@ -115,14 +127,6 @@ def _market_triggers(config: Config, snapshot: MarketSnapshot) -> list[str]:
             and dec(ind.vwap_deviation_pct) >= cfg.vwap_deviation_pct):
         reasons.append(f"price {ind.vwap_deviation_pct:.2f}% away from the 24h VWAP")
     return reasons
-
-
-def daily_debate_limit(config: Config, budget_state) -> int:
-    """Spec 11: the 80% budget rung cuts the daily cap to one."""
-    override = budget_state.daily_debate_limit_override if budget_state else None
-    if override is None:
-        return config.schedule.daily_full_debate_limit
-    return min(override, config.cost.degraded_daily_debate_limit)
 
 
 def flash_move_pct(snapshot: MarketSnapshot | None) -> Decimal | None:

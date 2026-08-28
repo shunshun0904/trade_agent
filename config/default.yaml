@@ -112,7 +112,6 @@ schedule:
   tick_minutes: 5
   screen_minutes: 30
   full_debate_cooldown_minutes: 30
-  daily_full_debate_limit: 8
   floor_times_jst: ["09:00", "21:00"]
   daily_report_time_jst: "21:00"
 
@@ -172,9 +171,23 @@ llm:
 cost:
   total_budget_jpy: 3000
   infra_cost_jpy: 100          # spec 1: conservative fixed value, update from AWS Budgets
-  degrade_threshold_pct: 80    # -> one full debate per day
   stop_threshold_pct: 100      # -> no LLM calls at all (tick/SL/TP keep running)
-  degraded_daily_debate_limit: 1
+
+  # Spending is paced daily instead of capped by a debate count:
+  #
+  #   today's allowance = (budget - spent this month) / days left * multiplier
+  #
+  # A count was only ever standing in for money, and badly: a cycle is seven
+  # or nine calls depending on whether consensus is reached, and cache hits
+  # move it again. Busy days and quiet days are both fine now — spending
+  # heavily today leaves less to divide tomorrow, so the month self-corrects
+  # without ever refusing a trade for having used up a quota.
+  #
+  # 2.0 lets one day spend twice the even pace. At 3000-100 = 2900/month that
+  # is roughly 193 JPY on a 30-day month. Provisional: revisit once
+  # agent_calls shows the real cost of a cycle (prompt caching may not be
+  # engaging — see the 4096-token warning in agents/base.py).
+  daily_allowance_multiplier: 2.0
 
 reflect:
   min_trades_for_lessons: 20   # spec 9: aggregate statistics, never single-trade verdicts

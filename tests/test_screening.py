@@ -6,7 +6,7 @@ from decimal import Decimal
 import pytest
 
 from trade_agent.models.state import CycleTrigger, Halt, HaltReason, SystemState
-from trade_agent.orchestrator.screening import daily_debate_limit, evaluate_triggers
+from trade_agent.orchestrator.screening import evaluate_triggers
 from trade_agent.timeutil import jst_date_str, jst_month_str
 
 E = Decimal
@@ -87,13 +87,51 @@ def test_cooldown_blocks_a_second_debate(config, state, snapshot, clock):
     assert "cooldown" in result.suppressed_by
 
 
-def test_daily_limit_blocks_further_debates(config, state, snapshot, clock):
+def test_spending_the_days_allowance_blocks_further_debates(config, state,
+                                                            snapshot, clock):
+    from trade_agent.llm.budget import CostMeter
+
+    meter = CostMeter(config.llm, config.cost)
     snapshot = _quiet(snapshot)
     snapshot.indicators.rsi = E(20)
+    state.daily.llm_cost_jpy = meter.daily_allowance_jpy(E(0), clock.now())
+
     result = evaluate_triggers(config, state, snapshot, clock.now(),
-                               debates_today=8)
+                               cost_meter=meter)
     assert not result.should_debate
-    assert "daily debate limit" in result.suppressed_by
+    assert "allowance" in result.suppressed_by
+
+
+def test_a_debate_count_alone_never_blocks(config, state, snapshot, clock):
+    """The point of the change: many debates in one day are fine as long as
+    they are paid for. A count was only ever standing in for money."""
+    from trade_agent.llm.budget import CostMeter
+
+    meter = CostMeter(config.llm, config.cost)
+    snapshot = _quiet(snapshot)
+    snapshot.indicators.rsi = E(20)
+    state.daily.full_debates = 50
+    state.daily.llm_cost_jpy = E(0)
+
+    result = evaluate_triggers(config, state, snapshot, clock.now(),
+                               cost_meter=meter)
+    assert result.should_debate
+
+
+def test_an_exhausted_monthly_budget_blocks_regardless_of_the_day(
+        config, state, snapshot, clock):
+    from trade_agent.llm.budget import CostMeter
+
+    meter = CostMeter(config.llm, config.cost)
+    snapshot = _quiet(snapshot)
+    snapshot.indicators.rsi = E(20)
+    state.monthly.llm_cost_jpy = config.cost.llm_budget_jpy
+    state.daily.llm_cost_jpy = E(0)
+
+    result = evaluate_triggers(config, state, snapshot, clock.now(),
+                               cost_meter=meter)
+    assert not result.should_debate
+    assert "monthly LLM budget" in result.suppressed_by
 
 
 def test_scheduled_floor_fires_without_a_market_trigger(config, state, snapshot,
@@ -130,10 +168,3 @@ def test_flash_recovery_waits_for_the_pause_to_lift(config, state, snapshot, clo
     assert not result.should_debate
 
 
-def test_the_degraded_budget_rung_cuts_the_daily_limit(config):
-    from trade_agent.llm.budget import BudgetLadder, BudgetState
-
-    normal = BudgetState(BudgetLadder.NORMAL, E(0), E(2900), E(0))
-    degraded = BudgetState(BudgetLadder.DEGRADED, E(2400), E(2900), E(83))
-    assert daily_debate_limit(config, normal) == 8
-    assert daily_debate_limit(config, degraded) == 1

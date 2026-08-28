@@ -18,7 +18,7 @@ from trade_agent.llm.budget import BudgetLadder, CostMeter
 from trade_agent.models.agent_io import AnalystOutput, StrategyOutput
 from trade_agent.models.state import CycleTrigger, Halt, HaltReason
 from trade_agent.orchestrator.cycle import DecisionCycle
-from trade_agent.orchestrator.screening import daily_debate_limit, evaluate_triggers
+from trade_agent.orchestrator.screening import evaluate_triggers
 from trade_agent.risk.boredom import evaluate_boredom
 
 E = Decimal
@@ -207,19 +207,27 @@ def test_8_boredom_rule_fires_at_72h_and_records_a_probe(ctx, llm, clock, config
     assert distance * E(100) <= config.boredom.probe_sl_pct + E("0.01")
 
 
-# 9. 80% of the budget degrades the schedule; 100% stops LLM calls entirely.
-def test_9_budget_ladder_degrades_then_stops(config, ctx, llm):
+# 9. Spending is paced across the month; 100% stops LLM calls entirely.
+def test_9_budget_paces_daily_then_stops(config, ctx, llm):
+    """The 80% rung is gone: it cut the day to one debate, which is a count
+    pretending to be a budget. Pacing replaces it and the hard stop stays."""
+    from datetime import datetime, timezone
+
     meter = CostMeter(config.llm, config.cost)
     budget = config.cost.llm_budget_jpy
+    now = datetime(2026, 8, 15, 3, 0, tzinfo=timezone.utc)
 
     assert meter.evaluate(budget * E("0.79")).ladder is BudgetLadder.NORMAL
-    degraded = meter.evaluate(budget * E("0.80"))
-    assert degraded.ladder is BudgetLadder.DEGRADED
-    assert daily_debate_limit(config, degraded) == 1
+    # Still allowed to trade at 80%, but with proportionally less to spend.
+    at_80 = meter.evaluate(budget * E("0.80"))
+    assert at_80.ladder is BudgetLadder.NORMAL
+    assert (meter.daily_allowance_jpy(budget * E("0.80"), now)
+            < meter.daily_allowance_jpy(E(0), now))
 
     stopped = meter.evaluate(budget)
     assert stopped.ladder is BudgetLadder.STOPPED
     assert not stopped.llm_allowed
+    assert meter.daily_allowance_jpy(budget, now) == 0
 
     state = ctx.load_state()
     state.monthly.llm_cost_jpy = budget
@@ -272,16 +280,19 @@ def test_10b_screening_is_suppressed_while_a_position_is_open(ctx, snapshot, clo
 
 # 11. Past the daily debate cap, a firing trigger starts nothing — except the
 #     boredom rule.
-def test_11_daily_debate_cap_blocks_further_cycles(ctx, snapshot, clock, config):
+def test_11_spending_the_days_allowance_blocks_further_cycles(ctx, snapshot,
+                                                              clock, config):
+    meter = CostMeter(config.llm, config.cost)
     state = ctx.load_state()
     state.last_floor_run_at = clock.now()
     state.last_full_debate_at = clock.now() - timedelta(hours=2)
     snapshot.indicators.rsi = E(15)
+    state.daily.llm_cost_jpy = meter.daily_allowance_jpy(E(0), clock.now())
 
     result = evaluate_triggers(config, state, snapshot, clock.now(),
-                               debates_today=config.schedule.daily_full_debate_limit)
+                               cost_meter=meter)
     assert not result.should_debate
-    assert "daily debate limit" in result.suppressed_by
+    assert "allowance" in result.suppressed_by
 
 
 def test_11b_the_boredom_rule_is_exempt_from_the_daily_cap(ctx, llm, clock, config):
@@ -290,7 +301,7 @@ def test_11b_the_boredom_rule_is_exempt_from_the_daily_cap(ctx, llm, clock, conf
     config.boredom.enabled = True
     state = ctx.load_state()
     state.last_entry_at = clock.now()
-    state.daily.full_debates = config.schedule.daily_full_debate_limit
+    state.daily.full_debates = 50   # a count no longer gates anything
     ctx.save_state(state)
     clock.advance(hours=73)
 

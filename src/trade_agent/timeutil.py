@@ -95,6 +95,20 @@ def jst_month_str(dt: datetime) -> str:
     return to_jst(dt).strftime("%Y-%m")
 
 
+def jst_days_remaining_in_month(dt: datetime) -> int:
+    """Days left in the JST month, counting today. Never below 1.
+
+    The denominator when pacing the monthly LLM budget across days: today is
+    included because today's spending is still ahead of us, and the floor of 1
+    keeps the last day of the month from dividing by zero.
+    """
+    import calendar
+
+    today = jst_date(dt)
+    _, days_in_month = calendar.monthrange(today.year, today.month)
+    return max(1, days_in_month - today.day + 1)
+
+
 def parse_hhmm(value: str) -> time:
     hour, minute = value.split(":")
     return time(int(hour), int(minute))
