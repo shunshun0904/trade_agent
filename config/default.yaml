@@ -147,25 +147,41 @@ snapshot:
 
 llm:
   provider: anthropic
-  model: claude-haiku-4-5
-  # Spec 4.2: swap one of the three strategists onto a different model so the
-  # trio does not share one base model's blind spots. null = same model.
-  contrarian_model: null
+  # Moved off claude-haiku-4-5 after reading a full agent log: the pessimist
+  # compared a 62,000-yen move against a 47,211-yen ATR and called it
+  # "overwhelmingly smaller", and proposed a 10,200-yen stop on a 12,435,000-yen
+  # asset. The critique agents caught both, which is the protocol working, but
+  # arithmetic that wrong is not something to design around.
+  model: claude-sonnet-5
   max_tokens: 2000
   timeout_seconds: 60
   max_api_retries: 2
   use_prompt_cache: true
-  # claude-haiku-4-5 will not create a cache entry below this prefix size.
-  # Prefixes shorter than this silently cost full price - we log a warning.
-  cache_min_tokens: 4096
+  # The model will not create a cache entry below this prefix size; shorter
+  # prefixes silently cost full price, so the runner warns instead.
+  #
+  # This is per model and NOT monotonic across generations: haiku-4-5 needs
+  # 4096, sonnet-5 needs 1024. The shared prefix measured ~3,800 tokens, which
+  # is why cache_read_tokens was 0 on every call under haiku — 300 tokens short
+  # of a threshold sonnet clears with room to spare.
+  cache_min_tokens: 1024
   structured_output: true       # messages.parse(output_format=...)
   batch_api_for_reflect: true   # spec 11: A7 may use the 50%-off Batch API
   pricing:
-    input_per_mtok_usd: 1.00
-    output_per_mtok_usd: 5.00
     cache_write_multiplier: 1.25
     cache_read_multiplier: 0.10
     batch_multiplier: 0.50
+    # Keyed by model id. A single global block would keep billing at the old
+    # rates after `model:` changed above — the ledger would report half of what
+    # sonnet actually costs and the 100% hard stop would never fire. A model
+    # missing from this table is refused at startup rather than mispriced.
+    models:
+      claude-sonnet-5:
+        input_per_mtok_usd: 2.00
+        output_per_mtok_usd: 10.00
+      claude-haiku-4-5:
+        input_per_mtok_usd: 1.00
+        output_per_mtok_usd: 5.00
   usd_jpy_rate: 155.0
 
 cost:

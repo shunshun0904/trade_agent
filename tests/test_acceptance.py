@@ -19,6 +19,7 @@ from trade_agent.models.agent_io import AnalystOutput, StrategyOutput
 from trade_agent.models.state import CycleTrigger, Halt, HaltReason
 from trade_agent.orchestrator.cycle import DecisionCycle
 from trade_agent.orchestrator.screening import evaluate_triggers
+from trade_agent.roles import STRATEGISTS
 from trade_agent.risk.boredom import evaluate_boredom
 
 E = Decimal
@@ -136,17 +137,17 @@ def test_5c_guard_rejects_a_fabricated_indicator_value(config, snapshot):
     assert any("引用値が実値と一致しない" in v for v in excinfo.value.violations)
 
 
-# 6. The three phase-1 proposals never see each other, provably from the logs.
+# 6. The phase-1 proposals never see each other, provably from the logs.
 def test_6_phase_one_proposals_are_independent(ctx, llm):
     DecisionCycle(ctx, trigger=CycleTrigger.MANUAL, cycle_id="acc-6").run()
     calls = ctx.store.agent_calls.list_for_cycle("acc-6")
     proposals = [c for c in calls if c.agent.startswith("strategy:")]
 
-    assert len(proposals) == 3
+    assert len(proposals) == len(STRATEGISTS)
     for call in proposals:
         assert set(call.saw_agents) == {"analyst"}
         body = ctx.store.blobs.get_json(call.io_s3_key)
-        for other in ("strategy:trend", "strategy:meanrev", "strategy:contrarian"):
+        for other in STRATEGISTS:
             assert other not in body["task"]
 
     from trade_agent.mcp.tools import call_tool
@@ -325,8 +326,8 @@ def test_12_every_decision_is_externally_auditable(ctx, llm, clock):
 
     calls = ctx.store.agent_calls.list_for_cycle("acc-12")
     assert {c.agent for c in calls} == {
-        "analyst", "strategy:trend", "strategy:meanrev", "strategy:contrarian",
-        "critique:trend", "critique:meanrev", "critique:contrarian",
+        "analyst", *STRATEGISTS,
+        *(a.replace("strategy:", "critique:") for a in STRATEGISTS),
         "judge", "risk"}
     for call in calls:
         assert call.model and call.called_at and call.io_s3_key

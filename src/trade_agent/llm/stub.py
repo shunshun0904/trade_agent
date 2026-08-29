@@ -28,6 +28,7 @@ from ..models.agent_io import (
     StrategyOutput,
 )
 from ..money import dec
+from ..roles import STRATEGISTS
 from .base import LLMRequest, LLMResponse, TokenUsage
 
 
@@ -46,7 +47,8 @@ class StubLLMClient:
         parsed = self._answer(request)
         usage = TokenUsage(input_tokens=1200, output_tokens=180,
                            cache_read_tokens=3000 if request.cacheable else 0)
-        cost = self.cost_meter.cost_jpy(usage) if self.cost_meter else Decimal(0)
+        cost = (self.cost_meter.cost_jpy(usage, model=request.model)
+                if self.cost_meter else Decimal(0))
         return LLMResponse(parsed=parsed, usage=usage, model=request.model,
                            duration_ms=5, raw_text=parsed.model_dump_json(),
                            cost_jpy=cost)
@@ -106,17 +108,24 @@ class StubLLMClient:
 
     def _judge(self, request, facts) -> JudgeOutput:
         buys = [p for p in facts.get("_proposals", []) if p.get("action") == "buy"]
-        if len(buys) < 2:
+        # The threshold comes from the task the orchestrator built, not from a
+        # literal here. This was a hardcoded 2, which meant the fixture kept
+        # enforcing the old 2-of-3 rule after consensus_min became 1 — the stub
+        # would refuse trades the real system allows, and every cycle test
+        # would have been asserting the wrong behaviour.
+        required = (facts.get("_consensus_rule") or {}).get(
+            "required_buy_proposals", 1)
+        if len(buys) < required:
             return JudgeOutput(decision="no_trade", consensus=0.3,
                                adopted_proposal_id=None, entry=None,
                                take_profit=None, stop_loss=None,
-                               rationale="買い提案が過半に届かなかった。")
+                               rationale=f"買い提案が{required}件に届かなかった。")
         best = buys[0]
         return JudgeOutput(
             decision="adopt", consensus=0.72,
             adopted_proposal_id=best["id"], entry=best["entry"],
             take_profit=best["take_profit"], stop_loss=best["stop_loss"],
-            rationale="2案が同方向で、損益比も許容範囲にある。")
+            rationale="複数案が同方向で、損益比も許容範囲にある。")
 
     def _risk(self, request, facts) -> RiskOutput:
         plan = facts.get("_adopted_plan") or {}
@@ -150,9 +159,10 @@ class StubLLMClient:
             return True
         if self.bias == "wait":
             return False
-        # "mixed": the pessimist (the contrarian strategist) waits and the
-        # other two buy — exactly the 2-of-3 the consensus rule needs.
-        return not agent.endswith("contrarian")
+        # "mixed": the last strategist in the roster waits and the rest buy,
+        # so the fixture keeps producing a split verdict whatever the roster
+        # size. Named the contrarian explicitly until that agent was removed.
+        return not agent.endswith(STRATEGISTS[-1].split(":")[-1])
 
     @staticmethod
     def _jitter(agent: str) -> float:

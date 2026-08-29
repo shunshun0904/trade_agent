@@ -137,7 +137,7 @@ Claude のチャット(カスタムコネクタ経由)から:
 - 「今の状況は?」 → `get_status`
 - 「昨日のレポートを見せて」 → `get_daily_report`
 - 「直近1週間の約定は?」 → `get_trades`(probe は分けて集計される)
-- 「あのトレードはなぜ入ったの?」 → `get_agent_log`(地合い判定・3案・批判・裁定・リスク査定が全部残っている)
+- 「あのトレードはなぜ入ったの?」 → `get_agent_log`(地合い判定・各戦略案・批判・裁定・リスク査定が全部残っている)
 - 「今までの教訓は?」 → `get_lessons`
 - **「なぜ取引しないのか?」 → `get_cycles`** — 直近サイクルの結末と、見送り理由の内訳。`no_trade_reasons` にどの理由が何回出たかが集計される
 
@@ -171,12 +171,12 @@ bash scripts/tool.sh get_cycles
 
 | 内訳 | 意味 | 打つ手 |
 |---|---|---|
-| `consensus not reached: 0/3` ばかり | 戦略家3体が誰も買いを出していない。閾値ではなく判断 | エージェント側。`get_agent_log` で 3体の rationale を読む |
-| `1/3` や `2/3` が混ざる | 提案は出ている。合意で落ちている | `screening.consensus_min`(現在 1) |
+| `consensus not reached: 0/2` ばかり | 戦略家2体が誰も買いを出していない。閾値ではなく判断 | エージェント側。`get_agent_log` で2体の rationale を読む |
+| `1/2` が混ざる | 提案は出ている。合意で落ちている | `screening.consensus_min`(現在 1) |
 | ガード棄却が多い | 提案は通ったが決定論層で落ちている | 下の「`no_trade` が続く」 |
 | screening 段階で止まっている | 議論すら始まっていない | `screening` の閾値、または日次予算の使い切り |
 
-合議は現在 **3案中1案** で成立する(`screening.consensus_min: 1`)。
+合議は現在 **2案中1案** で成立する(`screening.consensus_min: 1`)。
 3日ルール(退屈防止)は **オフ** — 唯一のレバーが合議の緩和であり、
 それが通常経路と同じ値になった今、発火しても何も変わらないため。
 
@@ -202,9 +202,23 @@ bash scripts/tool.sh get_cycles
 
 ### `cache_read_tokens` がずっと 0
 
-想定内。`claude-haiku-4-5` の最小キャッシュ長 4,096 トークンに対して
-共通プレフィックスが約2,000トークンしかない。
-判断の選択肢は docs/OPEN-QUESTIONS.md A-4。
+**`claude-sonnet-5` に切り替えた今は異常。** 最小キャッシュ長はモデルごとに
+違い、世代順ではない:
+
+| モデル | 最小キャッシュ長 |
+|---|---:|
+| claude-sonnet-5 | 1,024 |
+| claude-haiku-4-5 | 4,096 |
+
+共通プレフィックスは実測で約3,800トークン。haiku ではこれが300トークン足りず、
+キャッシュが**一度も**作られなかった(実測 `cache_read_tokens: 0`)。sonnet の
+1,024 は余裕で超えるので、0 のままなら別の原因がある:
+
+1. `llm.use_prompt_cache` が false になっていないか
+2. `llm.cache_min_tokens` が 1024 になっているか(`config/default.yaml`)
+3. プレフィックスが呼び出しごとに変わっていないか —
+   `agent_calls` の `shared_prefix_sha` が**同一サイクル内で全行同じ**であること。
+   違っていればプレフィックス組み立てのバグで、キャッシュは原理的に効かない
 
 ### 予算の消化が想定より速い
 

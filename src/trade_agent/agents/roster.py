@@ -10,24 +10,25 @@ Roles and calls are different numbers, which is worth stating because they get
 confused. Spec 4 defines nine roles; the inspector (A5) and the commander (A6)
 are not implemented (see docs/OPEN-QUESTIONS.md A-5), leaving seven.
 
-A cycle makes **seven or nine calls**, not one fixed number, because the three
-strategists each speak twice — once to propose, once to critique the other two
-— and because the last two agents are conditional:
+A cycle makes **five or seven calls** at the current roster of two
+strategists, not one fixed number, because each strategist speaks twice — once
+to propose, once to critique the others — and because the last two agents are
+conditional. With N strategists it is 1 + 2N, then 1 + 2N + 2:
 
     analyst            1
-    strategy × 3       3   (phase 1, independent proposals)
-    critique  × 3      3   (phase 2, same three agents, anonymised inputs)
+    strategy × N       2   (phase 1, independent proposals)
+    critique  × N      2   (phase 2, same agents, anonymised inputs)
                       ---
-                       7   ← every cycle gets this far
+                       5   ← every cycle gets this far
     judge              1   ┐ only when at least `consensus_min` strategists
-    risk               1   ┘ proposed a buy (2 of 3 normally, 1 during a probe)
+    risk               1   ┘ proposed a buy (currently 1 of 2)
                       ---
-                       9
+                       7
 
 `Cycle._adjudicate` applies that consensus rule before calling the judge:
 with nothing to adjudicate, there is nothing to pay a judge for. So a
-no-consensus cycle — the common case, and a normal outcome under spec 4.1 —
-costs seven calls, not nine.
+no-consensus cycle — a normal outcome under spec 4.1 — costs five calls, not
+seven.
 
 The scout is a separate opt-in call in the screen function and is off by
 default (`screening.scout_mode`); the reflector runs in its own function on its
@@ -53,8 +54,12 @@ from ..models.agent_io import (
     StrategyOutput,
 )
 from .base import AgentRunner
+from ..roles import STRATEGISTS
+from .prompts import critique_role, judge_role
 
-STRATEGISTS = ["strategy:trend", "strategy:meanrev", "strategy:contrarian"]
+# Re-exported from ..roles, which config also reads. Every count downstream
+# derives from that one list — the prompts included, since a brief naming a
+# number the roster disagrees with is a fact the model cannot check.
 
 Validator = Callable | None
 
@@ -94,11 +99,14 @@ def run_critique(runner: AgentRunner, agent: str, others: list[dict], *,
     `others` carries opaque ids only. Which strategist wrote which proposal is
     never revealed, so a critique cannot become an argument about roles.
     """
+    count = len(others)
     return runner.run(
         agent.replace("strategy:", "critique:"),
         {"proposals": others}, CritiqueOutput,
         saw_agents=["strategy:anonymous"], validator=validator,
-        instructions="匿名化された他の2案について、それぞれ最大の弱点を1つ指摘せよ。")
+        role_override=critique_role(others=count),
+        instructions=f"匿名化された他の{count}案について、"
+                     "それぞれ最大の弱点を1つ指摘せよ。")
 
 
 def run_judge(runner: AgentRunner, *, analyst: AnalystOutput, proposals: list[dict],
@@ -119,7 +127,9 @@ def run_judge(runner: AgentRunner, *, analyst: AnalystOutput, proposals: list[di
         JudgeOutput,
         saw_agents=["analyst", *STRATEGISTS, "critique"],
         validator=validator,
-        instructions="3案と批判を統合し、採択案を1つ決めるか no_trade を選べ。")
+        role_override=judge_role(total=len(proposals), minimum=consensus_min),
+        instructions=f"{len(proposals)}案と批判を統合し、"
+                     "採択案を1つ決めるか no_trade を選べ。")
 
 
 def run_risk(runner: AgentRunner, *, plan: dict, account: dict, limits: dict,

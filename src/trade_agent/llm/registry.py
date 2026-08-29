@@ -1,13 +1,15 @@
 """Which model answers for which agent (spec 4.2).
 
-Three strategists built on one base model share that model's blind spots: they
-can be confidently wrong together, and the 2-of-3 consensus rule then rubber
-stamps the shared error. `contrarian_model` routes one strategist — the
-contrarian, by construction the one arguing against the other two — to a
-different model, so at least one voice fails differently.
+Strategists built on one base model share that model's blind spots: they can be
+confidently wrong together, and the consensus rule then rubber stamps the
+shared error. `llm.agent_models` routes named agents to a different model so at
+least one voice fails differently.
 
-Set `llm.contrarian_model` to any model id the transport can reach; leaving it
-null keeps the whole roster on one model.
+This replaced a `contrarian_model` setting that could only ever route
+`strategy:contrarian`, an agent that no longer exists. Keys are agent ids
+(`strategy:meanrev`, `judge`, ...); anything not listed uses `llm.model`. Every
+model named here must appear in `llm.pricing.models`, or the ledger would bill
+it at the default model's rate — the config refuses to load otherwise.
 """
 
 from __future__ import annotations
@@ -21,20 +23,16 @@ from .budget import CostMeter
 
 log = logging.getLogger(__name__)
 
-CONTRARIAN_AGENT = "strategy:contrarian"
-
-
 class ModelRouter:
     def __init__(self, config: Config):
         self.config = config
 
     def model_for(self, agent: str) -> str:
-        if agent == CONTRARIAN_AGENT and self.config.llm.contrarian_model:
-            return self.config.llm.contrarian_model
-        return self.config.llm.model
+        return self.config.llm.agent_models.get(agent, self.config.llm.model)
 
     def uses_alternate_model(self) -> bool:
-        return bool(self.config.llm.contrarian_model)
+        return any(model != self.config.llm.model
+                   for model in self.config.llm.agent_models.values())
 
 
 def build_llm_client(config: Config, *, secrets=None,

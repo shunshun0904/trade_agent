@@ -28,7 +28,7 @@ from typing import Type
 from pydantic import BaseModel, ValidationError
 
 from ..config import LLMConfig
-from ..errors import LLMError
+from ..errors import ConfigError, LLMError
 from .base import LLMRequest, LLMResponse, TokenUsage
 
 log = logging.getLogger(__name__)
@@ -86,8 +86,12 @@ class AnthropicLLMClient:
 
         usage = _usage_of(message)
         duration_ms = int((time.monotonic() - started) * 1000)
-        cost = self.cost_meter.cost_jpy(usage) if self.cost_meter else None
-        return LLMResponse(parsed=parsed, usage=usage, model=self.config.model,
+        # request.model, not config.model: the router may send an agent to a
+        # different model, and both the price and the recorded model must be
+        # the one that actually ran.
+        cost = (self.cost_meter.cost_jpy(usage, model=request.model)
+                if self.cost_meter else None)
+        return LLMResponse(parsed=parsed, usage=usage, model=request.model,
                            duration_ms=duration_ms, raw_text=raw,
                            cost_jpy=cost if cost is not None else LLMResponse.cost_jpy,
                            batch=False)
@@ -100,6 +104,16 @@ class AnthropicLLMClient:
 
         entries = []
         for index, request in enumerate(requests):
+            if request.model != self.config.model:
+                # The batch is submitted in one Lambda invocation and collected
+                # in another, so nothing survives in memory to say which entry
+                # ran on which model. Rather than bill the whole batch at the
+                # default rate and understate the spend the hard stop reads,
+                # refuse the case that would need the bookkeeping.
+                raise ConfigError(
+                    f"batch entry {request.agent} asks for {request.model!r} "
+                    f"but the batch path can only bill {self.config.model!r}. "
+                    "Send it through complete() instead.")
             params = self._with_schema_hint(self._build_params(request),
                                             request.output_model)
             entries.append(Request(
@@ -129,10 +143,13 @@ class AnthropicLLMClient:
                 continue
             raw = _first_text(message)
             usage = _usage_of(message)
-            cost = self.cost_meter.cost_jpy(usage, batch=True) if self.cost_meter else None
+            # Safe because submit_batch refuses any other model.
+            model = self.config.model
+            cost = (self.cost_meter.cost_jpy(usage, model=model, batch=True)
+                    if self.cost_meter else None)
             out[result.custom_id] = LLMResponse(
                 parsed=_parse_json(raw, model_cls, agent), usage=usage,
-                model=self.config.model, raw_text=raw,
+                model=model, raw_text=raw,
                 cost_jpy=cost if cost is not None else LLMResponse.cost_jpy,
                 batch=True)
         return out

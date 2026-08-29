@@ -121,21 +121,15 @@ MEANREV_ROLE = """\
 他の戦略担当の案は見えていない。自分の見立てだけで書くこと。
 """
 
-PESSIMIST_ROLE = """\
-あなたは戦略担当・悲観派(A2c)である。
-あなたの役割は、他の2人が見落とす下振れ材料と最悪シナリオを言語化することである。
+# The pessimist (A2c) was removed with the strategist count. Its default stance
+# was action="wait", so under consensus_min=1 it could only ever subtract from
+# the chance of a trade, and it produced the arithmetic that prompted the model
+# change (a 10,200-yen stop on a 12,435,000-yen asset). The downside case is not
+# lost: the critique phase still attacks every proposal, and the risk agent and
+# the deterministic guard both sit downstream of the judge.
 
-- 既定の姿勢は action="wait" である。見送りは失敗ではなく、この役割の正しい成果物である。
-- 買いを提案するのは「弱気材料を検討してもなお、リスクに対して報酬が明らかに勝る」
-  と言える場合に限る。その場合は損切りを他案より厳しく置くこと。
-- thesis には、この局面で最も損をする筋書きを具体的に書くこと。
-  「暴落するかもしれない」ではなく、どの水準を割ると何が起きるかを書く。
-
-他の戦略担当の案は見えていない。自分の見立てだけで書くこと。
-"""
-
-CRITIQUE_ROLE = """\
-あなたは戦略担当として、他の2案を批判する段階(フェーズ2)にいる。
+CRITIQUE_ROLE_TEMPLATE = """\
+あなたは戦略担当として、他の{others}案を批判する段階(フェーズ2)にいる。
 提示される他案は匿名化されている。誰の案かを推測してはならない。
 
 各案について、最も重大な弱点を1つずつ挙げよ。
@@ -148,14 +142,14 @@ revised_confidence には、他案を読んだあとの「自分の案」への�
 他案の指摘が正しいと思うなら、下げてよい。下げることは負けではない。
 """
 
-JUDGE_ROLE = """\
-あなたは裁定者(A3)である。3つの独立提案と、それぞれへの批判を読み、採否を決める。
+JUDGE_ROLE_TEMPLATE = """\
+あなたは裁定者(A3)である。{total}つの独立提案と、それぞれへの批判を読み、採否を決める。
 
-- 合意ルールは機械側で強制される: buy案が3案中2案未満なら、あなたの判断に関わらず
-  no_trade になる。したがってあなたの仕事は「どの案を、なぜ採るか」である。
+- 合意ルールは機械側で強制される: buy案が{total}案中{minimum}案未満なら、あなたの判断に
+  関わらず no_trade になる。したがってあなたの仕事は「どの案を、なぜ採るか」である。
 - adopt を選ぶ場合、entry / take_profit / stop_loss は採用案の値をそのまま書き写すか、
   批判を踏まえて明示的に調整した値を書く。調整した場合は rationale に理由を書くこと。
-- consensus (0-1) は3案の一致度合いの評価。方向だけでなく、価格帯と損切り位置が
+- consensus (0-1) は{total}案の一致度合いの評価。方向だけでなく、価格帯と損切り位置が
   どれだけ近いかも加味すること。
 - 迷ったら no_trade を選べ。取引しないことのコストはゼロだが、悪い取引のコストは
   手数料と損失の両方である。
@@ -200,15 +194,30 @@ worth_full_debate=true とするのは、フル議論を回す価値のある変
 迷ったら false にせよ。フル議論には実費がかかる。
 """
 
+def critique_role(*, others: int) -> str:
+    """The critique brief, sized to how many other proposals there are.
+
+    Hardcoded as "他の2案" while there were three strategists. With two, each
+    critic sees exactly one other proposal, and a brief asking for two would
+    invite the model to invent the missing one.
+    """
+    return CRITIQUE_ROLE_TEMPLATE.format(others=others)
+
+
+def judge_role(*, total: int, minimum: int) -> str:
+    """The adjudication brief, stating the consensus rule actually in force.
+
+    This said "buy案が3案中2案未満なら no_trade" for as long as
+    `screening.consensus_min` had been 1 — telling the judge a threshold twice
+    the real one, in the same prompt that tells it the machine enforces this.
+    """
+    return JUDGE_ROLE_TEMPLATE.format(total=total, minimum=minimum)
+
+
 ROLE_PROMPTS = {
     "analyst": ANALYST_ROLE,
     "strategy:trend": TREND_ROLE,
     "strategy:meanrev": MEANREV_ROLE,
-    "strategy:contrarian": PESSIMIST_ROLE,
-    "critique:trend": CRITIQUE_ROLE,
-    "critique:meanrev": CRITIQUE_ROLE,
-    "critique:contrarian": CRITIQUE_ROLE,
-    "judge": JUDGE_ROLE,
     "risk": RISK_ROLE,
     "reflect": REFLECT_ROLE,
     "scout": SCOUT_ROLE,

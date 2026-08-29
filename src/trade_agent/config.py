@@ -20,6 +20,7 @@ import yaml
 from pydantic import BaseModel, Field, model_validator
 
 from .errors import ConfigError
+from .roles import STRATEGISTS
 
 ENV_PREFIX = "TA_"
 CONFIG_DIR_ENV = "TA_CONFIG_DIR"
@@ -130,11 +131,12 @@ class ScreeningConfig(_Section):
     volume_spike_multiple: Decimal = Decimal("1.5")
     vwap_deviation_pct: Decimal = Decimal("0.5")
     scout_mode: bool = False
-    # How many of the three independent proposals must say "buy" before the
-    # judge is called at all. This is the single largest control on how often
-    # the system trades: with the three strategists reaching phase 2 and
-    # stopping here, nothing downstream ever runs. Lived as a hardcoded 2 in
-    # risk/boredom.py until it became the thing being tuned.
+    # How many of the independent proposals must say "buy" before the judge is
+    # called at all. This is the single largest control on how often the system
+    # trades: with the strategists reaching phase 2 and stopping here, nothing
+    # downstream ever runs. Lived as a hardcoded 2 in risk/boredom.py until it
+    # became the thing being tuned. The upper bound is len(STRATEGISTS),
+    # checked below.
     consensus_min: int = 1
 
 
@@ -147,18 +149,43 @@ class SnapshotConfig(_Section):
     lessons_in_prompt: int = 12
 
 
-class PricingConfig(_Section):
+class ModelPrice(_Section):
     input_per_mtok_usd: Decimal
     output_per_mtok_usd: Decimal
+
+
+class PricingConfig(_Section):
+    """Rates per model; multipliers are API-wide and the same for all of them.
+
+    Keyed by model id rather than held as one global block. With a single
+    block, changing `llm.model` would leave the ledger recording the old
+    model's prices — the meter would keep reporting half of what a
+    twice-as-expensive model actually cost, and the 100% hard stop would never
+    see the budget being exceeded. An unpriced model is refused at startup for
+    the same reason (see `price_for`).
+    """
+
     cache_write_multiplier: Decimal = Decimal("1.25")
     cache_read_multiplier: Decimal = Decimal("0.10")
     batch_multiplier: Decimal = Decimal("0.50")
+    models: dict[str, ModelPrice]
+
+    def price_for(self, model: str) -> ModelPrice:
+        try:
+            return self.models[model]
+        except KeyError:
+            raise ConfigError(
+                f"no price for model {model!r}. Add it to llm.pricing.models "
+                f"(known: {', '.join(sorted(self.models))}). Billing a model "
+                "at another model's rates would silently understate spend and "
+                "disable the budget stop.") from None
 
 
 class LLMConfig(_Section):
     provider: str = "anthropic"
-    model: str = "claude-haiku-4-5"
-    contrarian_model: str | None = None
+    model: str = "claude-sonnet-5"
+    # Per-agent model overrides (spec 4.2 model diversity). Keys are agent ids.
+    agent_models: dict[str, str] = Field(default_factory=dict)
     max_tokens: int = 2000
     timeout_seconds: float = 60
     max_api_retries: int = 2
@@ -249,11 +276,12 @@ class Config(_Section):
         A probe must never be able to risk more than an ordinary trade, and the
         kill switch must trip before the daily loss limit becomes irrelevant.
         """
-        if not 1 <= self.screening.consensus_min <= 3:
+        if not 1 <= self.screening.consensus_min <= len(STRATEGISTS):
             raise ConfigError(
-                "screening.consensus_min must be between 1 and 3; there are "
-                "three strategists, so anything else can never be satisfied "
-                "or can never be missed")
+                f"screening.consensus_min must be between 1 and "
+                f"{len(STRATEGISTS)}; there are {len(STRATEGISTS)} "
+                "strategists, so anything else can never be satisfied or can "
+                "never be missed")
         if self.risk.probe_risk_pct > self.risk.per_trade_risk_pct:
             raise ConfigError(
                 "boredom probe risk exceeds the per-trade risk limit; "
@@ -265,6 +293,11 @@ class Config(_Section):
             )
         if self.cost.llm_budget_jpy <= 0:
             raise ConfigError("infra_cost_jpy leaves no LLM budget")
+        # Every model the router can reach must have a price. Billing one model
+        # at another's rate understates the spend that the 100% hard stop
+        # reads, so an unpriced model is a budget failure, not a typo.
+        for model in {self.llm.model, *self.llm.agent_models.values()}:
+            self.llm.pricing.price_for(model)
         return self
 
 

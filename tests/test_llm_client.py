@@ -9,7 +9,8 @@ from trade_agent.errors import LLMError
 from trade_agent.llm.anthropic_client import AnthropicLLMClient, _parse_json
 from trade_agent.llm.base import LLMRequest
 from trade_agent.llm.budget import CostMeter
-from trade_agent.llm.registry import CONTRARIAN_AGENT, ModelRouter
+from trade_agent.llm.registry import ModelRouter
+from trade_agent.roles import STRATEGISTS
 from trade_agent.models.agent_io import AnalystOutput
 
 E = Decimal
@@ -103,7 +104,7 @@ def test_usage_and_cost_are_recorded(config):
     assert response.usage.input_tokens == 1000
     assert response.usage.cache_read_tokens == 4000
     assert response.cost_jpy > 0
-    assert response.cost_jpy == meter.cost_jpy(response.usage)
+    assert response.cost_jpy == meter.cost_jpy(response.usage, model=config.llm.model)
 
 
 def test_it_falls_back_when_structured_output_is_unsupported(config):
@@ -170,17 +171,25 @@ def test_refuses_output_that_breaks_the_schema():
 
 def test_all_agents_share_one_model_by_default(config):
     router = ModelRouter(config)
-    assert router.model_for("analyst") == config.llm.model
-    assert router.model_for(CONTRARIAN_AGENT) == config.llm.model
+    for agent in ("analyst", "judge", *STRATEGISTS):
+        assert router.model_for(agent) == config.llm.model
     assert not router.uses_alternate_model()
 
 
-def test_the_contrarian_can_be_routed_to_another_model(config):
-    config.llm.contrarian_model = "some-other-model"
+def test_any_agent_can_be_routed_to_another_model(config):
+    """Spec 4.2 wants the strategists not to share one model's blind spots.
+    The old setting could only ever route `strategy:contrarian`, an agent that
+    no longer exists."""
+    config.llm.agent_models = {"strategy:meanrev": "claude-haiku-4-5"}
     router = ModelRouter(config)
-    assert router.model_for(CONTRARIAN_AGENT) == "some-other-model"
+    assert router.model_for("strategy:meanrev") == "claude-haiku-4-5"
     assert router.model_for("strategy:trend") == config.llm.model
     assert router.uses_alternate_model()
+
+
+def test_an_override_naming_the_default_model_is_not_an_alternate(config):
+    config.llm.agent_models = {"strategy:trend": config.llm.model}
+    assert not ModelRouter(config).uses_alternate_model()
 
 
 def test_a_missing_api_key_is_fatal_when_trading_live(config):

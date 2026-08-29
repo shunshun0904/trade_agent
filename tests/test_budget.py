@@ -20,22 +20,22 @@ def test_budget_is_total_minus_infrastructure(config):
 
 def test_cache_reads_are_charged_at_a_tenth(config):
     m = meter(config)
-    uncached = m.cost_jpy(TokenUsage(input_tokens=10000))
-    cached = m.cost_jpy(TokenUsage(cache_read_tokens=10000))
+    uncached = m.cost_jpy(TokenUsage(input_tokens=10000), model=config.llm.model)
+    cached = m.cost_jpy(TokenUsage(cache_read_tokens=10000), model=config.llm.model)
     assert cached == uncached * config.llm.pricing.cache_read_multiplier
 
 
 def test_cache_writes_cost_more_than_plain_input(config):
     m = meter(config)
-    written = m.cost_jpy(TokenUsage(cache_write_tokens=1000))
-    plain = m.cost_jpy(TokenUsage(input_tokens=1000))
+    written = m.cost_jpy(TokenUsage(cache_write_tokens=1000), model=config.llm.model)
+    plain = m.cost_jpy(TokenUsage(input_tokens=1000), model=config.llm.model)
     assert written > plain
 
 
 def test_batch_calls_are_half_price(config):
     m = meter(config)
     usage = TokenUsage(input_tokens=5000, output_tokens=1000)
-    assert m.cost_jpy(usage, batch=True) == m.cost_jpy(usage) / 2
+    assert m.cost_jpy(usage, model=config.llm.model, batch=True) == m.cost_jpy(usage, model=config.llm.model) / 2
 
 
 def test_ladder_thresholds(config):
@@ -86,15 +86,25 @@ def test_an_exhausted_budget_allows_nothing(config):
 
 
 def test_a_realistic_cycle_fits_the_monthly_budget(config):
-    """Nine calls a cycle (1 analyst + 3 proposals + 3 critiques + judge +
-    risk), eight cycles a day, thirty days must fit 2,900 JPY."""
+    """A full cycle, eight cycles a day, thirty days must fit 2,900 JPY.
+
+    The call count is derived, not written down: 1 analyst + N proposals +
+    N critiques + judge + risk. It moved from nine to seven when the
+    strategists went from three to two, and a hardcoded 9 here would have gone
+    on asserting a budget nobody was spending.
+    """
+    from trade_agent.roles import STRATEGISTS
+
     m = meter(config)
-    per_call = m.cost_jpy(TokenUsage(input_tokens=2500, output_tokens=250,
-                                     cache_read_tokens=2000))
+    calls_per_cycle = 1 + 2 * len(STRATEGISTS) + 2
+    per_call = m.cost_jpy(
+        model=config.llm.model,
+        usage=TokenUsage(input_tokens=2500, output_tokens=250,
+                         cache_read_tokens=2000))
     # Eight cycles a day was the old fixed cap; it stays the yardstick here
     # because the question is whether a realistic day of trading fits, not
     # what the cap happens to be.
-    monthly = per_call * 9 * 8 * 30
+    monthly = per_call * calls_per_cycle * 8 * 30
     assert monthly < config.cost.llm_budget_jpy, (
         f"projected {monthly} JPY/month exceeds the "
         f"{config.cost.llm_budget_jpy} JPY budget")

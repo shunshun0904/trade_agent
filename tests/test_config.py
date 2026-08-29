@@ -20,7 +20,27 @@ def test_defaults_match_the_specification(config):
     assert config.risk.max_concurrent_positions == 1
     assert config.boredom.no_trade_hours == 72
     assert config.cost.daily_allowance_multiplier == E("2.0")
-    assert config.llm.model == "claude-haiku-4-5"
+    assert config.llm.model == "claude-sonnet-5"
+
+
+def test_every_reachable_model_has_a_price(config):
+    """Billing one model at another's rate understates the spend the 100% hard
+    stop reads, so an unpriced model must not be loadable at all."""
+    from trade_agent.errors import ConfigError
+
+    for model in {config.llm.model, *config.llm.agent_models.values()}:
+        assert config.llm.pricing.price_for(model)
+
+    with pytest.raises(ConfigError, match="no price for model"):
+        config.llm.pricing.price_for("claude-not-in-the-table")
+
+
+def test_the_cache_minimum_matches_the_model(config):
+    """Not monotonic across generations: haiku-4-5 needs 4096, sonnet-5 needs
+    1024. Carrying haiku's 4096 forward would leave the runner warning about a
+    prefix that caches perfectly well."""
+    expected = {"claude-sonnet-5": 1024, "claude-haiku-4-5": 4096}
+    assert config.llm.cache_min_tokens == expected[config.llm.model]
 
 
 def test_paper_trading_is_the_default(config):

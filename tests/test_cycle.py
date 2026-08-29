@@ -7,6 +7,7 @@ import pytest
 from trade_agent.errors import LockNotAcquired
 from trade_agent.models.state import CycleTrigger
 from trade_agent.orchestrator.cycle import DecisionCycle, entry_order_id
+from trade_agent.roles import STRATEGISTS
 
 E = Decimal
 
@@ -16,27 +17,29 @@ def _cycle(ctx, **kwargs) -> DecisionCycle:
 
 
 def test_a_consensus_cycle_places_one_entry(ctx, llm):
-    llm.bias = "mixed"  # two buy proposals, one wait -> 2 of 3
+    llm.bias = "mixed"  # all but the last strategist propose a buy
     outcome = _cycle(ctx, cycle_id="cyc-a").run()
     assert outcome.traded, outcome.no_trade_reason
-    assert outcome.buy_count == 2
+    assert outcome.buy_count == len(STRATEGISTS) - 1
+    assert outcome.buy_count >= ctx.config.screening.consensus_min
     assert len(ctx.exchange.orders_sent) == 1
     assert ctx.store.orders.get(entry_order_id("cyc-a")) is not None
 
 
-def test_one_buy_of_three_is_a_no_trade(ctx, llm):
+def test_no_buy_proposal_at_all_is_a_no_trade(ctx, llm):
     llm.bias = "wait"
     outcome = _cycle(ctx, cycle_id="cyc-b").run()
     assert not outcome.traded
+    assert outcome.buy_count == 0
     assert "consensus not reached" in outcome.no_trade_reason
     assert ctx.exchange.orders_sent == []
 
 
-def test_the_three_proposals_are_made_blind(ctx, llm):
+def test_every_proposal_is_made_blind(ctx, llm):
     _cycle(ctx, cycle_id="cyc-c").run()
     calls = ctx.store.agent_calls.list_for_cycle("cyc-c")
     proposals = [c for c in calls if c.agent.startswith("strategy:")]
-    assert len(proposals) == 3
+    assert len(proposals) == len(STRATEGISTS)
     for call in proposals:
         # Spec 4.1: phase 1 sees the analyst and nothing else.
         assert set(call.saw_agents) == {"analyst"}
@@ -56,7 +59,8 @@ def test_critiques_never_reveal_the_author(ctx, llm):
 def test_every_call_is_logged_with_cost(ctx, llm):
     _cycle(ctx, cycle_id="cyc-e").run()
     calls = ctx.store.agent_calls.list_for_cycle("cyc-e")
-    assert len(calls) >= 8  # analyst + 3 proposals + 3 critiques + judge + ...
+    # analyst + N proposals + N critiques + judge + risk
+    assert len(calls) == 1 + 2 * len(STRATEGISTS) + 2
     assert all(c.io_s3_key for c in calls)
     assert all(c.cost_jpy >= 0 for c in calls)
     assert sum(c.input_tokens for c in calls) > 0
@@ -121,11 +125,15 @@ def test_the_risk_agent_is_the_last_agent_in_the_chain(ctx, llm):
     assert "commander" not in agents
 
 
-def test_a_cycle_costs_nine_calls(ctx, llm):
-    """1 analyst + 3 proposals + 3 critiques + 1 judge + 1 risk."""
+def test_a_cycle_costs_one_call_per_role(ctx, llm):
+    """1 analyst + N proposals + N critiques + 1 judge + 1 risk.
+
+    Derived rather than written down: this asserted 9 while the roster had
+    three strategists, and a literal would now assert a cycle that does not
+    happen instead of catching one that should not."""
     outcome = _cycle(ctx, cycle_id="cyc-l").run()
     assert outcome.traded
-    assert outcome.llm_calls == 9
+    assert outcome.llm_calls == 1 + 2 * len(STRATEGISTS) + 2
 
 
 def test_the_cycle_records_its_own_cost(ctx, llm):
@@ -180,7 +188,7 @@ def test_every_cycle_records_why_it_did_or_did_not_trade(ctx, llm, clock):
     # The reason itself, not just the verdict — that is the point.
     if not outcome.traded:
         assert outcome.no_trade_reason in event.detail
-    assert f"buys {outcome.buy_count}/3" in event.detail
+    assert f"buys {outcome.buy_count}/{len(STRATEGISTS)}" in event.detail
 
 
 def test_a_failing_audit_write_does_not_sink_the_cycle(ctx, llm, monkeypatch):

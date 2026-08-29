@@ -1,7 +1,6 @@
 """Token accounting and the monthly budget ladder (spec 11).
 
-    spend < 80%   full schedule
-    spend >= 80%  degraded: one full debate per day
+    spend < 100%  full schedule, paced daily (see daily_allowance_jpy)
     spend >= 100% no LLM calls at all for the rest of the month
 
 The third rung does not stop the system: the 5-minute tick, SL/TP evaluation
@@ -58,14 +57,23 @@ class CostMeter:
         self.llm = llm
         self.cost = cost
 
-    def cost_jpy(self, usage: TokenUsage, *, batch: bool = False) -> Decimal:
+    def cost_jpy(self, usage: TokenUsage, *, model: str,
+                 batch: bool = False) -> Decimal:
+        """What one call actually cost, at the price of the model that ran it.
+
+        `model` is required rather than defaulted to `llm.model`, so a call
+        routed elsewhere cannot be billed at the default model's rate without
+        somebody typing it. The ledger this feeds is what the 100% hard stop
+        reads.
+        """
         p = self.llm.pricing
+        price = p.price_for(model)
         usd = (
-            dec(usage.input_tokens) * p.input_per_mtok_usd
-            + dec(usage.output_tokens) * p.output_per_mtok_usd
-            + dec(usage.cache_write_tokens) * p.input_per_mtok_usd
+            dec(usage.input_tokens) * price.input_per_mtok_usd
+            + dec(usage.output_tokens) * price.output_per_mtok_usd
+            + dec(usage.cache_write_tokens) * price.input_per_mtok_usd
             * p.cache_write_multiplier
-            + dec(usage.cache_read_tokens) * p.input_per_mtok_usd
+            + dec(usage.cache_read_tokens) * price.input_per_mtok_usd
             * p.cache_read_multiplier
         ) / MILLION
         if batch:
@@ -96,7 +104,7 @@ class CostMeter:
             (budget - spent so far) / days left this month * multiplier
 
         This replaces a fixed cap on debates per day. A count was only ever a
-        proxy for money, and a poor one: a cycle costs seven or nine calls
+        proxy for money, and a poor one: a cycle costs five or seven calls
         depending on whether consensus is reached, and cache hits move it
         again, so "eight debates" guaranteed no particular sum.
 
