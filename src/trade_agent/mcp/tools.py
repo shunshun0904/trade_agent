@@ -56,8 +56,9 @@ TOOLS = [
     {
         "name": "get_agent_log",
         "description": (
-            "指定トレード(またはサイクル)の判断過程を返す。3案・相互批判・裁定・"
-            "検査結果と、各エージェント呼び出しのトークン数とコスト。"),
+            "指定トレード(またはサイクル)の判断過程を返す。地合い判定・3案・"
+            "相互批判・裁定・リスク査定と、各エージェント呼び出しのトークン数と"
+            "コスト。引数なしなら直近の議論を返す。"),
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -273,6 +274,21 @@ def _get_trades(ctx: AppContext, args: dict) -> dict:
     }
 
 
+def _latest_cycle_id(ctx: AppContext) -> str | None:
+    """The most recent cycle that reached a decision.
+
+    Cycle ids are minted inside a Lambda and appear in no report, so with no
+    argument the owner had nothing to pass and no way to find one — the log of
+    a system that has not traded was unreachable exactly when it was the only
+    thing worth reading. The audit trail already records every cycle's outcome
+    under `cycle:<id>`, newest first, so the default costs one query.
+    """
+    for event in ctx.store.audit.list_recent(20):
+        if event.action in ("traded", "no_trade"):
+            return event.event_id.split(":", 1)[1] or None
+    return None
+
+
 def _get_agent_log(ctx: AppContext, args: dict) -> dict:
     cycle_id = args.get("cycle_id")
     if not cycle_id and args.get("trade_id"):
@@ -281,7 +297,10 @@ def _get_agent_log(ctx: AppContext, args: dict) -> dict:
             return {"found": False, "message": "該当トレードがありません。"}
         cycle_id = trade.cycle_id
     if not cycle_id:
-        return {"found": False, "message": "trade_id か cycle_id を指定してください。"}
+        cycle_id = _latest_cycle_id(ctx)
+    if not cycle_id:
+        return {"found": False,
+                "message": "まだ議論が1回も記録されていません。"}
 
     calls = ctx.store.agent_calls.list_for_cycle(cycle_id)
     if not calls:

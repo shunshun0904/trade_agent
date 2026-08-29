@@ -378,3 +378,47 @@ def test_owner_facing_timestamps_are_actually_jst(ctx):
     as_of = payload["result"]["structuredContent"]["as_of_jst"]
     assert as_of.endswith("+09:00"), as_of
     assert not as_of.endswith("Z")
+
+
+def test_get_agent_log_defaults_to_the_most_recent_cycle(ctx):
+    """Cycle ids are minted inside a Lambda and appear in no report, so
+    without this the owner had an id-only tool and no source of ids."""
+    from trade_agent.storage.base import AuditEvent
+
+    now = ctx.clock.now()
+    ctx.store.audit.put(AuditEvent(
+        event_id="cycle:cyc-20260829T090000Z-scheduled", at=now,
+        actor="cycle:scheduled", action="no_trade",
+        detail="consensus not reached: 0/3 buy proposals, 1 required"))
+
+    assert call_tool(ctx, "get_agent_log", {})["cycle_id"] == \
+        "cyc-20260829T090000Z-scheduled"
+
+
+def test_get_agent_log_says_so_when_nothing_has_run(ctx):
+    """The old message asked for an argument the caller could not supply,
+    which read as user error rather than as an empty system."""
+    result = call_tool(ctx, "get_agent_log", {})
+    assert result["found"] is False
+    assert "議論が1回も" in result["message"]
+
+
+def test_the_latest_cycle_ignores_unrelated_audit_events(ctx):
+    """The audit table carries kill-switch flips and owner actions too; only
+    rows a cycle wrote name a cycle."""
+    from datetime import timedelta
+
+    from trade_agent.storage.base import AuditEvent
+
+    now = ctx.clock.now()
+    ctx.store.audit.put(AuditEvent(
+        event_id="cycle:cyc-20260829T090000Z-scheduled", at=now,
+        actor="cycle:scheduled", action="no_trade", detail="0/3"))
+    # Strictly newer, so the filter is what selects the cycle rather than the
+    # sort happening to be stable on equal timestamps.
+    ctx.store.audit.put(AuditEvent(
+        event_id="pause:1", at=now + timedelta(minutes=5), actor="owner",
+        action="pause_trading", detail="owner asked"))
+
+    from trade_agent.mcp.tools import _latest_cycle_id
+    assert _latest_cycle_id(ctx) == "cyc-20260829T090000Z-scheduled"
