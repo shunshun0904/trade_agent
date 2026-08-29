@@ -71,3 +71,16 @@ def test_no_argument_prints_the_tools_it_can_run():
     assert result.returncode == 2
     assert "usage:" in result.stderr
     assert "get_cycles" in result.stderr
+
+
+def test_it_cannot_send_mail():
+    """Without this the notifier warns "emergency email is inert" on every
+    run. That is true of the shell and false of the deployment — the Lambdas
+    get the addresses from template.yaml — so it reads as a broken alerting
+    path that is not broken."""
+    assert "export TA_DISABLE_EMAIL=1" in SCRIPT
+
+    template = (ROOT / "template.yaml").read_text(encoding="utf-8")
+    assert "TA_NOTIFY__TO_ADDRESS:" in template, (
+        "if the Lambdas stop being given an address, the warning is real "
+        "and this script should not be suppressing it")

@@ -60,6 +60,12 @@ fi
 
 # The store reads AWS_REGION, which Lambda sets for itself and a shell
 # does not. AWS_DEFAULT_REGION covers the aws CLI and boto3's own default.
+# A read-only script must not be able to send mail, and without this the
+# notifier warns "SES addresses are not configured; emergency email is inert"
+# on every run — which is a statement about this shell, not about the
+# deployment. The Lambdas get the addresses from template.yaml and do alert.
+export TA_DISABLE_EMAIL=1
+
 export AWS_REGION="$REGION"
 export AWS_DEFAULT_REGION="$REGION"
 export TA_STORAGE__TABLE_PREFIX="trade-agent-${ENVIRONMENT}"
