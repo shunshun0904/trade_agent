@@ -507,7 +507,8 @@ class DecisionCycle:
             idle_text,
         ]
         if boredom.triggered:
-            parts.append(f"退屈防止ルール発動中(合意閾値 {boredom.consensus_min}/3)")
+            parts.append("退屈防止ルール発動中(合意閾値 "
+                         f"{boredom.consensus_min}/{len(STRATEGISTS)})")
         return " / ".join(parts)
 
     # -- bookkeeping -------------------------------------------------------

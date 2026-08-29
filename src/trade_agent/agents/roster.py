@@ -86,7 +86,8 @@ def run_strategy(runner: AgentRunner, agent: str, analyst: AnalystOutput, *,
     at this stage.
     """
     payload = {"market_read": analyst.model_dump()}
-    instructions = "自分の立場から、買うか見送るかを1案だけ提示せよ。"
+    instructions = ("market_read(A1の地合い判定)と MarketSnapshot の account / "
+                    "constraints を踏まえ、買うか見送るかを1案だけ提示せよ。")
     if boredom_probe:
         payload["probe_mode"] = True
         instructions += (
