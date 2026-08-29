@@ -140,6 +140,25 @@ class ScreeningConfig(_Section):
     consensus_min: int = 1
 
 
+class ExitReviewConfig(_Section):
+    """LLM review of an open position (docs/OPEN-QUESTIONS.md D-1).
+
+    Off by default, and that is the point rather than caution for its own sake:
+    the failure mode this feature can introduce — cutting winners short — is
+    invisible without a baseline to compare against. The deterministic exits
+    have to produce some closed trades first.
+    """
+
+    enabled: bool = False
+    min_minutes: int = 30
+    atr_multiple: Decimal = Decimal("0.5")
+    max_idle_minutes: int = 240
+    # A ceiling on how much one long-held position may spend. Without it a
+    # trade held through a volatile week could eat the month's budget on its
+    # own, and the daily allowance would only notice after the fact.
+    max_reviews_per_position: int = 12
+
+
 class SnapshotConfig(_Section):
     candle_type: str = "1hour"
     candle_limit: int = 200
@@ -260,6 +279,7 @@ class Config(_Section):
     execution: ExecutionConfig
     schedule: ScheduleConfig
     screening: ScreeningConfig
+    exit_review: ExitReviewConfig
     snapshot: SnapshotConfig
     llm: LLMConfig
     cost: CostConfig

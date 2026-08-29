@@ -216,3 +216,25 @@ def test_a_failing_audit_write_does_not_sink_the_cycle(ctx, llm, monkeypatch):
     outcome = DecisionCycle(ctx, trigger=CycleTrigger.MANUAL,
                             cycle_id="cyc-audit-2").run()
     assert outcome is not None
+
+
+def test_the_invalidation_reaches_the_position(ctx, llm):
+    """A2 is asked what would kill the idea, and until now the answer was
+    dropped: cycle.py collected it into the proposals dict, the guard checked
+    any indicator values quoted in it, and nothing downstream ever saw it. It
+    is the exit review's central input, so it has to survive to the Position."""
+    llm.bias = "buy"
+    outcome = _cycle(ctx, cycle_id="cyc-inv").run()
+    assert outcome.traded, outcome.no_trade_reason
+
+    assert outcome.plan.invalidation, "the plan lost it before the executor"
+
+    # The entry rests as a PostOnly limit, so the Position only exists once a
+    # tick promotes the fill. Build it the way the executor does instead of
+    # depending on fill timing.
+    from trade_agent.execution.executor import build_position
+
+    record = ctx.store.orders.get(outcome.plan.client_order_id)
+    position = build_position(outcome.plan, record, ctx.clock.now())
+    assert position.invalidation == outcome.plan.invalidation
+    assert position.thesis == outcome.plan.thesis

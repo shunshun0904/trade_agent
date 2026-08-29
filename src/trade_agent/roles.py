@@ -19,3 +19,7 @@ from __future__ import annotations
 #: downstream derives from it, and because the debate protocol is worth being
 #: able to restore without hunting for the places that assumed one voice.
 STRATEGISTS = ["strategy"]
+
+#: The exit review, on an open position. Not a strategist: it never opens
+#: anything, and the only moves it can make are tightening ones.
+EXIT_AGENT = "exit"

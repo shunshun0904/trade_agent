@@ -355,7 +355,8 @@ class DecisionCycle:
 
         return self._size(state, snapshot, entry, stop, take,
                           probe=boredom.triggered, regime=analyst.regime,
-                          thesis=adopted["thesis"])
+                          thesis=adopted["thesis"],
+                          invalidation=adopted["invalidation"])
 
     def _mechanical_probe(self, state: SystemState, snapshot: MarketSnapshot,
                           analyst: AnalystOutput) -> ExecutionPlan | None:
@@ -373,7 +374,7 @@ class DecisionCycle:
 
     def _size(self, state: SystemState, snapshot: MarketSnapshot, entry: Decimal,
               stop: Decimal, take: Decimal, *, probe: bool, regime: str | None,
-              thesis: str) -> ExecutionPlan | None:
+              thesis: str, invalidation: str = "") -> ExecutionPlan | None:
         out = self.outcome
         sizing = self.ctx.risk.position_size(
             equity=snapshot.account.equity_jpy, entry=entry, stop_loss=stop,
@@ -385,6 +386,7 @@ class DecisionCycle:
             cycle_id=self.cycle_id, trade_id=f"trd-{self.cycle_id}", entry=entry,
             stop_loss=stop, take_profit=take, qty_btc=sizing.qty_btc,
             risk_jpy=sizing.risk_jpy, probe=probe, regime=regime, thesis=thesis,
+            invalidation=invalidation,
             consensus=out.consensus,
             client_order_id=entry_order_id(self.cycle_id))
 

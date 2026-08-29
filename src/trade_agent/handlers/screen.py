@@ -20,6 +20,8 @@ from ..models.state import CycleTrigger
 from ..orchestrator.context import AppContext
 from ..orchestrator.cycle import new_cycle_id
 from ..orchestrator.screening import evaluate_triggers
+from ..storage.base import LOCK_EXECUTION
+from ..timeutil import iso
 from .common import run_handler
 
 log = logging.getLogger(__name__)
@@ -40,8 +42,15 @@ def run(ctx: AppContext) -> dict:
         return {"debate": False, "reason": "monthly LLM budget exhausted"}
 
     halts = ctx.risk.evaluate_halts(state, now, budget_stopped=False)
+
+    if state.has_position():
+        # The other half of the trade. Nothing here can open anything — the
+        # review may only tighten an existing position, and with the feature
+        # off it costs one config read and returns.
+        return _review_open_position(ctx, state, now)
+
     snapshot = None
-    if not state.has_position() and not halts:
+    if not halts:
         try:
             snapshot = ctx.snapshot_builder().build(position=None)
         except ExchangeError as exc:
@@ -114,3 +123,106 @@ def _invoke_decide(ctx: AppContext, cycle_id: str, trigger: CycleTrigger) -> str
     client.invoke(FunctionName=function_name, InvocationType="Event",
                   Payload=json.dumps(payload).encode())
     return function_name
+
+
+def _review_open_position(ctx: AppContext, state, now) -> dict:
+    """Spec D-1: review the open position, or explain why not.
+
+    Every failure here is a no-op rather than an error. The deterministic exits
+    own this position and keep working — the exchange-side stop is live, the
+    5-minute tick evaluates the target — so a review that cannot run costs the
+    system nothing but the chance to tighten.
+    """
+    from ..orchestrator.exit_review import should_review
+
+    position = state.open_position
+    if not ctx.config.exit_review.enabled:
+        return {"debate": False, "reason": "a position is open; exit review is off"}
+
+    try:
+        snapshot = ctx.snapshot_builder().build(position=position)
+    except ExchangeError as exc:
+        return {"debate": False, "reason": f"market data unavailable: {exc}"}
+
+    decision = should_review(ctx.config, state, snapshot, now,
+                             cost_meter=ctx.cost_meter)
+    if not decision:
+        return {"debate": False, "exit_review": False, "reason": decision.reason}
+
+    outcome = _run_exit_review(ctx, state, snapshot, position, now)
+    return {"debate": False, "exit_review": True, "trigger": decision.reason,
+            **outcome}
+
+
+def _run_exit_review(ctx: AppContext, state, snapshot, position, now) -> dict:
+    """One LLM call, then apply whatever survives the guard.
+
+    Wrapped whole: an exception anywhere leaves the position exactly as it was.
+    That is the fallback the whole design rests on — an unavailable model must
+    be indistinguishable from the system as it behaved before this existed.
+    """
+    from ..agents.base import AgentRunner
+    from ..agents.roster import run_exit
+    from ..guards.deterministic import DeterministicGuard
+
+    guard = DeterministicGuard(ctx.config, snapshot)
+    runner = AgentRunner(llm=ctx.llm, config=ctx.config, store=ctx.store,
+                         clock=ctx.clock,
+                         cycle_id=f"exit-{position.trade_id}-{position.review_count}",
+                         router=ctx.router)
+    runner.set_prefix(snapshot.to_prompt_json(), lessons=[], trade_digest="",
+                      state_digest="")
+
+    last_price = snapshot.last_price
+    payload = {
+        "entry_price": float(position.entry_price),
+        "qty_btc": float(position.qty_btc),
+        "stop_loss": float(position.stop_loss),
+        "take_profit": float(position.take_profit),
+        "opened_at": iso(position.opened_at),
+        "hours_held": round((now - position.opened_at).total_seconds() / 3600, 1),
+        "unrealized_pnl_jpy": float(position.unrealized_pnl_jpy(last_price)),
+        "protection": position.protection,
+        "original_thesis": position.thesis,
+        "original_invalidation": position.invalidation,
+    }
+    allowed = {
+        "hold": "何も変えない",
+        "raise_stop": f"{float(position.stop_loss)} より高い値のみ",
+        "lower_target": f"{float(position.take_profit)} より低い値のみ",
+        "note": "損切りを広げる・利確を遠ざけることはできない",
+    }
+
+    try:
+        decision = run_exit(
+            runner, position=payload, allowed=allowed,
+            validator=lambda o: guard.validate_exit(o, position=position))
+    except Exception as exc:  # noqa: BLE001 - never let a review touch the exit path
+        log.warning("exit review failed for %s: %s", position.trade_id, exc)
+        _charge(ctx, state, runner)
+        return {"applied": False, "error": str(exc)}
+
+    executor = ctx.executor(owner=f"exit-review-{now.timestamp():.0f}")
+    if not executor.acquire_lock(LOCK_EXECUTION):
+        _charge(ctx, state, runner)
+        return {"applied": False, "error": "execution lock held by the tick"}
+    try:
+        manager = ctx.position_manager(executor)
+        update = manager.apply_exit_decision(
+            state, position, decision, last_price=last_price, now=now)
+    finally:
+        executor.release_lock(LOCK_EXECUTION)
+
+    _charge(ctx, state, runner)
+    return {"applied": True, "action": decision.action,
+            "invalidation_hit": decision.invalidation_hit,
+            "rationale": decision.rationale,
+            "closed_trade": update.closed.trade_id if update.closed else None,
+            "notes": update.notes}
+
+
+def _charge(ctx: AppContext, state, runner) -> None:
+    """Bill the call and persist, whichever way the review ended."""
+    state.daily.llm_cost_jpy += runner.usage.cost_jpy
+    state.monthly.llm_cost_jpy += runner.usage.cost_jpy
+    ctx.save_state(state)

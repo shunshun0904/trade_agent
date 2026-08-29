@@ -422,3 +422,33 @@ def test_the_latest_cycle_ignores_unrelated_audit_events(ctx):
 
     from trade_agent.mcp.tools import _latest_cycle_id
     assert _latest_cycle_id(ctx) == "cyc-20260829T090000Z-scheduled"
+
+
+def test_get_trades_separates_reviewed_exits_from_deterministic_ones(ctx, clock):
+    """The comparison the exit review has to earn its place against. A total
+    hides the failure mode: taking profit before the thesis played out shows up
+    only as reviewed take_profit exits being smaller than unreviewed ones."""
+    from trade_agent.models.trading import TradeRecord
+
+    now = clock.now()
+    for index, (reason, reviewed, pnl) in enumerate([
+        ("take_profit", False, "300"),
+        ("take_profit", True, "80"),
+        ("stop_loss", False, "-100"),
+    ]):
+        ctx.store.trades.put(TradeRecord(
+            trade_id=f"trd-x{index}", cycle_id=f"cyc-x{index}", pair="btc_jpy",
+            qty_btc=Decimal("0.0006"), entry_price=Decimal("15000000"),
+            entry_order_id=f"e{index}", entry_at=now,
+            stop_loss=Decimal("14850000"), take_profit=Decimal("15300000"),
+            exit_at=now, exit_reason=reason, exit_reviewed=reviewed,
+            net_pnl_jpy=Decimal(pnl), closed=True))
+
+    breakdown = call_tool(ctx, "get_trades", {})["summary"]["by_exit_reason"]
+
+    assert breakdown["take_profit"]["deterministic"] == {
+        "trades": 1, "net_pnl_jpy": 300.0}
+    assert breakdown["take_profit"]["reviewed"] == {
+        "trades": 1, "net_pnl_jpy": 80.0}
+    assert breakdown["stop_loss"]["deterministic"]["trades"] == 1
+    assert breakdown["stop_loss"]["reviewed"]["trades"] == 0

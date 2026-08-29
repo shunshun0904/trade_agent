@@ -258,6 +258,7 @@ def _get_trades(ctx: AppContext, args: dict) -> dict:
             "stop_loss": float(t.stop_loss),
             "take_profit": float(t.take_profit),
             "exit_reason": t.exit_reason,
+            "exit_reviewed": t.exit_reviewed,
             "net_pnl_jpy": float(jpy(t.net_pnl_jpy)) if t.net_pnl_jpy is not None else None,
             "fee_jpy": float(jpy(t.fee_jpy)),
             "regime": t.regime,
@@ -271,6 +272,7 @@ def _get_trades(ctx: AppContext, args: dict) -> dict:
             "probe_trades": len(probes),
             "probe_net_pnl_jpy": float(jpy(sum((t.net_pnl_jpy for t in probes),
                                                Decimal(0)))),
+            "by_exit_reason": _exit_breakdown(real),
         },
     }
 
@@ -288,6 +290,35 @@ def _latest_cycle_id(ctx: AppContext) -> str | None:
         if event.action in ("traded", "no_trade"):
             return event.event_id.split(":", 1)[1] or None
     return None
+
+
+def _exit_breakdown(trades) -> dict:
+    """Closed trades grouped by how they ended, split by whether a review
+    moved the levels.
+
+    This is the comparison the exit review has to earn its place against. The
+    risk it adds — taking profit before a thesis has played out — is invisible
+    in a total; it shows up as reviewed take_profit exits being smaller than
+    unreviewed ones. Grouping it here means the answer is a query rather than
+    an archaeology exercise.
+    """
+    out: dict[str, dict] = {}
+    for trade in trades:
+        if not trade.closed or trade.net_pnl_jpy is None:
+            continue
+        key = trade.exit_reason or "unknown"
+        bucket = out.setdefault(key, {"reviewed": _empty(), "deterministic": _empty()})
+        side = bucket["reviewed" if trade.exit_reviewed else "deterministic"]
+        side["trades"] += 1
+        side["net_pnl_jpy"] += float(jpy(trade.net_pnl_jpy))
+    for bucket in out.values():
+        for side in bucket.values():
+            side["net_pnl_jpy"] = round(side["net_pnl_jpy"], 1)
+    return out
+
+
+def _empty() -> dict:
+    return {"trades": 0, "net_pnl_jpy": 0.0}
 
 
 def _get_agent_log(ctx: AppContext, args: dict) -> dict:

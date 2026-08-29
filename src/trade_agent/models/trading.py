@@ -181,9 +181,26 @@ class Position(_Model):
     probe: bool = False
     entry_fee_jpy: Decimal = ZERO
     judge_output_id: str | None = None
+    thesis: str = ""
+    invalidation: str = Field(
+        default="",
+        description="what the strategist said would kill this idea. The exit "
+                    "review's central question is whether it has happened.")
     exit_order_id: str | None = Field(
         default=None, description="client_order_id of the in-flight exit, if any")
     exit_reason: str | None = None
+
+    # Exit review bookkeeping (spec: see docs/OPEN-QUESTIONS.md D-1). None until
+    # the first review; the trigger in orchestrator/exit_review.py reads both.
+    last_review_at: datetime | None = None
+    last_review_price: Decimal | None = None
+    review_count: int = 0
+    levels_revised: bool = Field(
+        default=False,
+        description="a review moved the stop or the target. Without this an "
+                    "LLM-influenced exit books as plain stop_loss and the "
+                    "before/after comparison the feature exists to enable "
+                    "becomes impossible after the fact.")
 
     # Hand-rolled OCO (spec 8). Both legs live on the exchange; whichever fills
     # first causes the other to be cancelled.
@@ -230,6 +247,9 @@ class TradeRecord(_Model):
     net_pnl_jpy: Decimal | None = None
     judge_output_id: str | None = None
     regime: str | None = None
+    invalidation: str = ""
+    exit_reviewed: bool = False
+    review_count: int = 0
     closed: bool = False
 
     def is_win(self) -> bool | None:
@@ -260,6 +280,12 @@ class ExecutionPlan(_Model):
     probe: bool = False
     regime: str | None = None
     thesis: str = ""
+    invalidation: str = Field(
+        default="",
+        description="the observation the strategist said would kill this idea. "
+                    "Carried to the Position so the exit review can ask whether "
+                    "it has happened; it was collected and dropped before that "
+                    "review existed.")
     judge_output_id: str | None = None
     consensus: Decimal | None = None
     client_order_id: str | None = Field(

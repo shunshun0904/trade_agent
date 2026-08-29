@@ -18,6 +18,7 @@ from decimal import Decimal
 
 from ..models.agent_io import (
     AnalystOutput,
+    ExitOutput,
     Lesson,
     ReflectOutput,
     ScoutOutput,
@@ -29,10 +30,13 @@ from .base import LLMRequest, LLMResponse, TokenUsage
 
 
 class StubLLMClient:
-    """`bias` steers the strategists: "buy", "wait" or "mixed" (default)."""
+    """`bias` steers the strategist: "buy", "wait" or "mixed" (default).
+    `exit_bias` steers the exit review: "hold" (default), "stop" or "target"."""
 
-    def __init__(self, *, bias: str = "mixed", cost_meter=None):
+    def __init__(self, *, bias: str = "mixed", exit_bias: str = "hold",
+                 cost_meter=None):
         self.bias = bias
+        self.exit_bias = exit_bias
         self.cost_meter = cost_meter
         self.calls: list[LLMRequest] = []
 
@@ -92,6 +96,35 @@ class StubLLMClient:
             confidence=0.62 + self._jitter(request.agent),
             thesis="押し目を拾い、直近レンジ上限を目標とする。",
             invalidation="安値割れで論拠は消える")
+
+    def _exit(self, request, facts) -> ExitOutput:
+        """`exit_bias` steers the review: "hold" (default), "stop" or "target".
+
+        The tightened levels are derived from the position in the task so the
+        stub cannot accidentally emit a widening one and make the guard look
+        satisfied when it is not.
+        """
+        position = facts.get("_position") or {}
+        if self.exit_bias == "stop":
+            stop = dec(position.get("stop_loss", 0))
+            entry = dec(position.get("entry_price", stop))
+            return ExitOutput(
+                action="raise_stop",
+                new_stop_loss=float(stop + (entry - stop) / Decimal(2)),
+                new_take_profit=None, invalidation_hit=True,
+                rationale="前提が崩れたので損切りを引き上げる。")
+        if self.exit_bias == "target":
+            target = dec(position.get("take_profit", 0))
+            entry = dec(position.get("entry_price", target))
+            return ExitOutput(
+                action="lower_target",
+                new_stop_loss=None,
+                new_take_profit=float(target - (target - entry) / Decimal(2)),
+                invalidation_hit=True,
+                rationale="上値の前提が崩れたので利確を引き下げる。")
+        return ExitOutput(action="hold", new_stop_loss=None, new_take_profit=None,
+                          invalidation_hit=False,
+                          rationale="無効化条件は実現していない。")
 
     def _reflect(self, request, facts) -> ReflectOutput:
         return ReflectOutput(

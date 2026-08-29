@@ -120,6 +120,34 @@ class ScoutOutput(_AgentModel):
     note: str
 
 
+ExitAction = Literal["hold", "raise_stop", "lower_target"]
+
+
+class ExitOutput(_AgentModel):
+    """The exit review, on an open position.
+
+    The action set is deliberately one-way. There is no "widen the stop" and no
+    "raise the target": everything this agent can say either leaves the trade
+    alone or tightens it. That is not a request made in the prompt — the guard
+    rejects a stop that moves down or a target that moves up, so the model
+    cannot increase risk on a live position even if it argues for it.
+
+    "Close now" needs no separate action. A stop raised through the market is
+    an immediate exit (`protection.arm` returns `close_immediately`), and a
+    target dropped to the bid fills as a maker sell on the next tick.
+    """
+
+    action: ExitAction
+    new_stop_loss: float | None = Field(
+        default=None, description="required for raise_stop, null otherwise")
+    new_take_profit: float | None = Field(
+        default=None, description="required for lower_target, null otherwise")
+    invalidation_hit: bool = Field(
+        description="has the condition the entry named as fatal actually "
+                    "happened? This is the question the review exists to ask.")
+    rationale: str = Field(description="why, in Japanese")
+
+
 AGENT_OUTPUT_MODELS = {
     "analyst": AnalystOutput,
     "strategy": StrategyOutput,
@@ -128,4 +156,5 @@ AGENT_OUTPUT_MODELS = {
     "risk": RiskOutput,
     "reflect": ReflectOutput,
     "scout": ScoutOutput,
+    "exit": ExitOutput,
 }

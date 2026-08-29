@@ -422,6 +422,55 @@ class PositionManager:
         update.notes.append(f"forced liquidation submitted ({reason})")
         return update
 
+    def apply_exit_decision(self, state, position: Position, decision, *,
+                            last_price: Decimal, now) -> PositionUpdate:
+        """Apply a validated exit review to the live position.
+
+        The guard has already refused anything that widens, so by the time this
+        runs the only possible change is a tighter stop or a nearer target. The
+        work here is making the exchange agree: a resting leg is holding the
+        balance at the old level, so it has to come off before the new one goes
+        on. `protection_generation` keeps the retired leg's deterministic id
+        from colliding with its replacement.
+
+        A stop moved through the market is how the review says "close now" —
+        `arm` reports that as `close_immediately` and `_arm_protection` books
+        the exit, exactly as it does when a position opens through its stop.
+        """
+        update = PositionUpdate()
+        position.last_review_at = now
+        position.last_review_price = dec(last_price)
+        position.review_count += 1
+
+        if decision.action == "hold":
+            state.open_position = position
+            update.notes.append("exit review: hold")
+            return update
+
+        if decision.action == "raise_stop":
+            old, new_level = position.stop_loss, dec(decision.new_stop_loss)
+            position.stop_loss = quantize_price(
+                new_level, self.config.exchange.price_digits)
+            what = f"stop {old} -> {position.stop_loss}"
+        else:
+            old, new_level = position.take_profit, dec(decision.new_take_profit)
+            position.take_profit = quantize_price(
+                new_level, self.config.exchange.price_digits)
+            what = f"target {old} -> {position.take_profit}"
+
+        position.levels_revised = True
+        update.notes.append(f"exit review: {what} ({decision.rationale})")
+        state.open_position = position
+
+        if position.stop_order_id or position.take_profit_order_id:
+            update.notes.extend(self.protection.disarm(
+                position, f"re-arming for a revised {decision.action}"))
+            position.stop_order_id = None
+            position.take_profit_order_id = None
+
+        self._arm_protection(state, position, update, last_price=last_price)
+        return update
+
     # -- bookkeeping -------------------------------------------------------
 
     def _write_trade(self, position: Position, entry_record: OrderRecord) -> None:
@@ -435,7 +484,8 @@ class PositionManager:
                 entry_at=position.opened_at, stop_loss=position.stop_loss,
                 take_profit=position.take_profit,
                 fee_jpy=entry_record.fee_jpy,
-                judge_output_id=position.judge_output_id)
+                judge_output_id=position.judge_output_id,
+                invalidation=position.invalidation)
         else:
             trade.qty_btc = position.qty_btc
             trade.entry_price = position.entry_price
@@ -475,6 +525,8 @@ class PositionManager:
         trade.exit_order_id = ", ".join(r.client_order_id for r in exit_records)
         trade.exit_at = now
         trade.exit_reason = reason or position.exit_reason
+        trade.exit_reviewed = position.levels_revised
+        trade.review_count = position.review_count
         trade.fee_jpy = fees
         trade.gross_pnl_jpy = gross
         trade.net_pnl_jpy = net

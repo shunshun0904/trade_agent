@@ -137,6 +137,27 @@ screening:
   # critique round still runs; what they no longer do is outvote each other.
   consensus_min: 1
 
+# LLM review of an OPEN position (docs/OPEN-QUESTIONS.md D-1).
+#
+# Off. The exits are deterministic today, and the risk this adds — cutting
+# winners short — cannot be seen without deterministic closed trades to compare
+# against. Turn it on once `get_trades` has a few rows, so the exit_reason
+# breakdown has a baseline.
+#
+# What it can do is one-way by construction: raise the stop, lower the target,
+# or nothing. Widening either is refused by the guard, so the model cannot add
+# risk to a live position. The 5-minute tick and the exchange-side stop are
+# untouched and keep working with the LLM unavailable.
+exit_review:
+  enabled: false
+  min_minutes: 30           # floor between reviews; same cadence as screen
+  # The real throttle. With the floor at 30 minutes, a quiet market falls
+  # through to max_idle_minutes and reviews once every 4 hours. Fewer decision
+  # points is also the most reliable brake on over-trading the exit.
+  atr_multiple: 0.5
+  max_idle_minutes: 240
+  max_reviews_per_position: 12
+
 snapshot:
   candle_type: 1hour
   candle_limit: 200

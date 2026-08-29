@@ -53,6 +53,7 @@ from typing import Callable
 
 from ..models.agent_io import (
     AnalystOutput,
+    ExitOutput,
     CritiqueOutput,
     JudgeOutput,
     ReflectOutput,
@@ -61,7 +62,7 @@ from ..models.agent_io import (
     StrategyOutput,
 )
 from .base import AgentRunner
-from ..roles import STRATEGISTS
+from ..roles import EXIT_AGENT, STRATEGISTS
 
 # Re-exported from ..roles, which config also reads. Every count downstream
 # derives from that one list — the prompts included, since a brief naming a
@@ -97,6 +98,22 @@ def run_strategy(runner: AgentRunner, agent: str, analyst: AnalystOutput, *,
             "根拠が薄いなら素直に wait と答えよ。")
     return runner.run(agent, payload, StrategyOutput, saw_agents=["analyst"],
                       validator=validator, instructions=instructions)
+
+
+def run_exit(runner: AgentRunner, *, position: dict, allowed: dict,
+             validator: Validator = None) -> ExitOutput:
+    """The exit review on an open position.
+
+    Sees the position and what the entry said would invalidate it, and nothing
+    about opening anything — there is nothing to open while this runs. The
+    `allowed` block states the bounds the guard will enforce anyway, so a
+    rejection is a surprise rather than the normal path.
+    """
+    return runner.run(
+        EXIT_AGENT, {"position": position, "allowed_actions": allowed},
+        ExitOutput, saw_agents=[], validator=validator,
+        instructions=("エントリー時の invalidation が実現したかを判定し、"
+                      "hold か、締める操作を1つ選べ。"))
 
 
 def run_reflect(runner: AgentRunner, *, statistics: dict,

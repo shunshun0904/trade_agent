@@ -19,6 +19,7 @@ from ..config import Config
 from ..errors import GuardRejection
 from ..models.agent_io import (
     AnalystOutput,
+    ExitOutput,
     JudgeOutput,
     RiskOutput,
     StrategyOutput,
@@ -187,6 +188,49 @@ class DeterministicGuard:
             violations.append("approved=false のとき adjustments を1つ以上書くこと")
         violations += self._quotes(output.rationale, *output.adjustments)
         _raise(violations, "risk")
+
+    def validate_exit(self, output: ExitOutput, *, position) -> None:
+        """The exit review may only ever tighten.
+
+        This is the whole safety argument for letting a model touch a live
+        position. A stop that can move down, or a target that can move up, is a
+        model with the power to increase risk on money already at stake —
+        exactly the decision the priority order in the constitution forbids,
+        and exactly the one a model holding a loss is worst at. Rather than ask
+        it not to, the shape is refused here.
+
+        A rejection costs nothing: the caller leaves the position untouched and
+        the deterministic exits carry on as before.
+        """
+        violations: list[str] = []
+        stop, target = dec(position.stop_loss), dec(position.take_profit)
+
+        if output.action == "raise_stop":
+            if output.new_stop_loss is None:
+                violations.append("raise_stop のとき new_stop_loss は必須")
+            elif dec(output.new_stop_loss) <= stop:
+                violations.append(
+                    f"損切りは切り上げのみ許される: 現在 {stop} に対して "
+                    f"{dec(output.new_stop_loss)} は損切り幅を広げることになる")
+            if output.new_take_profit is not None:
+                violations.append("raise_stop のとき new_take_profit は null にすること")
+
+        elif output.action == "lower_target":
+            if output.new_take_profit is None:
+                violations.append("lower_target のとき new_take_profit は必須")
+            elif dec(output.new_take_profit) >= target:
+                violations.append(
+                    f"利確は引き下げのみ許される: 現在 {target} に対して "
+                    f"{dec(output.new_take_profit)} は遠ざけになる")
+            if output.new_stop_loss is not None:
+                violations.append("lower_target のとき new_stop_loss は null にすること")
+
+        else:  # hold
+            if output.new_stop_loss is not None or output.new_take_profit is not None:
+                violations.append("hold のとき価格フィールドは両方 null にすること")
+
+        violations += self._quotes(output.rationale)
+        _raise(violations, "exit")
 
     # -- shared checks -----------------------------------------------------
 

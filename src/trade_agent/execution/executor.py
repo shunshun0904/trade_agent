@@ -378,4 +378,6 @@ def build_position(plan: ExecutionPlan, record: OrderRecord,
         probe=plan.probe,
         entry_fee_jpy=record.fee_jpy,
         judge_output_id=plan.judge_output_id,
+        thesis=plan.thesis,
+        invalidation=plan.invalidation,
     )
