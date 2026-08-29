@@ -137,7 +137,7 @@ Claude のチャット(カスタムコネクタ経由)から:
 - 「今の状況は?」 → `get_status`
 - 「昨日のレポートを見せて」 → `get_daily_report`
 - 「直近1週間の約定は?」 → `get_trades`(probe は分けて集計される)
-- 「あのトレードはなぜ入ったの?」 → `get_agent_log`(地合い判定・各戦略案・批判・裁定・リスク査定が全部残っている)
+- 「あのトレードはなぜ入ったの?」 → `get_agent_log`(地合い判定と戦略家の thesis が残っている)
 - 「今までの教訓は?」 → `get_lessons`
 - **「なぜ取引しないのか?」 → `get_cycles`** — 直近サイクルの結末と、見送り理由の内訳。`no_trade_reasons` にどの理由が何回出たかが集計される
 
@@ -171,12 +171,12 @@ bash scripts/tool.sh get_cycles
 
 | 内訳 | 意味 | 打つ手 |
 |---|---|---|
-| `consensus not reached: 0/2` ばかり | 戦略家2体が誰も買いを出していない。閾値ではなく判断 | エージェント側。`get_agent_log` で2体の rationale を読む |
-| `1/2` が混ざる | 提案は出ている。合意で落ちている | `screening.consensus_min`(現在 1) |
+| `consensus not reached: 0/1` ばかり | 戦略家が買いを出していない。閾値ではなく判断 | エージェント側。`get_agent_log` で thesis を読む |
 | ガード棄却が多い | 提案は通ったが決定論層で落ちている | 下の「`no_trade` が続く」 |
 | screening 段階で止まっている | 議論すら始まっていない | `screening` の閾値、または日次予算の使い切り |
 
-合議は現在 **2案中1案** で成立する(`screening.consensus_min: 1`)。
+戦略家は1体で、その1体が buy と言えば発注に進む(`screening.consensus_min: 1`)。
+以降の関門はすべて Python 側の決定論チェックである。
 3日ルール(退屈防止)は **オフ** — 唯一のレバーが合議の緩和であり、
 それが通常経路と同じ値になった今、発火しても何も変わらないため。
 

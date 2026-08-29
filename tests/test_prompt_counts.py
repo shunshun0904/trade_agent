@@ -29,35 +29,11 @@ def config():
     return get_config()
 
 
-def test_the_critique_brief_matches_the_number_of_other_proposals():
-    others = len(STRATEGISTS) - 1
-    text = prompts.critique_role(others=others)
-    assert f"他の{others}案" in text
-
-    for wrong in {1, 2, 3} - {others}:
-        assert f"他の{wrong}案" not in text
-
-
-def test_the_judge_brief_states_the_rule_actually_in_force(config):
-    minimum = config.screening.consensus_min
-    total = len(STRATEGISTS)
-    text = prompts.judge_role(total=total, minimum=minimum)
-
-    assert f"{total}案中{minimum}案未満" in text
-    assert f"{total}つの独立提案" in text
-
-
 def test_no_prompt_hardcodes_a_strategist_count(config):
     """The counts must arrive through the template, not be written into it."""
-    rendered = {
-        "constitution": prompts.constitution(config),
-        "critique": prompts.critique_role(others=len(STRATEGISTS) - 1),
-        "judge": prompts.judge_role(total=len(STRATEGISTS),
-                                    minimum=config.screening.consensus_min),
-        **prompts.ROLE_PROMPTS,
-    }
-    allowed = {str(len(STRATEGISTS)), str(len(STRATEGISTS) - 1),
-               str(config.screening.consensus_min)}
+    rendered = {"constitution": prompts.constitution(config),
+                **prompts.ROLE_PROMPTS}
+    allowed = {str(len(STRATEGISTS)), str(config.screening.consensus_min)}
 
     for name, text in rendered.items():
         for count in re.findall(r"(\d+)案", text):
@@ -70,11 +46,48 @@ def test_no_prompt_hardcodes_a_strategist_count(config):
 def test_every_agent_the_cycle_runs_has_a_role_prompt():
     """A missing entry is a KeyError at the worst moment — inside a live
     decision cycle, after the analyst has already been paid for."""
-    needed = {"analyst", *STRATEGISTS, "risk", "reflect", "scout"}
+    needed = {"analyst", *STRATEGISTS, "reflect", "scout"}
     assert needed <= set(prompts.ROLE_PROMPTS)
 
 
 def test_no_role_prompt_survives_for_an_agent_that_was_removed():
-    """The pessimist's brief stayed in the map after the agent was dropped
-    would be dead text that reads as if the roster still had three."""
-    assert not [a for a in prompts.ROLE_PROMPTS if "contrarian" in a]
+    """A brief left in the map after its phase was deleted is dead text that
+    reads like the protocol still has that step."""
+    gone = ("contrarian", "trend", "meanrev", "critique", "judge", "risk")
+    assert not [a for a in prompts.ROLE_PROMPTS if any(g in a for g in gone)]
+
+
+def test_the_strategist_brief_carries_what_the_removed_agents_contributed():
+    """A2 is the only judgement in the cycle now. The two things the judge and
+    the risk reviewer used to supply have to be stated where the agent that
+    sets the numbers can act on them."""
+    text = prompts.ROLE_PROMPTS[STRATEGISTS[0]]
+
+    # A4's stop-quality judgement, both directions.
+    assert "atr_pct" in text
+    assert "per_trade_risk_jpy" in text
+    assert "min_order_btc" in text
+
+    # And that its own answer is final, which was never true before.
+    assert "唯一の判断者" in text
+
+
+def test_every_snapshot_field_the_strategist_is_told_to_read_exists():
+    """The brief tells the agent to check `constraints.per_trade_risk_jpy` and
+    `indicators.atr_pct` by name. A name that is not in the snapshot is an
+    instruction the model cannot follow and has no way to detect — it will
+    either invent the value or quietly skip the check."""
+    from trade_agent.models.market import Indicators, TradingConstraints
+
+    text = prompts.ROLE_PROMPTS[STRATEGISTS[0]]
+    known = {
+        "constraints": set(TradingConstraints.model_fields),
+        "indicators": set(Indicators.model_fields),
+    }
+    referenced = re.findall(r"\b(constraints|indicators)\.(\w+)", text)
+    assert referenced, "the brief should name the fields it relies on"
+
+    for block, field in referenced:
+        assert field in known[block], (
+            f"the strategist brief says {block}.{field}, which the snapshot "
+            f"does not carry")

@@ -17,10 +17,10 @@ def _cycle(ctx, **kwargs) -> DecisionCycle:
 
 
 def test_a_consensus_cycle_places_one_entry(ctx, llm):
-    llm.bias = "mixed"  # all but the last strategist propose a buy
+    llm.bias = "mixed"  # the first strategist proposes a buy
     outcome = _cycle(ctx, cycle_id="cyc-a").run()
     assert outcome.traded, outcome.no_trade_reason
-    assert outcome.buy_count == len(STRATEGISTS) - 1
+    assert outcome.buy_count == 1
     assert outcome.buy_count >= ctx.config.screening.consensus_min
     assert len(ctx.exchange.orders_sent) == 1
     assert ctx.store.orders.get(entry_order_id("cyc-a")) is not None
@@ -59,8 +59,8 @@ def test_critiques_never_reveal_the_author(ctx, llm):
 def test_every_call_is_logged_with_cost(ctx, llm):
     _cycle(ctx, cycle_id="cyc-e").run()
     calls = ctx.store.agent_calls.list_for_cycle("cyc-e")
-    # analyst + N proposals + N critiques + judge + risk
-    assert len(calls) == 1 + 2 * len(STRATEGISTS) + 2
+    # analyst + N proposals
+    assert len(calls) == 1 + len(STRATEGISTS)
     assert all(c.io_s3_key for c in calls)
     assert all(c.cost_jpy >= 0 for c in calls)
     assert sum(c.input_tokens for c in calls) > 0
@@ -108,32 +108,45 @@ def test_an_exhausted_budget_stops_the_cycle_before_any_llm_call(ctx, llm):
     assert llm.calls == []
 
 
-def test_a_risk_rejection_stops_the_trade(ctx, llm):
-    llm.approve_risk = False
+def test_the_final_structural_check_stops_the_trade(ctx, llm, monkeypatch):
+    """The last gate is arithmetic now, not an agent.
+
+    A4 used to sit here and could veto. It was removed because the guard
+    rejected its answer whenever its numbers disagreed with Python's, which
+    left it vetoing arithmetic it was not allowed to change. What must still
+    hold is that a failing check stops the order.
+    """
+    from trade_agent.guards import deterministic
+
+    monkeypatch.setattr(deterministic.DeterministicGuard, "check_executable",
+                        lambda *a, **k: ["数量が最小注文数量の整数倍でない"])
     outcome = _cycle(ctx, cycle_id="cyc-j").run()
+
     assert not outcome.traded
-    assert "risk management rejected" in outcome.no_trade_reason
+    assert "final structural check failed" in outcome.no_trade_reason
+    assert "整数倍" in outcome.no_trade_reason
     assert ctx.exchange.orders_sent == []
 
 
-def test_the_risk_agent_is_the_last_agent_in_the_chain(ctx, llm):
-    """Nothing runs after A4. The remaining gates are all deterministic."""
+def test_the_strategist_is_the_last_agent_in_the_chain(ctx, llm):
+    """Nothing runs after A2. Every gate past it is deterministic."""
     _cycle(ctx, cycle_id="cyc-k").run()
     agents = [c.agent for c in ctx.store.agent_calls.list_for_cycle("cyc-k")]
-    assert agents[-1] == "risk"
-    assert "auditor" not in agents
-    assert "commander" not in agents
+    assert agents == ["analyst", *STRATEGISTS]
+    for gone in ("critique", "judge", "risk", "auditor", "commander"):
+        assert not any(gone in a for a in agents)
 
 
 def test_a_cycle_costs_one_call_per_role(ctx, llm):
-    """1 analyst + N proposals + N critiques + 1 judge + 1 risk.
+    """1 analyst + N proposals, and nothing conditional after them.
 
-    Derived rather than written down: this asserted 9 while the roster had
-    three strategists, and a literal would now assert a cycle that does not
-    happen instead of catching one that should not."""
+    Derived rather than written down. This asserted a literal 9 when there
+    were three strategists, a critique round, a judge and a risk reviewer; a
+    literal would now be asserting a cycle that cannot happen.
+    """
     outcome = _cycle(ctx, cycle_id="cyc-l").run()
     assert outcome.traded
-    assert outcome.llm_calls == 1 + 2 * len(STRATEGISTS) + 2
+    assert outcome.llm_calls == 1 + len(STRATEGISTS)
 
 
 def test_the_cycle_records_its_own_cost(ctx, llm):

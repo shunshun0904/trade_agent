@@ -7,28 +7,35 @@ another strategist's proposal is not an independent proposal, it is an echo
 from the logs rather than taken on trust.
 
 Roles and calls are different numbers, which is worth stating because they get
-confused. Spec 4 defines nine roles; the inspector (A5) and the commander (A6)
-are not implemented (see docs/OPEN-QUESTIONS.md A-5), leaving seven.
+confused. Spec 4 defines nine roles; five are not implemented. The inspector
+(A5) and the commander (A6) were never built (docs/OPEN-QUESTIONS.md A-5); the
+critique round, the judge (A3) and the risk reviewer (A4) were removed once the
+roster came down to a single strategist.
 
-A cycle makes **five or seven calls** at the current roster of two
-strategists, not one fixed number, because each strategist speaks twice — once
-to propose, once to critique the others — and because the last two agents are
-conditional. With N strategists it is 1 + 2N, then 1 + 2N + 2:
+A cycle makes **two calls**, and nothing about that is conditional any more:
 
-    analyst            1
-    strategy × N       2   (phase 1, independent proposals)
-    critique  × N      2   (phase 2, same agents, anonymised inputs)
+    analyst            1   reads the regime from the snapshot
+    strategy           1   proposes a buy, or waits
                       ---
-                       5   ← every cycle gets this far
-    judge              1   ┐ only when at least `consensus_min` strategists
-    risk               1   ┘ proposed a buy (currently 1 of 2)
-                      ---
-                       7
+                       2
 
-`Cycle._adjudicate` applies that consensus rule before calling the judge:
-with nothing to adjudicate, there is nothing to pay a judge for. So a
-no-consensus cycle — a normal outcome under spec 4.1 — costs five calls, not
-seven.
+The critique round, the judge (A3) and the risk reviewer (A4) were removed with
+the second and third strategists. The first needs peers; the second needs
+something to choose between; the third approved or vetoed a size Python had
+already computed, and the guard rejected its output whenever its numbers
+disagreed with Python's.
+
+What replaced them is not nothing — it is the layer that was always underneath:
+
+* `guards/deterministic.py` rejects bad price geometry, an entry too far from
+  the market, a take-profit inside the round-trip fee, and any indicator value
+  quoted in prose that does not match the snapshot;
+* `risk/rules.py` sizes from the loss limit and refuses a plan whose stop is so
+  wide that even the minimum lot would exceed it;
+* `check_executable` runs those checks once more on the exact numbers the
+  executor is about to send.
+
+None of that guesses, and none of it can be argued with.
 
 The scout is a separate opt-in call in the screen function and is off by
 default (`screening.scout_mode`); the reflector runs in its own function on its
@@ -55,7 +62,6 @@ from ..models.agent_io import (
 )
 from .base import AgentRunner
 from ..roles import STRATEGISTS
-from .prompts import critique_role, judge_role
 
 # Re-exported from ..roles, which config also reads. Every count downstream
 # derives from that one list — the prompts included, since a brief naming a
@@ -90,56 +96,6 @@ def run_strategy(runner: AgentRunner, agent: str, analyst: AnalystOutput, *,
             "根拠が薄いなら素直に wait と答えよ。")
     return runner.run(agent, payload, StrategyOutput, saw_agents=["analyst"],
                       validator=validator, instructions=instructions)
-
-
-def run_critique(runner: AgentRunner, agent: str, others: list[dict], *,
-                 validator: Validator = None) -> CritiqueOutput:
-    """Phase 2 — critique of the other two, anonymised.
-
-    `others` carries opaque ids only. Which strategist wrote which proposal is
-    never revealed, so a critique cannot become an argument about roles.
-    """
-    count = len(others)
-    return runner.run(
-        agent.replace("strategy:", "critique:"),
-        {"proposals": others}, CritiqueOutput,
-        saw_agents=["strategy:anonymous"], validator=validator,
-        role_override=critique_role(others=count),
-        instructions=f"匿名化された他の{count}案について、"
-                     "それぞれ最大の弱点を1つ指摘せよ。")
-
-
-def run_judge(runner: AgentRunner, *, analyst: AnalystOutput, proposals: list[dict],
-              critiques: list[dict], consensus_min: int, buy_count: int,
-              validator: Validator = None) -> JudgeOutput:
-    return runner.run(
-        "judge",
-        {
-            "market_read": analyst.model_dump(),
-            "proposals": proposals,
-            "critiques": critiques,
-            "consensus_rule": {
-                "buy_proposals": buy_count,
-                "required_buy_proposals": consensus_min,
-                "total_proposals": len(proposals),
-            },
-        },
-        JudgeOutput,
-        saw_agents=["analyst", *STRATEGISTS, "critique"],
-        validator=validator,
-        role_override=judge_role(total=len(proposals), minimum=consensus_min),
-        instructions=f"{len(proposals)}案と批判を統合し、"
-                     "採択案を1つ決めるか no_trade を選べ。")
-
-
-def run_risk(runner: AgentRunner, *, plan: dict, account: dict, limits: dict,
-             validator: Validator = None) -> RiskOutput:
-    return runner.run(
-        "risk",
-        {"adopted_plan": plan, "account": account, "risk_limits": limits},
-        RiskOutput, saw_agents=["judge"], validator=validator,
-        instructions=("採択案のサイズ・損切り・利確を査定せよ。"
-                      "数量とリスク額は算出済みである。作り直さず、妥当性を判断せよ。"))
 
 
 def run_reflect(runner: AgentRunner, *, statistics: dict,

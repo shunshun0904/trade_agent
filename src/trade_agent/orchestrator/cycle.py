@@ -1,18 +1,25 @@
 """The decision cycle (spec 3 layer 2, spec 4.1).
 
     reconcile -> budget -> snapshot -> safety -> boredom
-      -> A1 analyst
-      -> A2a/A2b/A2c independent proposals   (mutually blind)
-      -> A2 cross-critique                   (anonymised)
-      -> consensus rule                      (Python, not the model)
-      -> A3 judge -> sizing (Python) -> A4 risk
+      -> A1 analyst          reads the regime
+      -> A2 strategy         proposes a buy, or waits
+      -> consensus rule      (Python, not the model)
+      -> sizing              (Python)
+      -> check_executable    (Python)
       -> execute
 
-Three things are deliberately not the model's job. The consensus rule is
-counted in Python, because a rule the judge could talk itself out of is not a
-rule. Position size is computed in Python and the risk agent is checked against
-it. And every safety gate is evaluated before the first token is spent, so a
-halted system costs nothing to keep running.
+Two LLM calls. The cross-critique round, the judge (A3) and the risk reviewer
+(A4) sat between the proposal and the sizing until the roster came down to one
+strategist; with one voice there is nothing to critique and nothing to choose
+between, and the risk reviewer only ever approved or vetoed numbers Python had
+already computed.
+
+What is deliberately not the model's job has not changed, and now carries all
+the weight. The consensus rule is counted in Python, because a rule the model
+could talk itself out of is not a rule. Position size is computed in Python.
+`check_executable` re-runs the spec-5 arithmetic on the exact numbers headed
+for the exchange. And every safety gate is evaluated before the first token is
+spent, so a halted system costs nothing to keep running.
 
 The owner-facing report is assembled in Python too (see `report.py`), from the
 structured output the agents have already produced. There is no separate agent
@@ -32,9 +39,6 @@ from ..agents.base import AgentRunner
 from ..agents.roster import (
     STRATEGISTS,
     run_analyst,
-    run_critique,
-    run_judge,
-    run_risk,
     run_strategy,
 )
 from ..errors import DuplicateOrder, ExchangeError, GuardRejection, LockNotAcquired
@@ -55,6 +59,12 @@ from ..timeutil import iso
 from .report import compose_no_trade, compose_traded
 
 log = logging.getLogger(__name__)
+
+#: Written into `no_trade_reason`, and read back by the daily report to count
+#: how often a strategist proposed a buy. Defined here, where it is produced,
+#: because a reader with its own copy of the string is a silent zero waiting to
+#: happen — which is exactly how the old judge-call version failed.
+NO_CONSENSUS_PREFIX = "consensus not reached"
 
 CYCLE_LOCK_TTL_SECONDS = 86_400
 
@@ -264,7 +274,6 @@ class DecisionCycle:
             out.regime = analyst.regime
             proposals = self._collect_proposals(runner, guard, analyst,
                                                 probe=boredom.triggered)
-            self._collect_critiques(runner, guard, proposals)
             plan = self._adjudicate(runner, guard, state, snapshot, analyst,
                                     proposals, boredom)
         except GuardRejection as exc:
@@ -272,24 +281,22 @@ class DecisionCycle:
             return self._abort(state,
                                f"agent output could not be validated: {exc}")
 
+        self._finish_llm_accounting(state, runner)
         if plan is None:
-            self._finish_llm_accounting(state, runner)
             return self._abort(state, out.no_trade_reason or "no trade this cycle")
 
-        approved = self._review(runner, guard, state, snapshot, plan, analyst)
-        self._finish_llm_accounting(state, runner)
-        if not approved:
-            return self._abort(state, out.no_trade_reason or "final review said no")
+        if not self._check_executable(guard, state, snapshot, plan, analyst):
+            return self._abort(state, out.no_trade_reason or "final check said no")
 
         return self._execute(state, plan, executor)
 
     def _collect_proposals(self, runner: AgentRunner, guard: DeterministicGuard,
                            analyst: AnalystOutput, *, probe: bool) -> list[dict]:
-        """Phase 1 — three proposals, none of which has seen the others.
+        """The proposal, or proposals if the roster ever grows again.
 
-        Sequential calls, but each request is built only from the snapshot and
-        A1's read, so ordering carries no information between them. The
-        `saw_agents` field on every logged call is what makes that auditable.
+        Each request is built only from the snapshot and A1's read, so no
+        strategist can see another's proposal. `saw_agents` on every logged
+        call is what keeps that auditable rather than asserted (spec 4.1).
         """
         proposals: list[dict] = []
         for index, agent in enumerate(STRATEGISTS):
@@ -309,24 +316,17 @@ class DecisionCycle:
             })
         return proposals
 
-    def _collect_critiques(self, runner: AgentRunner, guard: DeterministicGuard,
-                           proposals: list[dict]) -> list[dict]:
-        """Phase 2 — one round, each strategist sees the other two anonymised."""
-        critiques: list[dict] = []
-        for index, agent in enumerate(STRATEGISTS):
-            others = [_anonymise(p) for i, p in enumerate(proposals) if i != index]
-            output = run_critique(runner, agent, others)
-            critiques.append({"by": f"C{index + 1}",
-                              "revised_confidence": output.revised_confidence,
-                              "critiques": [c.model_dump() for c in output.critiques]})
-            proposals[index]["revised_confidence"] = output.revised_confidence
-        return critiques
-
     def _adjudicate(self, runner: AgentRunner, guard: DeterministicGuard,
                     state: SystemState, snapshot: MarketSnapshot,
                     analyst: AnalystOutput, proposals: list[dict],
                     boredom: BoredomDecision) -> ExecutionPlan | None:
-        """Consensus rule, judge, and Python-side sizing."""
+        """Consensus rule, then Python-side sizing.
+
+        There is no judge here any more. With one strategist there was nothing
+        for it to choose between, and the numbers it could have adjusted are
+        re-validated by the same geometry checks either way — so the proposal
+        the strategist made is the plan that gets sized.
+        """
         out = self.outcome
         buys = [p for p in proposals if p["action"] == "buy"]
         out.buy_count = len(buys)
@@ -336,31 +336,17 @@ class DecisionCycle:
             if boredom.triggered:
                 return self._mechanical_probe(state, snapshot, analyst)
             out.no_trade_reason = (
-                f"consensus not reached: {len(buys)}/{len(proposals)} buy proposals, "
-                f"{consensus_min} required")
+                f"{NO_CONSENSUS_PREFIX}: {len(buys)}/{len(proposals)} buy "
+                f"proposals, {consensus_min} required")
             return None
 
-        critique_payload = [
-            {"proposal_id": p["id"], "revised_confidence": p.get("revised_confidence")}
-            for p in proposals]
-        judge = run_judge(
-            runner, analyst=analyst, proposals=[_anonymise(p) for p in proposals],
-            critiques=critique_payload, consensus_min=consensus_min,
-            buy_count=len(buys),
-            validator=lambda o: guard.validate_judge(
-                o, proposal_ids=[p["id"] for p in proposals],
-                buy_count=len(buys), consensus_min=consensus_min))
-        out.consensus = dec(judge.consensus)
+        adopted = buys[0]
+        out.consensus = dec(adopted["confidence"])
 
-        if judge.decision == "no_trade":
-            if boredom.triggered:
-                return self._mechanical_probe(state, snapshot, analyst)
-            out.no_trade_reason = f"judge chose no_trade: {judge.rationale}"
-            return None
-
-        entry = quantize_price(dec(judge.entry), self.config.exchange.price_digits)
-        stop = quantize_price(dec(judge.stop_loss), self.config.exchange.price_digits)
-        take = quantize_price(dec(judge.take_profit), self.config.exchange.price_digits)
+        entry = quantize_price(dec(adopted["entry"]), self.config.exchange.price_digits)
+        stop = quantize_price(dec(adopted["stop_loss"]), self.config.exchange.price_digits)
+        take = quantize_price(dec(adopted["take_profit"]),
+                              self.config.exchange.price_digits)
 
         if boredom.triggered:
             # Spec 7: a probe's stop is set mechanically, tighter than whatever
@@ -369,7 +355,7 @@ class DecisionCycle:
 
         return self._size(state, snapshot, entry, stop, take,
                           probe=boredom.triggered, regime=analyst.regime,
-                          thesis=judge.rationale)
+                          thesis=adopted["thesis"])
 
     def _mechanical_probe(self, state: SystemState, snapshot: MarketSnapshot,
                           analyst: AnalystOutput) -> ExecutionPlan | None:
@@ -402,44 +388,25 @@ class DecisionCycle:
             consensus=out.consensus,
             client_order_id=entry_order_id(self.cycle_id))
 
-    def _review(self, runner: AgentRunner, guard: DeterministicGuard,
-                state: SystemState, snapshot: MarketSnapshot,
-                plan: ExecutionPlan, analyst: AnalystOutput) -> bool:
-        """A4 sizing review, then the last structural check on the exact
-        numbers that would go to the exchange.
+    def _check_executable(self, guard: DeterministicGuard, state: SystemState,
+                          snapshot: MarketSnapshot, plan: ExecutionPlan,
+                          analyst: AnalystOutput) -> bool:
+        """The last gate, and now the only one after the strategist.
 
-        This is the end of the agent chain. What used to follow — an auditor
-        looking for contradictions and a commander casting a final vote — was
-        a model checking models, downstream of four gates that do not guess:
-        the consensus count, the sizing calculation, the per-agent guard, and
-        `check_executable` below. Removing them removed two ways for a cycle
-        to be talked out of a decision Python had already settled.
+        This used to call A4, a risk agent that approved or vetoed a size
+        Python had already computed — and `guard.validate_risk` rejected its
+        answer whenever its numbers disagreed with Python's, so its real
+        latitude was a veto on arithmetic it was not allowed to change. That is
+        the "model checking models" shape the inspector and the commander were
+        removed for, one layer further down.
+
+        What survives is the part that never guessed: `check_executable` runs
+        the spec-5 arithmetic on the exact numbers the executor will send. The
+        stop-quality judgement A4 nominally contributed now sits in the
+        strategist's own brief, where the agent that chooses the stop can act
+        on it rather than be told about it afterwards.
         """
         out = self.outcome
-        limits = {
-            "per_trade_risk_jpy": float(self.ctx.risk.risk_limit_jpy(
-                snapshot.account.equity_jpy, probe=plan.probe)),
-            "computed_qty_btc": float(plan.qty_btc),
-            "computed_risk_jpy": float(plan.risk_jpy),
-            "min_order_btc": float(self.config.exchange.min_order_btc),
-            "probe": plan.probe,
-        }
-        risk_out = run_risk(
-            runner,
-            plan={"entry": float(plan.entry), "stop_loss": float(plan.stop_loss),
-                  "take_profit": float(plan.take_profit),
-                  "qty_btc": float(plan.qty_btc), "risk_jpy": float(plan.risk_jpy),
-                  "thesis": plan.thesis},
-            account={"equity_jpy": float(snapshot.account.equity_jpy),
-                     "jpy_free": float(snapshot.account.jpy_free)},
-            limits=limits,
-            validator=lambda o: guard.validate_risk(
-                o, expected_qty=plan.qty_btc, expected_risk_jpy=plan.risk_jpy,
-                entry=plan.entry, stop_loss=plan.stop_loss))
-        if not risk_out.approved:
-            out.no_trade_reason = f"risk management rejected the plan: {risk_out.rationale}"
-            return False
-
         violations = guard.check_executable(
             entry=plan.entry, stop_loss=plan.stop_loss, take_profit=plan.take_profit,
             qty_btc=plan.qty_btc, jpy_available=snapshot.account.jpy_free,
@@ -449,7 +416,7 @@ class DecisionCycle:
             return False
 
         out.headline, out.report_text = compose_traded(
-            analyst=analyst, plan=plan, risk=risk_out, state=state,
+            analyst=analyst, plan=plan, state=state,
             buy_count=out.buy_count, proposal_count=len(STRATEGISTS),
             consensus=out.consensus,
             protection_note=self._protection_note())

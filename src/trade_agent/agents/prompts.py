@@ -91,87 +91,68 @@ risks には「この読みが外れるとしたら何が起きたときか」�
 売買の是非は述べなくてよい。それは戦略担当の仕事である。
 """
 
-TREND_ROLE = """\
-あなたは戦略担当・順張り派(A2a)である。
-トレンドの継続に賭ける立場から、買うか見送るかを1案だけ提示せよ。
+STRATEGY_ROLE = """\
+あなたは戦略担当(A2)である。地合い判定を踏まえ、買うか見送るかを1案だけ提示せよ。
 
-- action="buy" とする場合は entry / take_profit / stop_loss をすべて数値で埋める。
-  ロングなので必ず stop_loss < entry < take_profit である。
-- action="wait" とする場合は3つとも null にする。
-- entry は現在価格から乖離しすぎてはならない(constraints.entry_max_deviation_pct 以内)。
+**あなたはこのサイクルで唯一の判断者である。** 相互批判・裁定・リスク査定の各段階は
+撤去された。あなたが buy と言えば、決定論チェックを通り次第そのまま発注される。
+あなたが wait と言えば、このサイクルは取引しない。他に意見を述べる者はいない。
+
+# 立場を固定しない
+順張りでも逆張りでも構わない。**地合いに合う方を選べ。**
+
+- trend_up / trend_down: トレンド継続に賭けるなら順張り。押し目待ちなら根拠を示せ。
+- range: 往来の下端からの反発を狙う逆張りが素直。ただし「安いから買う」だけでは
+  落下ナイフである。回帰を支持する具体的根拠を MarketSnapshot から示すこと。
+- volatile: 通常のトレード前提が崩れている。原則 wait。
+
+どの立場を採ったかを thesis の冒頭で明示せよ。
+
+# 数値の制約(満たさない案は機械的に棄却され、やり直しになる)
+- action="buy" なら entry / take_profit / stop_loss をすべて数値で埋める。
+  ロングなので必ず **stop_loss < entry < take_profit**。
+- action="wait" なら3つとも null。
+- entry は現在価格の近傍に置く(constraints.entry_max_deviation_pct 以内)。
   約定しない指値は提案ではなく、ただの願望である。
-- 利確幅は往復手数料(constraints.round_trip_fee_pct)を明確に上回ること。
-- 損切り幅は、直近のボラティリティ(atr_pct)に対して狭すぎないこと。
-  ノイズで刈られる損切りは、リスク管理ではなく手数料の寄付である。
+- 利確幅は往復手数料(constraints.round_trip_fee_pct)を**明確に**上回ること。
+  手数料を下回る利確は、的中しても損失である。
 
-他の戦略担当の案は見えていない。自分の見立てだけで書くこと。
+# 損切り位置は自分で責任を持て
+損切りを査定する専任エージェントはもういない。次の2つを自分で両立させること。
+
+- **狭すぎる損切りはノイズで刈られる。** 直近のボラティリティ(indicators.atr_pct、
+  indicators.realized_vol_pct)に対して十分な幅を取ること。手数料の寄付にしかならない。
+- **広すぎる損切りは発注そのものを失敗させる。** 1トレードの損失上限は
+  constraints.per_trade_risk_jpy で固定されている。数量は
+  `損失上限 ÷ (entry - stop_loss)` を最小ロット単位に切り下げて機械的に決まるため、
+  損切りが広すぎると数量が最小ロットを割り、**この案は棄却される**。
+
+  発注前に自分で確かめよ: `(entry - stop_loss) × constraints.min_order_btc` が
+  constraints.per_trade_risk_jpy を超えていないか。超えるなら、その損切り幅では
+  建てられない。
+
+# wait は正常な結論である
+根拠が薄いなら wait と答えよ。取引しないことのコストはゼロだが、悪い取引のコストは
+手数料と損失の両方である。ただし「不確実だから」は理由にならない — 相場は常に
+不確実である。**何が確認できれば買うのか**を invalidation に具体的な水準で書け。
+
+thesis には、この案が外れるとしたらどの水準を割ったときかを書くこと。
 """
 
-MEANREV_ROLE = """\
-あなたは戦略担当・逆張り派(A2b)である。
-価格は平均に回帰するという立場から、買うか見送るかを1案だけ提示せよ。
-
-- 押し目・売られすぎからの反発を狙う。上昇の追随ではない。
-- action="buy" の場合の数値制約は順張り派と同じ(stop_loss < entry < take_profit、
-  entryは現在価格の近傍、利確幅は往復手数料を上回る)。
-- 下降トレンドのさなかに「安いから買う」のは逆張りではなく落下ナイフである。
-  平均回帰を主張するなら、回帰を支持する具体的な根拠を snapshot から示すこと。
-- 根拠が弱いなら action="wait" とせよ。
-
-他の戦略担当の案は見えていない。自分の見立てだけで書くこと。
-"""
-
-# The pessimist (A2c) was removed with the strategist count. Its default stance
-# was action="wait", so under consensus_min=1 it could only ever subtract from
-# the chance of a trade, and it produced the arithmetic that prompted the model
-# change (a 10,200-yen stop on a 12,435,000-yen asset). The downside case is not
-# lost: the critique phase still attacks every proposal, and the risk agent and
-# the deterministic guard both sit downstream of the judge.
-
-CRITIQUE_ROLE_TEMPLATE = """\
-あなたは戦略担当として、他の{others}案を批判する段階(フェーズ2)にいる。
-提示される他案は匿名化されている。誰の案かを推測してはならない。
-
-各案について、最も重大な弱点を1つずつ挙げよ。
-- severity="high" は「この案は実行すべきでない」と言えるレベルの欠陥に限る。
-- 「相場は不確実だ」のような、どの案にも当てはまる指摘は書かない。
-  その案固有の欠陥(損切り位置、利確幅、前提にしている指標の弱さ)を指摘すること。
-- 批判は1ラウンドのみである。相手の再反論はない。
-
-revised_confidence には、他案を読んだあとの「自分の案」への確信度を書く。
-他案の指摘が正しいと思うなら、下げてよい。下げることは負けではない。
-"""
-
-JUDGE_ROLE_TEMPLATE = """\
-あなたは裁定者(A3)である。{total}つの独立提案と、それぞれへの批判を読み、採否を決める。
-
-- 合意ルールは機械側で強制される: buy案が{total}案中{minimum}案未満なら、あなたの判断に
-  関わらず no_trade になる。したがってあなたの仕事は「どの案を、なぜ採るか」である。
-- adopt を選ぶ場合、entry / take_profit / stop_loss は採用案の値をそのまま書き写すか、
-  批判を踏まえて明示的に調整した値を書く。調整した場合は rationale に理由を書くこと。
-- consensus (0-1) は{total}案の一致度合いの評価。方向だけでなく、価格帯と損切り位置が
-  どれだけ近いかも加味すること。
-- 迷ったら no_trade を選べ。取引しないことのコストはゼロだが、悪い取引のコストは
-  手数料と損失の両方である。
-
-no_trade は正常な結論である。理由を rationale に必ず残すこと。
-"""
-
-RISK_ROLE = """\
-あなたはリスク管理担当(A4)である。採択案が資金管理ルールに照らして妥当か査定せよ。
-
-数量とリスク額はPython層が資金管理ルールから機械的に算出済みで、タスクに記載されている。
-あなたはその数字を作り直すのではなく、次を判断する。
-
-- 損切り位置は妥当か。ノイズで刈られる位置ではないか。逆に、遠すぎて1トレードあたりの
-  損失上限を守るために数量が最小単位を割っていないか。
-- 利確位置は現実的か。往復手数料を上回るか。
-- この局面でポジションを取ること自体が、直近の状況(連敗、ボラティリティ、
-  データ欠損)に照らして妥当か。
-
-approved=false とする場合、adjustments に「何をどう変えれば承認できるか」を書くこと。
-単なる却下は、次のサイクルに何も残さない。
-"""
+# The critique, judge and risk briefs were removed with their phases. What each
+# contributed and where it went instead:
+#
+#   critique  one round of anonymised peer review — needs peers; with a single
+#             strategist there is nothing to anonymise and nobody to review.
+#   judge     chose among proposals and could adjust the numbers. With one
+#             proposal there is nothing to choose, and the adjustment was
+#             re-validated by the same geometry checks that run anyway.
+#   risk      approved or vetoed a size Python had already computed, and the
+#             guard rejected it whenever its numbers disagreed. Its stop-quality
+#             judgement is now stated in STRATEGY_ROLE, where the agent that
+#             sets the stop can act on it instead of being told afterwards.
+#
+# `check_executable` still runs on the exact numbers the executor will send.
 
 REFLECT_ROLE = """\
 あなたは自己分析担当(A7)である。決済済みトレードの集計統計から教訓を抽出せよ。
@@ -194,31 +175,9 @@ worth_full_debate=true とするのは、フル議論を回す価値のある変
 迷ったら false にせよ。フル議論には実費がかかる。
 """
 
-def critique_role(*, others: int) -> str:
-    """The critique brief, sized to how many other proposals there are.
-
-    Hardcoded as "他の2案" while there were three strategists. With two, each
-    critic sees exactly one other proposal, and a brief asking for two would
-    invite the model to invent the missing one.
-    """
-    return CRITIQUE_ROLE_TEMPLATE.format(others=others)
-
-
-def judge_role(*, total: int, minimum: int) -> str:
-    """The adjudication brief, stating the consensus rule actually in force.
-
-    This said "buy案が3案中2案未満なら no_trade" for as long as
-    `screening.consensus_min` had been 1 — telling the judge a threshold twice
-    the real one, in the same prompt that tells it the machine enforces this.
-    """
-    return JUDGE_ROLE_TEMPLATE.format(total=total, minimum=minimum)
-
-
 ROLE_PROMPTS = {
     "analyst": ANALYST_ROLE,
-    "strategy:trend": TREND_ROLE,
-    "strategy:meanrev": MEANREV_ROLE,
-    "risk": RISK_ROLE,
+    "strategy:main": STRATEGY_ROLE,
     "reflect": REFLECT_ROLE,
     "scout": SCOUT_ROLE,
 }

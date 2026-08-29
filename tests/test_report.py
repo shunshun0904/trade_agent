@@ -7,7 +7,7 @@ the plan, and the agents' own sentences are quoted rather than paraphrased.
 
 from decimal import Decimal
 
-from trade_agent.models.agent_io import AnalystOutput, RiskOutput
+from trade_agent.models.agent_io import AnalystOutput
 from trade_agent.models.state import SystemState
 from trade_agent.models.trading import ExecutionPlan
 from trade_agent.orchestrator.report import compose_no_trade, compose_traded
@@ -38,18 +38,13 @@ def _state(clock, config) -> SystemState:
                                jst_date_str(now), jst_month_str(now))
 
 
-def _risk() -> RiskOutput:
-    return RiskOutput(approved=True, qty_btc=0.0006, stop_loss=14850000.0,
-                      take_profit=15300000.0, risk_jpy=90.0,
-                      rationale="1トレードリスク上限の範囲内。", adjustments=[])
-
 
 # -- a cycle that traded --------------------------------------------------
 
 def test_the_report_carries_every_number_from_the_plan(clock, config):
     _, body = compose_traded(
-        analyst=_analyst(), plan=_plan(), risk=_risk(), state=_state(clock, config),
-        buy_count=2, proposal_count=3, consensus=E("0.72"))
+        analyst=_analyst(), plan=_plan(), state=_state(clock, config),
+        buy_count=1, proposal_count=1, consensus=E("0.72"))
 
     assert "15,000,000" in body      # entry
     assert "14,850,000" in body      # stop
@@ -60,8 +55,8 @@ def test_the_report_carries_every_number_from_the_plan(clock, config):
 
 def test_the_percentages_are_computed_not_asserted(clock, config):
     _, body = compose_traded(
-        analyst=_analyst(), plan=_plan(), risk=_risk(), state=_state(clock, config),
-        buy_count=2, proposal_count=3, consensus=E("0.72"))
+        analyst=_analyst(), plan=_plan(), state=_state(clock, config),
+        buy_count=1, proposal_count=1, consensus=E("0.72"))
 
     assert "-1.00%" in body          # stop distance
     assert "+2.00%" in body          # target distance
@@ -70,28 +65,27 @@ def test_the_percentages_are_computed_not_asserted(clock, config):
 
 
 def test_the_agents_sentences_are_quoted_verbatim(clock, config):
-    analyst, plan, risk = _analyst(), _plan(), _risk()
+    analyst, plan = _analyst(), _plan()
     _, body = compose_traded(
-        analyst=analyst, plan=plan, risk=risk, state=_state(clock, config),
-        buy_count=2, proposal_count=3, consensus=E("0.72"))
+        analyst=analyst, plan=plan, state=_state(clock, config),
+        buy_count=1, proposal_count=1, consensus=E("0.72"))
 
     assert analyst.summary in body
     assert plan.thesis in body
-    assert risk.rationale in body
 
 
 def test_the_consensus_is_reported_as_counted(clock, config):
     _, body = compose_traded(
-        analyst=_analyst(), plan=_plan(), risk=_risk(), state=_state(clock, config),
-        buy_count=2, proposal_count=3, consensus=E("0.72"))
-    assert "3案中 2案が買い" in body
+        analyst=_analyst(), plan=_plan(), state=_state(clock, config),
+        buy_count=1, proposal_count=1, consensus=E("0.72"))
+    assert "1案中 1案が買い" in body
     assert "0.72" in body
 
 
 def test_a_probe_says_so_in_the_headline_and_the_body(clock, config):
     headline, body = compose_traded(
-        analyst=_analyst(), plan=_plan(probe=True), risk=_risk(),
-        state=_state(clock, config), buy_count=1, proposal_count=3,
+        analyst=_analyst(), plan=_plan(probe=True),
+        state=_state(clock, config), buy_count=1, proposal_count=1,
         consensus=E("0.4"))
 
     assert "偵察" in headline
@@ -101,8 +95,8 @@ def test_a_probe_says_so_in_the_headline_and_the_body(clock, config):
 
 def test_the_protection_note_is_included_when_given(clock, config):
     _, body = compose_traded(
-        analyst=_analyst(), plan=_plan(), risk=_risk(), state=_state(clock, config),
-        buy_count=2, proposal_count=3, consensus=E("0.72"),
+        analyst=_analyst(), plan=_plan(), state=_state(clock, config),
+        buy_count=1, proposal_count=1, consensus=E("0.72"),
         protection_note="損切りは取引所側の stop 注文")
     assert "損切りは取引所側の stop 注文" in body
 
@@ -150,8 +144,8 @@ def test_engaged_safety_rules_are_surfaced(clock, config):
     state.monthly.probe_rule_suspended = True
 
     _, body = compose_traded(
-        analyst=_analyst(), plan=_plan(), risk=_risk(), state=state,
-        buy_count=2, proposal_count=3, consensus=E("0.72"))
+        analyst=_analyst(), plan=_plan(), state=state,
+        buy_count=1, proposal_count=1, consensus=E("0.72"))
 
     assert "連敗 2" in body
     assert "probeルール当月停止" in body
@@ -159,6 +153,6 @@ def test_engaged_safety_rules_are_surfaced(clock, config):
 
 def test_a_quiet_system_says_nothing_about_safety(clock, config):
     _, body = compose_traded(
-        analyst=_analyst(), plan=_plan(), risk=_risk(), state=_state(clock, config),
-        buy_count=2, proposal_count=3, consensus=E("0.72"))
+        analyst=_analyst(), plan=_plan(), state=_state(clock, config),
+        buy_count=1, proposal_count=1, consensus=E("0.72"))
     assert "安全装置" not in body

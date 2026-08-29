@@ -325,10 +325,7 @@ def test_12_every_decision_is_externally_auditable(ctx, llm, clock):
     assert trade.judge_output_id
 
     calls = ctx.store.agent_calls.list_for_cycle("acc-12")
-    assert {c.agent for c in calls} == {
-        "analyst", *STRATEGISTS,
-        *(a.replace("strategy:", "critique:") for a in STRATEGISTS),
-        "judge", "risk"}
+    assert {c.agent for c in calls} == {"analyst", *STRATEGISTS}
     for call in calls:
         assert call.model and call.called_at and call.io_s3_key
         body = ctx.store.blobs.get_json(call.io_s3_key)

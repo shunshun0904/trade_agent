@@ -168,3 +168,43 @@ def test_statistics_are_aggregates_not_narratives(clock):
     assert "by_regime" in stats and "by_exit_reason" in stats
     # No individual trade identifiers leak into what the model sees.
     assert "trade_id" not in str(stats)
+
+
+def test_the_consensus_rate_counts_cycles_not_judge_calls(ctx, llm):
+    """It read the judge call log, where a call only ever happened *after*
+    consensus was reached — so it measured the share of judge calls that did
+    not error, which is very nearly always 1.0. With the judge removed it
+    would have reported None forever, and said nothing while doing it."""
+    from trade_agent.handlers.decide import _consensus_rate
+    from trade_agent.orchestrator.cycle import NO_CONSENSUS_PREFIX
+    from trade_agent.storage.base import AuditEvent
+
+    assert _consensus_rate(ctx) is None  # nothing has run yet
+
+    now = ctx.clock.now()
+    for index, detail in enumerate([
+        "traded [buys 1/1, 2 call(s)]",
+        f"{NO_CONSENSUS_PREFIX}: 0/1 buy proposals, 1 required [buys 0/1]",
+        f"{NO_CONSENSUS_PREFIX}: 0/1 buy proposals, 1 required [buys 0/1]",
+        "sizing rejected the plan: stop too wide [buys 1/1, 2 call(s)]",
+    ]):
+        ctx.store.audit.put(AuditEvent(
+            event_id=f"cycle:cyc-{index}", at=now,
+            actor="cycle:scheduled",
+            action="traded" if index == 0 else "no_trade", detail=detail))
+
+    # Two of four cycles produced a buy proposal: the one that traded, and the
+    # one the sizing rejected afterwards.
+    assert _consensus_rate(ctx) == 0.5
+
+
+def test_the_consensus_prefix_is_the_one_the_cycle_writes(ctx, llm):
+    """The reader and the writer must not hold separate copies of the string."""
+    from trade_agent.orchestrator.cycle import NO_CONSENSUS_PREFIX
+
+    from trade_agent.orchestrator.cycle import DecisionCycle
+
+    llm.bias = "wait"
+    outcome = DecisionCycle(ctx, cycle_id="cyc-consensus-prefix").run()
+    assert not outcome.traded
+    assert outcome.no_trade_reason.startswith(NO_CONSENSUS_PREFIX)

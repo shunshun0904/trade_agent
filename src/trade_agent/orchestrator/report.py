@@ -3,8 +3,7 @@
 This used to be an LLM's job (the commander agent). It is not, any more, and
 the reason is worth stating: every ingredient is already a stored, structured
 field by the time the report is written. The regime read, the proposal count,
-the judge's rationale, the risk assessment, the exact prices and sizes — all of
-it exists. Asking a model to restate them buys nothing and adds a way for the
+the strategist's thesis, the exact prices and sizes — all of it exists. Asking a model to restate them buys nothing and adds a way for the
 report to disagree with what actually happened.
 
 So Python does the arithmetic and the layout, and the agents' own sentences are
@@ -17,14 +16,14 @@ from __future__ import annotations
 
 from decimal import Decimal
 
-from ..models.agent_io import AnalystOutput, RiskOutput
+from ..models.agent_io import AnalystOutput
 from ..models.state import SystemState
 from ..models.trading import ExecutionPlan
 from ..money import ZERO, dec, jpy
 
 
 def compose_traded(*, analyst: AnalystOutput, plan: ExecutionPlan,
-                   risk: RiskOutput | None, state: SystemState,
+                   state: SystemState,
                    buy_count: int, proposal_count: int,
                    consensus: Decimal | None, protection_note: str = "") -> tuple[str, str]:
     """(headline, body) for a cycle that placed an order."""
@@ -43,10 +42,6 @@ def compose_traded(*, analyst: AnalystOutput, plan: ExecutionPlan,
         "執行計画",
         _plan_table(plan, state),
     ]
-    if risk is not None:
-        parts += ["", f"リスク査定: {risk.rationale}"]
-        if risk.adjustments:
-            parts.append("  調整: " + " / ".join(risk.adjustments))
     if analyst.risks:
         parts += ["", "この読みが外れる条件: " + " / ".join(analyst.risks)]
     if protection_note:

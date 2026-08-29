@@ -18,12 +18,8 @@ from decimal import Decimal
 
 from ..models.agent_io import (
     AnalystOutput,
-    Critique,
-    CritiqueOutput,
-    JudgeOutput,
     Lesson,
     ReflectOutput,
-    RiskOutput,
     ScoutOutput,
     StrategyOutput,
 )
@@ -35,11 +31,9 @@ from .base import LLMRequest, LLMResponse, TokenUsage
 class StubLLMClient:
     """`bias` steers the strategists: "buy", "wait" or "mixed" (default)."""
 
-    def __init__(self, *, bias: str = "mixed", cost_meter=None,
-                 approve_risk: bool = True):
+    def __init__(self, *, bias: str = "mixed", cost_meter=None):
         self.bias = bias
         self.cost_meter = cost_meter
-        self.approve_risk = approve_risk
         self.calls: list[LLMRequest] = []
 
     def complete(self, request: LLMRequest) -> LLMResponse:
@@ -99,47 +93,6 @@ class StubLLMClient:
             thesis="押し目を拾い、直近レンジ上限を目標とする。",
             invalidation="安値割れで論拠は消える")
 
-    def _critique(self, request, facts) -> CritiqueOutput:
-        ids = [p["id"] for p in facts.get("_proposals", [])] or ["P1", "P2"]
-        return CritiqueOutput(
-            critiques=[Critique(proposal_id=i, weakness="損切り幅が浅い",
-                                severity="medium") for i in ids],
-            revised_confidence=0.6)
-
-    def _judge(self, request, facts) -> JudgeOutput:
-        buys = [p for p in facts.get("_proposals", []) if p.get("action") == "buy"]
-        # The threshold comes from the task the orchestrator built, not from a
-        # literal here. This was a hardcoded 2, which meant the fixture kept
-        # enforcing the old 2-of-3 rule after consensus_min became 1 — the stub
-        # would refuse trades the real system allows, and every cycle test
-        # would have been asserting the wrong behaviour.
-        required = (facts.get("_consensus_rule") or {}).get(
-            "required_buy_proposals", 1)
-        if len(buys) < required:
-            return JudgeOutput(decision="no_trade", consensus=0.3,
-                               adopted_proposal_id=None, entry=None,
-                               take_profit=None, stop_loss=None,
-                               rationale=f"買い提案が{required}件に届かなかった。")
-        best = buys[0]
-        return JudgeOutput(
-            decision="adopt", consensus=0.72,
-            adopted_proposal_id=best["id"], entry=best["entry"],
-            take_profit=best["take_profit"], stop_loss=best["stop_loss"],
-            rationale="複数案が同方向で、損益比も許容範囲にある。")
-
-    def _risk(self, request, facts) -> RiskOutput:
-        plan = facts.get("_adopted_plan") or {}
-        return RiskOutput(
-            approved=self.approve_risk,
-            qty_btc=plan.get("qty_btc"),
-            stop_loss=plan.get("stop_loss"),
-            take_profit=plan.get("take_profit"),
-            risk_jpy=plan.get("risk_jpy"),
-            rationale="1トレードリスク上限の範囲内。" if self.approve_risk
-                      else "リスクが上限を超える。",
-            # The guard requires a rejection to say what would fix it.
-            adjustments=[] if self.approve_risk else ["損切り幅を縮めること"])
-
     def _reflect(self, request, facts) -> ReflectOutput:
         return ReflectOutput(
             lessons=[Lesson(text="レンジ相場での順張りは勝率が低い",
@@ -159,10 +112,12 @@ class StubLLMClient:
             return True
         if self.bias == "wait":
             return False
-        # "mixed": the last strategist in the roster waits and the rest buy,
-        # so the fixture keeps producing a split verdict whatever the roster
-        # size. Named the contrarian explicitly until that agent was removed.
-        return not agent.endswith(STRATEGISTS[-1].split(":")[-1])
+        # "mixed": the first strategist buys and any others wait — the
+        # smallest verdict that still clears consensus_min=1, whatever the
+        # roster size. "All but the last buys" produced zero buys once the
+        # roster came down to one, which silently turned every cycle fixture
+        # into a no-trade test.
+        return agent == STRATEGISTS[0]
 
     @staticmethod
     def _jitter(agent: str) -> float:

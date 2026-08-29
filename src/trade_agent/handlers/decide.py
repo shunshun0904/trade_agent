@@ -15,7 +15,11 @@ import logging
 from ..errors import LockNotAcquired
 from ..models.state import CycleTrigger
 from ..orchestrator.context import AppContext
-from ..orchestrator.cycle import CycleOutcome, DecisionCycle
+from ..orchestrator.cycle import (
+    NO_CONSENSUS_PREFIX,
+    CycleOutcome,
+    DecisionCycle,
+)
 from ..storage.base import DailyReport
 from ..timeutil import crossed_jst_time, jst_date_str
 from .common import run_handler
@@ -107,15 +111,25 @@ def _maybe_write_daily_report(ctx: AppContext, outcome: CycleOutcome) -> None:
 
 
 def _consensus_rate(ctx: AppContext) -> float | None:
-    """Share of recent cycles that reached consensus, from the judge call log."""
-    calls = [c for c in _recent_judge_calls(ctx)]
-    if not calls:
+    """Share of recent cycles in which a strategist proposed a buy.
+
+    Counted from the audit trail rather than from judge calls. The old version
+    read the judge call log — but a judge call only ever happened *after*
+    consensus was reached, so it was measuring the share of judge calls that
+    did not error, which is very nearly always 1.0. With the judge removed it
+    would have measured nothing at all, silently, and reported None forever.
+    """
+    cycles = [e for e in _recent_cycle_events(ctx)
+              if e.action in ("traded", "no_trade")]
+    if not cycles:
         return None
-    return round(sum(1 for c in calls if c.ok) / len(calls), 3)
+    reached = sum(1 for e in cycles
+                  if not e.detail.startswith(NO_CONSENSUS_PREFIX))
+    return round(reached / len(cycles), 3)
 
 
-def _recent_judge_calls(ctx: AppContext):
-    lister = getattr(ctx.store.agent_calls, "list_all", None)
+def _recent_cycle_events(ctx: AppContext):
+    lister = getattr(ctx.store.audit, "list_recent", None)
     if lister is None:
         return []
-    return [c for c in lister() if c.agent == "judge"][-30:]
+    return lister(60)

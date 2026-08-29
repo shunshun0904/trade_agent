@@ -13,5 +13,9 @@ after the real one became 1. Every count downstream now derives from here.
 
 from __future__ import annotations
 
-#: Phase-1 proposers. Each also speaks once in phase 2, critiquing the others.
-STRATEGISTS = ["strategy:trend", "strategy:meanrev"]
+#: The strategists. One, now: whether it proposes a buy is the decision.
+#:
+#: Kept as a list rather than collapsed to a single name because every count
+#: downstream derives from it, and because the debate protocol is worth being
+#: able to restore without hunting for the places that assumed one voice.
+STRATEGISTS = ["strategy:main"]

@@ -7,7 +7,7 @@ strategy statistics, and cut off entirely once their cumulative monthly loss
 reaches 2% of equity.
 
 What this rule may do:
-  * lower the judge's consensus threshold from 2-of-3 to 1-of-3 for one cycle
+  * lower the consensus threshold by one for a single cycle
   * place one mechanical minimum-lot probe when no strategist proposes a buy
 
 What it may never do:
