@@ -58,19 +58,25 @@ def test_no_role_prompt_survives_for_an_agent_that_was_removed():
     assert not [a for a in prompts.ROLE_PROMPTS if any(g in a for g in gone)]
 
 
-def test_the_strategist_brief_carries_what_the_removed_agents_contributed():
-    """A2 is the only judgement in the cycle now. The two things the judge and
-    the risk reviewer used to supply have to be stated where the agent that
-    sets the numbers can act on them."""
+def test_the_brief_squeezes_the_stop_from_both_sides():
+    """A stop is not a number bolted on after the direction is chosen; it is
+    what makes the trade sizeable at all. Both failure modes have to be in the
+    brief, because only one of them is intuitive: too tight gets taken out by
+    noise, and too wide drops the size below the minimum lot and gets the whole
+    plan rejected — which nothing else in the system explains to the agent.
+    """
     text = prompts.ROLE_PROMPTS[STRATEGISTS[0]]
 
-    # A4's stop-quality judgement, both directions.
-    assert "atr_pct" in text
-    assert "per_trade_risk_jpy" in text
-    assert "min_order_btc" in text
+    assert "atr_pct" in text                        # too tight
+    assert "per_trade_risk_jpy" in text             # too wide
+    assert "min_order_btc" in text                  # ...and why
 
-    # And that its own answer is final, which was never true before.
-    assert "唯一の判断者" in text
+
+def test_the_brief_says_the_decision_is_the_agents_own():
+    """Nothing downstream re-judges whether the trade is worth taking. An
+    agent that expects to be second-guessed proposes differently."""
+    text = prompts.ROLE_PROMPTS[STRATEGISTS[0]]
+    assert "あなただけ" in text
 
 
 def test_every_snapshot_field_the_strategist_is_told_to_read_exists():

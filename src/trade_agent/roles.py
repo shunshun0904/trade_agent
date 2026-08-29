@@ -18,4 +18,4 @@ from __future__ import annotations
 #: Kept as a list rather than collapsed to a single name because every count
 #: downstream derives from it, and because the debate protocol is worth being
 #: able to restore without hunting for the places that assumed one voice.
-STRATEGISTS = ["strategy:main"]
+STRATEGISTS = ["strategy"]

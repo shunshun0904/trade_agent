@@ -19,6 +19,7 @@ from decimal import Decimal
 
 from ..money import jpy
 from ..orchestrator.context import AppContext
+from ..roles import STRATEGISTS
 from ..storage.base import AuditEvent
 from ..timeutil import iso_jst, jst_date_str
 
@@ -463,8 +464,13 @@ def _jst_or_none(value) -> str | None:
 
 
 def _proposals_were_blind(calls) -> bool:
-    """Spec 14: the three phase-1 proposals must not have seen each other."""
-    phase_one = [c for c in calls if c.agent.startswith("strategy:")]
+    """Spec 14: phase-1 proposals must not have seen each other.
+
+    Matched against the roster rather than a name prefix. A prefix that stops
+    matching returns "not verified" for a cycle that was perfectly fine, and
+    the only thing that has to change for that to happen is a rename.
+    """
+    phase_one = [c for c in calls if c.agent in STRATEGISTS]
     if not phase_one:
         return False
     return all(set(c.saw_agents) <= {"analyst"} for c in phase_one)

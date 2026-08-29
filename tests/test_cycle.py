@@ -38,7 +38,7 @@ def test_no_buy_proposal_at_all_is_a_no_trade(ctx, llm):
 def test_every_proposal_is_made_blind(ctx, llm):
     _cycle(ctx, cycle_id="cyc-c").run()
     calls = ctx.store.agent_calls.list_for_cycle("cyc-c")
-    proposals = [c for c in calls if c.agent.startswith("strategy:")]
+    proposals = [c for c in calls if c.agent in STRATEGISTS]
     assert len(proposals) == len(STRATEGISTS)
     for call in proposals:
         # Spec 4.1: phase 1 sees the analyst and nothing else.
@@ -51,8 +51,8 @@ def test_critiques_never_reveal_the_author(ctx, llm):
         if not call.agent.startswith("critique:"):
             continue
         body = ctx.store.blobs.get_json(call.io_s3_key)
-        assert "strategy:trend" not in body["task"]
-        assert "strategy:meanrev" not in body["task"]
+        for agent in STRATEGISTS:
+            assert agent not in body["task"]
         assert '"agent"' not in body["task"]
 
 

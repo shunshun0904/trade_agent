@@ -141,7 +141,7 @@ def test_5c_guard_rejects_a_fabricated_indicator_value(config, snapshot):
 def test_6_phase_one_proposals_are_independent(ctx, llm):
     DecisionCycle(ctx, trigger=CycleTrigger.MANUAL, cycle_id="acc-6").run()
     calls = ctx.store.agent_calls.list_for_cycle("acc-6")
-    proposals = [c for c in calls if c.agent.startswith("strategy:")]
+    proposals = [c for c in calls if c.agent in STRATEGISTS]
 
     assert len(proposals) == len(STRATEGISTS)
     for call in proposals:
