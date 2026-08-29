@@ -338,11 +338,20 @@ Phase 2 では全トレードが最小ロット(0.0001 BTC)固定になる
 
 ```bash
 # 取引だけ即座に止める(建玉監視は継続)
-PYTHONPATH=src python -m trade_agent.cli mcp pause_trading --args '{"confirm":true,"reason":"..."}'
+#
+# テーブル名は Lambda には環境変数で渡っているがシェルには無い。付けずに
+# 実行すると存在しないテーブルを掴んで「止めたつもり」になるので、必ず付ける。
+AWS_REGION=ap-northeast-1 \
+TA_STORAGE__TABLE_PREFIX=trade-agent-prod \
+PYTHONPATH=src python3 -m trade_agent.cli mcp pause_trading \
+  --args '{"confirm":true,"reason":"..."}'
 
 # ペーパーに戻す
 sam deploy --parameter-overrides ... PaperTrading=true Phase=1
 ```
+
+読み取りだけなら `bash scripts/tool.sh <tool>` が同じことを自動でやる
+(書き込み系は拒否する)。
 
 ## バックアップ
 

@@ -239,9 +239,15 @@ def cmd_snapshot(args) -> int:
 
 
 def cmd_status(args) -> int:
+    """Read-only, and deliberately buildable without an exchange.
+
+    Every MCP tool reads DynamoDB only, so this runs from a shell that has no
+    bitbank keys and no S3 bucket configured — which is exactly the shell an
+    owner debugging a deployment is sitting in.
+    """
     from .mcp.tools import call_tool
 
-    ctx = _context(args, needs_trading_credentials=False)
+    ctx = _context(args, needs_trading_credentials=False, needs_exchange=False)
     print(json.dumps(call_tool(ctx, "get_status", {}), ensure_ascii=False, indent=2))
     return 0
 
@@ -310,9 +316,15 @@ def cmd_backtest(args) -> int:
 
 
 def cmd_mcp(args) -> int:
+    """The same tools the MCP function serves, from a shell.
+
+    Built with no exchange for the reason `handlers/mcp_handler.py` gives: no
+    tool touches `ctx.exchange`, and building one under paper trading reads the
+    simulated account from S3, which a CloudShell session has no bucket for.
+    """
     from .mcp.tools import call_tool
 
-    ctx = _context(args, needs_trading_credentials=False)
+    ctx = _context(args, needs_trading_credentials=False, needs_exchange=False)
     result = call_tool(ctx, args.tool, json.loads(args.args))
     print(json.dumps(result, ensure_ascii=False, indent=2))
     return 0
@@ -320,7 +332,8 @@ def cmd_mcp(args) -> int:
 
 # -- helpers --------------------------------------------------------------
 
-def _context(args, *, needs_trading_credentials: bool = True):
+def _context(args, *, needs_trading_credentials: bool = True,
+             needs_exchange: bool = True):
     config = load_config(args.config) if args.config else load_config()
     if args.local:
         config = config.model_copy(deep=True)
@@ -329,6 +342,7 @@ def _context(args, *, needs_trading_credentials: bool = True):
         config.system.paper_trading = True
     return build_context(config=config, clock=Clock(), owner="cli",
                          needs_trading_credentials=needs_trading_credentials,
+                         needs_exchange=needs_exchange,
                          offline=bool(args.local))
 
 

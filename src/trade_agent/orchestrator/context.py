@@ -141,9 +141,9 @@ def build_context(*, config: Config | None = None, clock: Clock | None = None,
     `needs_exchange=False` matters for the mcp function specifically. Building
     an exchange is not free: it constructs an HTTP client, and under paper
     trading it also reads the simulated account from S3 before returning. None
-    of the MCP tools touch the exchange — all seven read DynamoDB — so on the
-    one component reachable from the public internet that work buys nothing
-    and can only add ways for a cold start to fail.
+    of the MCP tools touch the exchange — every one of them reads DynamoDB —
+    so on the one component reachable from the public internet that work buys
+    nothing and can only add ways for a cold start to fail.
     """
     config = config or get_config()
     clock = clock or Clock()

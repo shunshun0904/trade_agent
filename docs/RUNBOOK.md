@@ -137,16 +137,22 @@ Claude のチャット(カスタムコネクタ経由)から:
 - 「今の状況は?」 → `get_status`
 - 「昨日のレポートを見せて」 → `get_daily_report`
 - 「直近1週間の約定は?」 → `get_trades`(probe は分けて集計される)
-- 「あのトレードはなぜ入ったの?」 → `get_agent_log`(3案・批判・裁定・検査が全部残っている)
+- 「あのトレードはなぜ入ったの?」 → `get_agent_log`(地合い判定・3案・批判・裁定・リスク査定が全部残っている)
 - 「今までの教訓は?」 → `get_lessons`
 - **「なぜ取引しないのか?」 → `get_cycles`** — 直近サイクルの結末と、見送り理由の内訳。`no_trade_reasons` にどの理由が何回出たかが集計される
 
-ローカルからも同じものが読める:
+CloudShell からも同じものが読める:
 
 ```bash
-PYTHONPATH=src python -m trade_agent.cli status
-PYTHONPATH=src python -m trade_agent.cli mcp get_trades --args '{"days":7}'
+bash scripts/tool.sh get_cycles
+bash scripts/tool.sh get_trades '{"days": 7}'
 ```
+
+`trade-agent mcp` を直接叩いてもよいが、テーブル名とバケットは
+template.yaml から Lambda に環境変数で渡っているもので、シェルには無い。
+そのまま実行すると `trade-agent-agent-calls`(デプロイ済みは
+`trade-agent-prod-agent-calls`)を読みにいき、**一度も動いていない
+システムに見える**。`tool.sh` はそれをスタックから読んで渡す。
 
 ---
 
@@ -154,20 +160,35 @@ PYTHONPATH=src python -m trade_agent.cli mcp get_trades --args '{"days":7}'
 
 ### 何日も取引していない
 
-正常。合意ルール(3案中2案以上が buy)は簡単には成立しない。
-72時間に達すると3日ルールが最小ロットの偵察トレードを1回入れる。
+まず理由を数える。憶測より速い:
 
-ただし次の場合は3日ルールも発火しない(すべて仕様どおり):
+```bash
+bash scripts/tool.sh get_cycles
+```
+
+`no_trade_reasons` に、直近サイクルの見送り理由が何回ずつ出たかが並ぶ。
+**内訳によって打つ手が変わる**:
+
+| 内訳 | 意味 | 打つ手 |
+|---|---|---|
+| `consensus not reached: 0/3` ばかり | 戦略家3体が誰も買いを出していない。閾値ではなく判断 | エージェント側。`get_agent_log` で 3体の rationale を読む |
+| `1/3` や `2/3` が混ざる | 提案は出ている。合意で落ちている | `screening.consensus_min`(現在 1) |
+| ガード棄却が多い | 提案は通ったが決定論層で落ちている | 下の「`no_trade` が続く」 |
+| screening 段階で止まっている | 議論すら始まっていない | `screening` の閾値、または日次予算の使い切り |
+
+合議は現在 **3案中1案** で成立する(`screening.consensus_min: 1`)。
+3日ルール(退屈防止)は **オフ** — 唯一のレバーが合議の緩和であり、
+それが通常経路と同じ値になった今、発火しても何も変わらないため。
+
+取引そのものを止める条件は別にある(すべて仕様どおり):
 キルスイッチ、連敗ブレーキ、日次損失上限、急変動停止、オーナー pause、
-probe の月間損失上限到達、建玉保有中。
-
-`get_status` の `boredom_rule` と `safety` を見れば理由が分かる。
+建玉保有中。`get_status` の `safety` に出る。
 
 ### `no_trade` が続く
 
 `get_agent_log` で `judge` の `rationale` を読む。よくある理由:
 
-- 買い提案が2件に届かなかった
+- 買い提案が1件も出なかった(合議は1件で成立するので、これは戦略家全員の判断)
 - 利確幅が往復手数料を上回らなかった(ガードが棄却)
 - 損切り幅が広すぎて、最小ロットでも1トレードリスク上限を超えた
   (この口座規模では珍しくない)

@@ -85,7 +85,7 @@ def test_path_token_extraction():
 # public endpoint's start-up free of I/O is what makes that unlikely.
 
 def test_the_mcp_context_is_built_without_an_exchange(monkeypatch):
-    """None of the seven tools touch the exchange, so building one would add an
+    """No MCP tool touches the exchange, so building one would add an
     HTTP client and (under paper trading) an S3 read to every cold start of the
     one internet-facing function, in exchange for nothing."""
     from trade_agent.orchestrator import context as ctx_mod
