@@ -94,7 +94,19 @@ class SnapshotBuilder:
                 quality.append(f"candle fetch failed for {candle_type}/{key}")
             if len(rows) >= limit:
                 break
-        rows = [c for c in rows if c.opened_at <= now]
+        # Drop the candle that is still forming. Keeping it made every
+        # indicator read a partial bar as if it were a whole one, and it broke
+        # volume outright: `volume_ratio` compares the last candle against the
+        # mean of the 20 before it, so a 1-hour candle sampled seconds after
+        # the hour turned reported ~0.02 — not "volume has collapsed" but
+        # "this hour has barely started". The screener runs on the hour and the
+        # half hour, so the ratio could never exceed ~0.5 and the 1.5x volume
+        # trigger was unreachable. The agents, reading the same number, cited
+        # "極度に低い出来高" as a reason to decline in every cycle.
+        #
+        # The current price is unaffected: it comes from the ticker, not here.
+        duration = timedelta(hours=1 / per_hour)
+        rows = [c for c in rows if c.opened_at + duration <= now]
         rows.sort(key=lambda c: c.opened_at)
         # Guard against the exchange returning the same day twice.
         deduped: list[Candle] = []

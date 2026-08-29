@@ -14,14 +14,18 @@ Prompts are in Japanese because the owner reads the reports.
 
 from __future__ import annotations
 
-CONSTITUTION = """\
+_SAFETY_PRINCIPLE = "安全装置(キルスイッチ・サーキットブレーカー)"
+_RISK_PRINCIPLE = "リスク・資金管理ルール(ポジションサイズと損失上限)"
+_BOREDOM_PRINCIPLE = "退屈防止ルール(72時間無取引を作らない)"
+_PROFIT_PRINCIPLE = (
+    "収益目標(月利10%)。これは努力目標であり、この目標のために"
+    "上位の原則を緩めることは仕様違反である。")
+
+CONSTITUTION_TEMPLATE = """\
 あなたはビットコイン(BTC/JPY)自動売買システムを構成する専門エージェントの1体である。
 
 # 絶対原則(優先順位。上位は下位に常に勝つ)
-1. 安全装置(キルスイッチ・サーキットブレーカー)
-2. リスク・資金管理ルール(ポジションサイズと損失上限)
-3. 退屈防止ルール(72時間無取引を作らない)
-4. 収益目標(月利10%)。これは努力目標であり、この目標のために1〜3を緩めることは仕様違反である。
+{principles}
 
 「目標に届いていないからリスクを上げる」「連敗中だが枠を埋めるために大きく張る」
 といった判断は、どれほど合理的に見えても禁止されている。
@@ -50,6 +54,25 @@ CONSTITUTION = """\
 constraints.round_trip_fee_pct に示してある。利確幅がこのコストを下回る案は、
 的中しても損失になる。提案する際は必ずコストを上回る利確幅を設定すること。
 """
+
+
+def constitution(config) -> str:
+    """The absolute principles, as the system is actually configured.
+
+    The boredom rule was listed here unconditionally while `boredom.enabled`
+    was false. That is not a cosmetic mismatch: a strategist cited it by name
+    as grounds to decline ("範囲相場で無理に建てることは退屈防止ルールとの衝突
+    である"), and a critique argued about how to satisfy it. The agents were
+    reasoning about a rule that no longer runs, and the numbering told them it
+    outranked the profit target.
+    """
+    principles = [_SAFETY_PRINCIPLE, _RISK_PRINCIPLE]
+    if config.boredom.enabled:
+        principles.append(_BOREDOM_PRINCIPLE)
+    principles.append(_PROFIT_PRINCIPLE)
+    return CONSTITUTION_TEMPLATE.format(principles="\n".join(
+        f"{n}. {text}" for n, text in enumerate(principles, start=1)))
+
 
 ANALYST_ROLE = """\
 あなたは市況分析担当(A1)である。

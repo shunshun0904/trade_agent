@@ -22,7 +22,7 @@ from ..llm.registry import ModelRouter
 from ..money import ZERO
 from ..storage.base import AgentCallRecord
 from ..timeutil import Clock, iso
-from .prompts import CONSTITUTION, ROLE_PROMPTS, rejection_note
+from .prompts import ROLE_PROMPTS, constitution, rejection_note
 
 log = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ class AgentRunner:
         """
         lesson_block = "\n".join(f"- {text}" for text in lessons) or "- (まだ教訓はない)"
         self._prefix = (
-            f"{CONSTITUTION}\n"
+            f"{constitution(self.config)}\n"
             "# MarketSnapshot(確定値。この値以外を市場の事実として扱ってはならない)\n"
             f"{snapshot_json}\n\n"
             "# システム状態\n"

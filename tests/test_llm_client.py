@@ -220,3 +220,42 @@ def test_a_missing_api_key_falls_back_to_the_stub_on_paper(config):
     config.llm.provider = "anthropic"
     assert isinstance(build_llm_client(config, secrets=NoSecrets()),
                       StubLLMClient)
+
+
+def test_the_constitution_drops_the_boredom_rule_when_it_is_off():
+    """A strategist cited this rule by name as grounds to decline, while
+    `boredom.enabled` was false. Listing a rule the system does not run is not
+    a documentation slip — the agents obey the prompt, not the config."""
+    from trade_agent.agents.prompts import constitution
+    from trade_agent.config import get_config
+
+    config = get_config()
+    assert config.boredom.enabled is False, "fixture drifted; see below"
+    assert "退屈防止" not in constitution(config)
+
+    assert "3. 収益目標" in constitution(config), (
+        "with the rule gone the profit target must move up to 3; a gap in the "
+        "numbering reads as an omitted principle")
+
+    enabled = config.model_copy(deep=True)
+    enabled.boredom.enabled = True
+    text = constitution(enabled)
+    assert "3. 退屈防止ルール" in text
+    assert "4. 収益目標" in text
+
+
+def test_the_principles_stay_numbered_either_way():
+    """The numbers are load-bearing: the constitution says a higher number
+    never outranks a lower one."""
+    import re
+
+    from trade_agent.agents.prompts import constitution
+    from trade_agent.config import get_config
+
+    config = get_config()
+    for enabled in (False, True):
+        variant = config.model_copy(deep=True)
+        variant.boredom.enabled = enabled
+        numbers = re.findall(r"^(\d)\. ", constitution(variant), re.MULTILINE)
+        assert numbers == [str(n) for n in range(1, len(numbers) + 1)], (
+            f"principles must be 1..N with no gap or repeat: {numbers}")
