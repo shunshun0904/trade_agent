@@ -56,32 +56,56 @@ command -v aws >/dev/null || { echo "run this in AWS CloudShell" >&2; exit 2; }
 
 # -- what are the schedules? ----------------------------------------------
 #
-# Named by CloudFormation from the stack and the function, so the stack name is
-# the only reliable filter. A name match is checked rather than assumed: if the
-# naming convention ever changes, this finds nothing and says so instead of
-# silently leaving a running system behind.
+# Ask CloudFormation what it created rather than pattern-matching names in the
+# Scheduler API. An earlier version filtered on names containing the stack
+# name and found nothing: CloudFormation's generated physical names for
+# AWS::Scheduler::Schedule do not carry the stack name, so the script reported
+# a stopped system that was running. The stack is the authority on its own
+# resources, and the answer does not depend on a naming convention holding.
 
-mapfile -t SCHEDULES < <(aws scheduler list-schedules --region "$REGION" \
-    --query "Schedules[?contains(Name, '${STACK_NAME}')].Name" \
+mapfile -t SCHEDULES < <(aws cloudformation list-stack-resources \
+    --stack-name "$STACK_NAME" --region "$REGION" \
+    --query "StackResourceSummaries[?ResourceType=='AWS::Scheduler::Schedule'].PhysicalResourceId" \
     --output text 2>/dev/null | tr '\t' '\n' | grep -v '^$')
+
+# A schedule outside the default group is addressed as "group|name"; the
+# --group-name argument wants them apart.
+GROUPS=()
+NAMES=()
+for entry in "${SCHEDULES[@]}"; do
+    if [[ "$entry" == *"|"* ]]; then
+        GROUPS+=( "${entry%%|*}" )
+        NAMES+=( "${entry##*|}" )
+    else
+        GROUPS+=( "default" )
+        NAMES+=( "$entry" )
+    fi
+done
+SCHEDULES=( "${NAMES[@]}" )
 
 if [[ ${#SCHEDULES[@]} -eq 0 ]]; then
     head_ "Schedules"
-    bad "no schedule found whose name contains '${STACK_NAME}' in ${REGION}"
+    bad "stack ${STACK_NAME} lists no AWS::Scheduler::Schedule in ${REGION}"
     note "Is the stack deployed, and is TA_ENVIRONMENT right?"
-    note "Check by hand: aws scheduler list-schedules --region ${REGION}"
+    note "What the stack does have:"
+    aws cloudformation list-stack-resources --stack-name "$STACK_NAME" \
+        --region "$REGION" --output text \
+        --query 'StackResourceSummaries[].[ResourceType,LogicalResourceId]' \
+        2>/dev/null | sed 's/^/      /' || note "      (could not read the stack)"
     exit 1
 fi
 
-schedule_state() {  # schedule_state <name>
-    aws scheduler get-schedule --name "$1" --region "$REGION" \
-        --query 'State' --output text 2>/dev/null || echo "UNKNOWN"
+schedule_state() {  # schedule_state <name> <group>
+    aws scheduler get-schedule --name "$1" --group-name "$2" \
+        --region "$REGION" --query 'State' --output text 2>/dev/null \
+        || echo "UNKNOWN"
 }
 
 head_ "Schedules (${STACK_NAME}, ${REGION})"
 ENABLED_COUNT=0
-for name in "${SCHEDULES[@]}"; do
-    state="$(schedule_state "$name")"
+for i in "${!SCHEDULES[@]}"; do
+    name="${SCHEDULES[$i]}"; group="${GROUPS[$i]}"
+    state="$(schedule_state "$name" "$group")"
     if [[ "$state" == "ENABLED" ]]; then
         ENABLED_COUNT=$(( ENABLED_COUNT + 1 ))
         ok "${name}  ${state}"
@@ -169,15 +193,16 @@ TARGET_STATE=$([[ "$ACTION" == "enable" ]] && echo ENABLED || echo DISABLED)
 head_ "Setting every schedule to ${TARGET_STATE}"
 FAILED=0
 CHANGED=0
-for name in "${SCHEDULES[@]}"; do
-    current="$(schedule_state "$name")"
+for i in "${!SCHEDULES[@]}"; do
+    name="${SCHEDULES[$i]}"; group="${GROUPS[$i]}"
+    current="$(schedule_state "$name" "$group")"
     if [[ "$current" == "$TARGET_STATE" ]]; then
         note "${name}: already ${TARGET_STATE}"
         continue
     fi
 
-    existing="$(aws scheduler get-schedule --name "$name" --region "$REGION" \
-        --output json 2>/dev/null)"
+    existing="$(aws scheduler get-schedule --name "$name" \
+        --group-name "$group" --region "$REGION" --output json 2>/dev/null)"
     if [[ -z "$existing" ]]; then
         bad "${name}: could not read the current definition"
         FAILED=$(( FAILED + 1 ))
@@ -193,7 +218,7 @@ for name in "${SCHEDULES[@]}"; do
 
     if aws scheduler update-schedule --region "$REGION" \
             --cli-input-json "$args" >/dev/null 2>&1; then
-        confirmed="$(schedule_state "$name")"
+        confirmed="$(schedule_state "$name" "$group")"
         if [[ "$confirmed" == "$TARGET_STATE" ]]; then
             ok "${name}: ${current} -> ${confirmed}"
             CHANGED=$(( CHANGED + 1 ))

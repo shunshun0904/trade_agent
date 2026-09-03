@@ -20,6 +20,16 @@ SCRIPT_PATH = ROOT / "scripts" / "stop.sh"
 SCRIPT = SCRIPT_PATH.read_text(encoding="utf-8")
 
 
+def _code() -> str:
+    """The lines that run, without the comments.
+
+    The header explains which API not to use and why, so a naive substring
+    search over the whole file finds the thing it is checking against.
+    """
+    return "\n".join(line for line in SCRIPT.splitlines()
+                     if not line.lstrip().startswith("#"))
+
+
 def _rebuild_source() -> str:
     """The Python the script writes out to rewrite a schedule definition."""
     lines = SCRIPT.splitlines()
@@ -123,6 +133,30 @@ def test_an_open_position_blocks_it_without_force():
     assert "$FORCE -ne 1" in SCRIPT
 
 
+def test_it_asks_cloudformation_which_schedules_exist():
+    """This was a live defect. The first version filtered `list-schedules` on
+    names containing the stack name, and CloudFormation's generated physical
+    names for AWS::Scheduler::Schedule do not carry it — so the script found
+    nothing and reported a stopped system that was running happily. The stack
+    is the authority on what it created; a naming convention is not."""
+    code = _code()
+    assert "aws cloudformation list-stack-resources" in code
+    assert "AWS::Scheduler::Schedule" in code
+    assert "contains(Name" not in code, (
+        "back to matching schedule names, which is what failed")
+
+
+def test_the_schedule_group_is_carried_through():
+    """A schedule outside the default group is addressed as `group|name` in
+    the physical id, and every scheduler call needs the two apart."""
+    code = _code()
+    # get-schedule and the state read take it as a flag; update-schedule gets
+    # it inside --cli-input-json, which is why the rebuild keeps GroupName.
+    assert code.count("--group-name") >= 2
+    assert '"GroupName"' in _rebuild_source()
+    assert "entry%%|*" in code and "entry##*|" in code
+
+
 def test_it_uses_the_scheduler_api_not_the_events_api():
     """SAM's ScheduleV2 creates EventBridge Scheduler schedules. `aws events
     list-rules` finds nothing for them, which reads as "already stopped".
@@ -130,22 +164,21 @@ def test_it_uses_the_scheduler_api_not_the_events_api():
     Checked against the lines that run, not the whole file: the header explains
     the distinction and naming the wrong API there is the point.
     """
-    code = "\n".join(line for line in SCRIPT.splitlines()
-                     if not line.lstrip().startswith("#"))
-    assert "aws scheduler list-schedules" in code
+    code = _code()
+    assert "aws scheduler get-schedule" in code
     assert "aws events " not in code
 
 
 def test_it_verifies_the_state_it_asked_for():
     """An accepted update is not a stopped system; the summary may only claim
     what a re-read confirms."""
-    assert 'confirmed="$(schedule_state "$name")"' in SCRIPT
+    assert 'confirmed="$(schedule_state "$name" "$group")"' in SCRIPT
     assert "update accepted but state reads" in SCRIPT
 
 
 def test_finding_no_schedules_is_a_failure():
     """Silence here would look exactly like success."""
-    assert "no schedule found whose name contains" in SCRIPT
+    assert "lists no AWS::Scheduler::Schedule" in SCRIPT
 
 
 @pytest.mark.parametrize("flag", ["--nope", "-x"])
