@@ -63,21 +63,37 @@ command -v aws >/dev/null || { echo "run this in AWS CloudShell" >&2; exit 2; }
 # a stopped system that was running. The stack is the authority on its own
 # resources, and the answer does not depend on a naming convention holding.
 
-mapfile -t SCHEDULES < <(aws cloudformation list-stack-resources \
-    --stack-name "$STACK_NAME" --region "$REGION" \
-    --query "StackResourceSummaries[?ResourceType=='AWS::Scheduler::Schedule'].PhysicalResourceId" \
-    --output text 2>/dev/null | tr '\t' '\n' | grep -v '^$')
+# Two columns out, filtered here rather than in a JMESPath `[?...]` filter.
+# The filter was not the bug it was first blamed for — see SCHEDULE_GROUPS
+# below — but keeping the projection dumb means the raw rows are still in a
+# variable when nothing matches, so a miss can be printed instead of guessed
+# at. That is what finally located the real fault.
+RESOURCES="$(aws cloudformation list-stack-resources \
+    --stack-name "$STACK_NAME" --region "$REGION" --output text \
+    --query 'StackResourceSummaries[].[ResourceType,PhysicalResourceId,LogicalResourceId]' \
+    2>&1)"
+RESOURCE_STATUS=$?
+
+mapfile -t SCHEDULES < <(printf '%s\n' "$RESOURCES" \
+    | awk -F'\t' '$1 == "AWS::Scheduler::Schedule" { print ($2 == "" ? $3 : $2) }')
 
 # A schedule outside the default group is addressed as "group|name"; the
 # --group-name argument wants them apart.
-GROUPS=()
+#
+# Not named GROUPS. That is a bash built-in array holding the current user's
+# group ids, and assigning to it is a fatal error in a non-interactive shell:
+# it killed the loop body on the first iteration, leaving this list empty
+# however it had been filled. The script then reported a stopped system that
+# was running — the same wrong answer as the previous bug, from a new cause,
+# which is why the empty case now prints its evidence.
+SCHEDULE_GROUPS=()
 NAMES=()
 for entry in "${SCHEDULES[@]}"; do
     if [[ "$entry" == *"|"* ]]; then
-        GROUPS+=( "${entry%%|*}" )
+        SCHEDULE_GROUPS+=( "${entry%%|*}" )
         NAMES+=( "${entry##*|}" )
     else
-        GROUPS+=( "default" )
+        SCHEDULE_GROUPS+=( "default" )
         NAMES+=( "$entry" )
     fi
 done
@@ -86,12 +102,14 @@ SCHEDULES=( "${NAMES[@]}" )
 if [[ ${#SCHEDULES[@]} -eq 0 ]]; then
     head_ "Schedules"
     bad "stack ${STACK_NAME} lists no AWS::Scheduler::Schedule in ${REGION}"
-    note "Is the stack deployed, and is TA_ENVIRONMENT right?"
-    note "What the stack does have:"
-    aws cloudformation list-stack-resources --stack-name "$STACK_NAME" \
-        --region "$REGION" --output text \
-        --query 'StackResourceSummaries[].[ResourceType,LogicalResourceId]' \
-        2>/dev/null | sed 's/^/      /' || note "      (could not read the stack)"
+    if [[ $RESOURCE_STATUS -ne 0 ]]; then
+        note "list-stack-resources failed:"
+        printf '%s\n' "$RESOURCES" | sed 's/^/      /'
+        note "Is the stack deployed, and is TA_ENVIRONMENT right?"
+    else
+        note "What the stack does have:"
+        printf '%s\n' "$RESOURCES" | cut -f1,3 | sort -u | sed 's/^/      /'
+    fi
     exit 1
 fi
 
@@ -104,7 +122,7 @@ schedule_state() {  # schedule_state <name> <group>
 head_ "Schedules (${STACK_NAME}, ${REGION})"
 ENABLED_COUNT=0
 for i in "${!SCHEDULES[@]}"; do
-    name="${SCHEDULES[$i]}"; group="${GROUPS[$i]}"
+    name="${SCHEDULES[$i]}"; group="${SCHEDULE_GROUPS[$i]}"
     state="$(schedule_state "$name" "$group")"
     if [[ "$state" == "ENABLED" ]]; then
         ENABLED_COUNT=$(( ENABLED_COUNT + 1 ))
@@ -194,7 +212,7 @@ head_ "Setting every schedule to ${TARGET_STATE}"
 FAILED=0
 CHANGED=0
 for i in "${!SCHEDULES[@]}"; do
-    name="${SCHEDULES[$i]}"; group="${GROUPS[$i]}"
+    name="${SCHEDULES[$i]}"; group="${SCHEDULE_GROUPS[$i]}"
     current="$(schedule_state "$name" "$group")"
     if [[ "$current" == "$TARGET_STATE" ]]; then
         note "${name}: already ${TARGET_STATE}"

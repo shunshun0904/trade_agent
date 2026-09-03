@@ -188,3 +188,39 @@ def test_an_unknown_flag_is_refused(flag):
                             env={"PATH": "/usr/bin:/bin"})
     assert result.returncode == 2
     assert "unknown argument" in result.stderr
+
+
+def test_no_variable_shadows_a_bash_special():
+    """This was the second live defect, and the more expensive one.
+
+    The group list was first called GROUPS — a bash built-in array holding the
+    current user's group ids. Assigning to it is a fatal error in a
+    non-interactive shell, so the loop body died on its first iteration and the
+    schedule list came out empty however it had been filled. The script then
+    reported a stopped system that was running, which is the same wrong answer
+    the previous bug gave, from an unrelated cause.
+    """
+    import re
+
+    # Assigned or appended to at the start of a line.
+    assigned = set(re.findall(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\+?=", _code(),
+                              re.MULTILINE))
+    # Names bash gives meaning to. Writing any of them is at best surprising.
+    reserved = {
+        "GROUPS", "BASH", "BASHOPTS", "BASHPID", "BASH_ARGV", "BASH_SOURCE",
+        "BASH_VERSINFO", "BASH_VERSION", "COMP_WORDBREAKS", "DIRSTACK",
+        "EUID", "FUNCNAME", "HISTCMD", "HOSTNAME", "IFS", "LINENO",
+        "MACHTYPE", "OLDPWD", "OPTARG", "OPTIND", "OSTYPE", "PPID", "PWD",
+        "RANDOM", "REPLY", "SECONDS", "SHELLOPTS", "SHLVL", "UID",
+    }
+    clash = assigned & reserved
+    assert not clash, f"these shadow bash built-ins: {sorted(clash)}"
+
+
+def test_the_empty_case_prints_what_it_saw():
+    """Both defects reported "no schedules" for a running system. Neither was
+    diagnosable from the message, so the miss now carries its evidence."""
+    code = _code()
+    assert '"$RESOURCES"' in code
+    assert "What the stack does have" in SCRIPT
+    assert "list-stack-resources failed" in SCRIPT
