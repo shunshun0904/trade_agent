@@ -1,7 +1,7 @@
 .PHONY: install test cov lint build deploy verify-pair snapshot backfill backtest \
         build-TickFunction build-ScreenFunction build-DecideFunction \
         build-ReflectFunction build-McpFunction verify-artifact check-mcp status-live \
-        tool
+        tool stop resume
 
 install:
 	pip install -r requirements-dev.txt
@@ -48,6 +48,14 @@ status-live:
 # Check the deployed MCP endpoint and print the claude.ai connector URL.
 check-mcp:
 	bash scripts/check_mcp.sh
+
+# Stop the system by disabling its schedules, and start it again.
+# Refuses while a position is open (the tick evaluates the take profit).
+stop:
+	bash scripts/stop.sh
+
+resume:
+	bash scripts/stop.sh --resume
 
 # Run one read-only MCP tool against the deployed system:
 #   make tool TOOL=get_cycles

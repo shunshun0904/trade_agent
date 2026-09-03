@@ -18,6 +18,35 @@ cd ~/trade_agent && bash scripts/status.sh
 
 ---
 
+## 止めたいとき
+
+強い順ではなく、**建玉の有無で選ぶ**。
+
+| 状況 | 方法 | 何が止まるか |
+|---|---|---|
+| **建玉あり** | `pause_trading` | 新規建てのみ。tick と損切り・利確監視は継続 |
+| 建玉なし・完全に止めたい | `bash scripts/stop.sh` | スケジュール全部。Lambda が一切走らない |
+| もう使わない | `aws cloudformation delete-stack` | 全部消える(履歴・教訓DBも) |
+
+```bash
+bash scripts/stop.sh --status    # 今どうなっているか
+bash scripts/stop.sh             # 止める
+bash scripts/stop.sh --resume    # 戻す
+```
+
+**`stop.sh` は建玉があると拒否する。** スケジュールを止めると5分tickも止まり、
+tick は**利確を評価している主体**だからである。損切りは取引所側の stop 注文
+なので効き続けるが、利確水準を突き抜けて戻ってきても誰も決済しない。
+建玉を持ったまま新規建てだけ止めたいなら `pause_trading` を使う。
+
+止まっている間も生きているもの:
+
+- 取引所側の stop 注文(bitbank 側にあるので、こちらが何も動いていなくても効く)
+- DynamoDB・S3・MCPエンドポイント(読み取りは従来どおり可能)
+- LLM 呼び出しは発生しないので、予算は動かない
+
+---
+
 # 障害対応
 
 想定される事象と対処。原則は仕様 §6 の「判断できないときは何もしない」。
