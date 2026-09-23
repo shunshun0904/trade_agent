@@ -28,6 +28,7 @@ from bbdata.download import to_utc
 from . import backtest as bt
 from .features import bar_features, event_features
 from .labeling import BarrierParams, TradeTape, label_events
+from .profile import profile_event_features
 from .model import cross_validate, fit_final, metrics, params_hash, predict_by_fold, predict_proba, save_model
 from .signals import cusum_events, ewm_sigma
 from .weights import average_uniqueness
@@ -101,6 +102,7 @@ def trial_hash(cfg: dict, prm: BarrierParams) -> str:
     backtest（n_random を除く）/ 実際に使った手数料率）から作る。"""
     return params_hash({
         **{k: cfg[k] for k in ("data", "split", "signal", "label", "model")},
+        **({"features": cfg["features"]} if cfg.get("features") else {}),
         "backtest": {k: v for k, v in cfg["backtest"].items() if k != "n_random"},
         "fees": {"maker": prm.maker_fee, "taker": prm.taker_fee},
     })
@@ -142,6 +144,8 @@ def run(cfg: dict, out_dir: Path, market: Market | None = None, evaluate_holdout
     start, end = to_utc(d["start"]), to_utc(d["end"])
     holdout_start = end - pd.Timedelta(days=int(cfg["split"]["holdout_days"]))
     seed = int(cfg.get("seed", 0))
+    # ホールドアウトを使用済みにした後は、設定で評価を止める（split.evaluate_holdout: false）
+    evaluate_holdout = evaluate_holdout and bool(cfg["split"].get("evaluate_holdout", True))
 
     market = market or load_market(cfg)
     bars, tape, spec, tick = market.bars, market.tape, market.spec, market.tick
@@ -154,6 +158,12 @@ def run(cfg: dict, out_dir: Path, market: Market | None = None, evaluate_holdout
 
     labels = label_events(events, bars, tape, prm, tick, sigma)
     X_all = event_features(events, bar_features(bars, s["sigma_span"]))
+    f_cfg = cfg.get("features") or {}
+    if f_cfg.get("profile"):
+        X_all = X_all.join(profile_event_features(
+            events, bars, tape, sigma, prm.k_up, prm.k_dn,
+            window=pd.Timedelta(hours=float(f_cfg.get("profile_window_hours", 24))),
+            bin_sigma=float(f_cfg.get("profile_bin_sigma", 0.25))))
 
     ev = events.merge(labels, on="event_id")
     ev["period"] = np.where(ev["t0"] < holdout_start, "dev", "holdout")
@@ -301,6 +311,11 @@ def render(rep: dict) -> str:
     md.append(f"- pair: `{c['data']['pair']}`、期間 {c['data']['start']} 〜 {c['data']['end']}（ホールドアウト {c['split']['holdout_days']} 日）")
     md.append(f"- 足 {rep['n_bars']} 本（約定なし {rep['n_empty_bars']}）、約定 {rep['n_trades_raw']} 件、config_hash `{rep['config_hash']}`")
     md.append(f"- 手数料率: メイカー {rep['fees_used']['maker']}、テイカー {rep['fees_used']['taker']}")
+    if not rep.get("evaluate_holdout", True):
+        md.append("- ホールドアウトは評価していない（使用済み。`split.evaluate_holdout: false`）")
+    if (c.get("features") or {}).get("profile"):
+        md.append(f"- 価格帯別出来高・TPO の特徴量: あり（直近 {c['features'].get('profile_window_hours', 24)} 時間、"
+                  f"刻み {c['features'].get('profile_bin_sigma', 0.25)}σ）")
     md.append(f"- 試行数（DSR 用、過去の実験ログを含む）: {rep['n_trials_total']}\n")
     md.append("## イベントとラベル\n")
     md.append("| signal | period | events | fill_rate | y_rate | mean_ret_net | exit_types |\n|---|---|---|---|---|---|---|")

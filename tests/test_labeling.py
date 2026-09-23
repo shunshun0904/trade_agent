@@ -106,3 +106,4 @@ def test_tape_load_in_chunks_matches_single_load(tmp_path):
     a = TradeTape.load(tmp_path, "btc_jpy", "2026-01-01", "2026-01-06", chunk_days=2)
     b = TradeTape.from_frame(load_transactions(tmp_path, "btc_jpy", "2026-01-01", "2026-01-06"))
     assert np.array_equal(a.ts, b.ts) and np.array_equal(a.is_buy, b.is_buy) and np.array_equal(a.price, b.price)
+    assert np.array_equal(a.amount, b.amount)

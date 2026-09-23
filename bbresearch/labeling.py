@@ -30,6 +30,7 @@ class TradeTape:
     ts: np.ndarray        # int64
     is_buy: np.ndarray    # bool（side == "buy"）
     price: np.ndarray     # float64
+    amount: np.ndarray | None = None  # float64（価格帯別出来高に使う。約定・決済の判定には使わない）
 
     @classmethod
     def from_frame(cls, trades: pd.DataFrame) -> "TradeTape":
@@ -39,6 +40,7 @@ class TradeTape:
             ts=t["executed_at"].to_numpy(dtype="int64"),
             is_buy=t["side"].astype("object").eq("buy").to_numpy(dtype=bool),
             price=t["price"].to_numpy(dtype="float64"),
+            amount=t["amount"].to_numpy(dtype="float64") if "amount" in t else None,
         )
 
     @classmethod
@@ -57,6 +59,7 @@ class TradeTape:
             ts=np.concatenate([p.ts for p in parts]) if parts else np.array([], dtype="int64"),
             is_buy=np.concatenate([p.is_buy for p in parts]) if parts else np.array([], dtype=bool),
             price=np.concatenate([p.price for p in parts]) if parts else np.array([], dtype="float64"),
+            amount=np.concatenate([p.amount for p in parts]) if parts else np.array([], dtype="float64"),
         )
 
     def __len__(self) -> int:

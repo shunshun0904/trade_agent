@@ -11,6 +11,8 @@ data:
   large_trade_amount: null        # 【未決】null なら large_share 特徴量を作らない
 split:
   holdout_days: 180               # U5（2026-09-23 決定）。再学習は当面行わず、開発期間で一度だけ学習する
+  # 2026-09-23 の評価でホールドアウトは使用済み。以後の設定選びには使わないので評価しない
+  evaluate_holdout: false
 # signal / label は 2026-09-23 のパラメータ探索で選んだ設定（reports/search/selected.yaml）。
 # ホールドアウトで評価する対象は dip/threshold_0.6/lgbm の1つだけ（探索の前に決めた基準で選択）。
 signal:
@@ -29,6 +31,11 @@ label:
   # 課金通貨と符号は【要検証】V6（実取引の trade_history で確認）
   maker_fee: null
   taker_fee: null
+features:
+  # 価格帯別出来高・TPO（bbresearch/profile.py）。直近 24 時間、刻みは σ に比例（オーナー決定、2026-09-23）
+  profile: true
+  profile_window_hours: 24
+  profile_bin_sigma: 0.25
 model:
   kinds: [logit, lgbm]
   n_splits: 5

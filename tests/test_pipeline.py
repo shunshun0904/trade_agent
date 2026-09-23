@@ -14,7 +14,7 @@ def test_pipeline_end_to_end(tmp_path):
     write_trades(tmp_path / "data", "btc_jpy", synth_trades("2026-01-01", 30, seed=7, per_min=3, vol=0.0015))
     cfg = yaml.safe_load(CFG.read_text())
     cfg["data"].update(root=str(tmp_path / "data"), start="2026-01-02", end="2026-01-30")
-    cfg["split"]["holdout_days"] = 7
+    cfg["split"].update(holdout_days=7, evaluate_holdout=True)
     cfg["signal"]["k_h"] = 1.0
     cfg["model"].update(min_train=30, n_splits=3)
     cfg["backtest"]["n_random"] = 2
@@ -31,6 +31,14 @@ def test_pipeline_end_to_end(tmp_path):
     trained = [s for s, v in rep["cv"].items() if "skipped" not in v]
     for s in trained:
         assert (tmp_path / "out" / "models" / f"btc_jpy_{s}_lgbm.joblib").exists()
+        # 価格帯別出来高・TPO の特徴量がモデルに入っている
+        assert any(k.startswith(("vp_", "tpo_")) for k in rep["cv"][s]["lgbm"]["feature_importance"])
+
+    # ホールドアウトを使用済みにした設定では、ホールドアウトを一切評価しない
+    no_ho = {**cfg, "split": {**cfg["split"], "evaluate_holdout": False},
+             "experiment_log": str(tmp_path / "no_ho.jsonl")}
+    rep_no = run(no_ho, tmp_path / "out_no")
+    assert set(rep_no["backtest"]) == {"dev"} and not rep_no["evaluate_holdout"]
 
     # 同じ設定の再実行は試行数を増やさない。設定を変えると過去の試行として数える
     n_lines = len((tmp_path / "experiments.jsonl").read_text().splitlines())
