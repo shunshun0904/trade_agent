@@ -16,3 +16,16 @@ sets:
     label.n_v: 16
     label.delta: 0.001
     label.t_fill_min: 15
+# 案 B: 逆選択を減らすエントリー方法の比較（post_only 指値のまま、出す時点と価格を変える）
+#   wait_bars: t0 から何本待って指値を出すか / require_up: その間に下げが止まった（終値 ≥ t0 の終値）場合だけ
+#   require_imbalance: 直前の足の買い出来高が売りを上回った場合だけ / delta, delta_sigma: 指値を終値からどれだけ下げるか
+entry_rules:
+  immediate: {}
+  wait1_up: {wait_bars: 1, require_up: true}
+  wait2_up: {wait_bars: 2, require_up: true}
+  wait4_up: {wait_bars: 4, require_up: true}
+  wait1_imb: {wait_bars: 1, require_imbalance: true}
+  deep_0.5sigma: {delta_sigma: 0.5}
+  deep_1sigma: {delta_sigma: 1.0}
+  deep_2sigma: {delta_sigma: 2.0}
+only_entry: true   # 要因分解・ホライズンは実施済みなので、エントリーの比較だけを行う

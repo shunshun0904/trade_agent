@@ -185,6 +185,13 @@ def main(args) -> None:
     (out / "report.json").write_text(json.dumps(rep, ensure_ascii=False, indent=2, default=str))
     md = render(rep)
     (out / "report.md").write_text(md)
+    if sets.get("entry_rules"):
+        en = run_entry(cfg, sets, market)
+        (out / "entry.json").write_text(json.dumps(en, ensure_ascii=False, indent=2, default=str))
+        (out / "entry.md").write_text(render_entry(en))
+        print(render_entry(en))
+        if sets.get("only_entry"):
+            return
     hz = run_horizon(cfg, sets, market)
     (out / "horizon.json").write_text(json.dumps(hz, ensure_ascii=False, indent=2, default=str))
     md_h = render_horizon(hz)
@@ -292,5 +299,149 @@ def render_horizon(rep: dict) -> str:
                 md.append(f"| {h} | {hrs:g}h | {_p(v['event'].get('mean'))} | {_p(v['baseline_mean'])} | {_p(v['excess_mean'])} | "
                           f"{_p(v['t_nonoverlap'], False)}（{v['n_nonoverlap']}） | {_p(v['market_rt'].get('mean'))} | "
                           f"{_p(v['maker_in'].get('mean'))} |")
+            md.append("")
+    return "\n".join(md) + "\n"
+
+
+# ---------------------------------------------------------------- エントリー方法（案 B の検証）
+
+def _entry_orders(e: pd.DataFrame, pos: np.ndarray, bars: pd.DataFrame, sigma: np.ndarray, rule: dict,
+                  tick: float) -> list[tuple[int, int, float] | None]:
+    """イベントごとに (指値を出す足の番号, 出す時刻 ms, 指値価格)。条件を満たさなければ None。
+
+    判断に使うのは、指値を出す時刻（足の終了時刻）までの足だけ。
+    """
+    from .labeling import floor_price
+
+    c = bars["close"].to_numpy()
+    imb = bars["volume_imbalance"].to_numpy() if "volume_imbalance" in bars else None
+    idx_ms = np.array([t.value // 1_000_000 for t in bars.index], dtype="int64")
+    step_ms = int((bars.index[1] - bars.index[0]) / pd.Timedelta(milliseconds=1))
+    d = int(rule.get("wait_bars", 0))
+    out = []
+    for p, s0 in zip(pos, sigma):
+        q = p + d  # 指値を出す時点の足（この足の終了時刻に出す）
+        if p < 0 or q >= len(c) or not np.isfinite(c[q]) or not np.isfinite(s0):
+            out.append(None)
+            continue
+        if rule.get("require_up") and not c[q] >= c[p]:
+            out.append(None)
+            continue
+        if rule.get("require_imbalance") and not (imb is not None and imb[q] > 0):
+            out.append(None)
+            continue
+        disc = float(rule.get("delta", 0.0)) + float(rule.get("delta_sigma", 0.0)) * s0
+        out.append((q, int(idx_ms[q] + step_ms), floor_price(c[q] * (1 - disc), tick)))
+    return out
+
+
+def entry_set(cfg: dict, market, rules: dict, horizons=(4, 16)) -> dict:
+    s = cfg["signal"]
+    start, end = to_utc(cfg["data"]["start"]), to_utc(cfg["data"]["end"])
+    holdout_start = end - pd.Timedelta(days=int(cfg["split"]["holdout_days"]))
+    bars, tape, tick = market.bars, market.tape, market.tick
+    prm = barrier_params(cfg, market.spec)
+    sig_s = ewm_sigma(bars, s["sigma_span"])
+    events = cusum_events(bars, cfg["data"]["pair"], s["sigma_span"], s["k_h"])
+    step = bars.index[1] - bars.index[0]
+    step_ms = int(step / pd.Timedelta(milliseconds=1))
+    lc = np.log(bars["close"].to_numpy())
+    dev_bars = np.flatnonzero((bars.index >= start) & (bars.index + step <= holdout_start))
+    drift = {}
+    for h in horizons:
+        b = dev_bars[dev_bars + h < len(lc)]
+        r = lc[b + h] - lc[b]
+        drift[h] = float(np.nanmean(r))
+    hs_ms = int(holdout_start.value // 1_000_000)
+    from .labeling import fill_time
+
+    out: dict = {"drift": drift, "signals": {}}
+    for sig in ("dip", "breakout"):
+        e = events[(events["signal_type"] == sig) & (events["t0"] < holdout_start)].reset_index(drop=True)
+        pos = bars.index.get_indexer(e["t0"] - step)
+        sg = sig_s.to_numpy()[np.clip(pos, 0, None)]
+        res = {}
+        for name, rule in rules.items():
+            orders = _entry_orders(e, pos, bars, sg, rule, tick)
+            t_fill = int(rule.get("t_fill_min", prm.t_fill_min)) * 60_000
+            placed = filled = 0
+            rows = []
+            last_tf = -np.inf
+            for o, s0 in zip(orders, sg):
+                if o is None:
+                    continue
+                q, t_place, pe = o
+                if t_place >= hs_ms:
+                    continue
+                placed += 1
+                f = fill_time(tape, pe, t_place, t_place + t_fill, prm.fill_rule)
+                if f is None:
+                    continue
+                filled += 1
+                tf, k = f
+                row = {"tf": tf}
+                for h in horizons:
+                    ko = int(np.searchsorted(tape.ts, tf + h * step_ms, side="left"))
+                    if ko >= len(tape) or tf + h * step_ms >= hs_ms:
+                        row[h] = None
+                        continue
+                    px = float(tape.price[ko])
+                    row[h] = (np.log(px / pe) - drift[h],
+                              net_return(pe, px * (1 - prm.s_slip), prm.maker_fee, prm.taker_fee),
+                              net_return(pe, px, prm.maker_fee, prm.maker_fee))
+                u, lo = barriers(pe, s0, prm.k_up, prm.k_dn, tick)
+                ex = first_exit(tape, k, tf, u, lo, tf + prm.n_v * prm.bar_minutes * 60_000, prm.s_slip)
+                if ex is not None:
+                    et, _, p_x = ex
+                    row["tb"] = net_return(pe, p_x, prm.maker_fee, prm.maker_fee if et == "tp" else prm.taker_fee)
+                rows.append(row)
+            r = {"n_events": int(len(e)), "placed": placed, "filled": filled,
+                 "fill_rate": filled / placed if placed else None}
+            for h in horizons:
+                vals = [(x["tf"], x[h]) for x in rows if x.get(h) is not None]
+                ex = np.array([v[1][0] for v in vals]) if vals else np.array([])
+                tfs = np.array([v[0] for v in vals]) if vals else np.array([])
+                sel = _non_overlapping(tfs // step_ms, h) if len(tfs) else np.array([], dtype=int)
+                sub = ex[sel] if len(sel) else ex
+                t_no = float(sub.mean() / sub.std(ddof=1) * np.sqrt(len(sub))) if len(sub) > 2 and sub.std(ddof=1) > 0 else None
+                r[f"h{h}"] = {"excess": _stats(ex), "t_nonoverlap": t_no, "n_nonoverlap": int(len(sel)),
+                              "maker_in_taker_out": _stats([v[1][1] for v in vals]),
+                              "maker_in_maker_out": _stats([v[1][2] for v in vals])}
+            r["triple_barrier"] = _stats([x["tb"] for x in rows if "tb" in x])
+            res[name] = r
+        out["signals"][sig] = res
+    return out
+
+
+def run_entry(cfg: dict, sets: dict, market=None) -> dict:
+    market = market or load_market(cfg)
+    base = copy.deepcopy(cfg)
+    base["pair_spec"] = market.spec
+    rules = sets["entry_rules"]
+    results = {name: {"combo": combo, **entry_set(apply_combo(base, combo), market, rules)}
+               for name, combo in sets["sets"].items()}
+    return {"run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "rules": rules, "sets": results}
+
+
+def render_entry(rep: dict) -> str:
+    md = [f"# エントリー方法の比較（案 B、{rep['run_at']}、開発期間のみ）\n",
+          "超過: 約定価格から h 本後の約定価格までの対数リターン − 同じ h の全体のドリフト（約定した取引の平均）。"
+          "t: 期間が重ならない約定だけで計算した超過リターンの t 値。"
+          "指値→成行: 指値で買い h 本後に成行（テイカー + 滑り）で売る。指値→指値: 売りも h 本後の価格の指値で約定したとみなす（楽観的）。"
+          "トリプルバリア: 現行のバリア・決済方法。\n"]
+    md.append("ルール: " + "; ".join(f"`{k}` {v}" for k, v in rep["rules"].items()) + "\n")
+    for name, r in rep["sets"].items():
+        md.append(f"## {name}: `{r['combo']}`（ドリフト: " + ", ".join(f"{h} 本 {_p(v)}" for h, v in r["drift"].items()) + "）\n")
+        for sig, rows in r["signals"].items():
+            md.append(f"### {sig}\n")
+            md.append("| ルール | 指値 | 約定 | 約定率 | 超過 1h | t 1h | 超過 4h | t 4h | 指値→成行 4h | 指値→指値 4h | トリプルバリア |\n"
+                      "|---|---|---|---|---|---|---|---|---|---|---|")
+            for rn, v in rows.items():
+                a, b = v["h4"], v["h16"]
+                md.append(f"| {rn} | {v['placed']} | {v['filled']} | {_p(v['fill_rate'])[1:]} | "
+                          f"{_p(a['excess'].get('mean'))} | {_p(a['t_nonoverlap'], False)} | "
+                          f"{_p(b['excess'].get('mean'))} | {_p(b['t_nonoverlap'], False)} | "
+                          f"{_p(b['maker_in_taker_out'].get('mean'))} | {_p(b['maker_in_maker_out'].get('mean'))} | "
+                          f"{_p(v['triple_barrier'].get('mean'))} |")
             md.append("")
     return "\n".join(md) + "\n"
