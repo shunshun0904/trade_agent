@@ -1,5 +1,5 @@
 {
-  "run_at": "2026-09-23T17:20:14+00:00",
+  "run_at": "2026-09-23T17:41:43+00:00",
   "config": {
     "run_on_actions": true,
     "seed": 0,
@@ -1943,7 +1943,7 @@
         "daily_ret_skew": -3.1416676825132215,
         "daily_ret_kurt": 42.27363387477473,
         "n_days": 3327,
-        "dsr": 3.814153210645028e-73
+        "dsr": 1.8703061959818804e-81
       },
       "dip/threshold_0.5/logit": {
         "n_orders": 1516,
@@ -1979,7 +1979,7 @@
         "daily_ret_skew": -3.969346272770917,
         "daily_ret_kurt": 83.58916765021776,
         "n_days": 3327,
-        "dsr": 2.5934772091342467e-15
+        "dsr": 1.02609422699835e-18
       },
       "dip/threshold_0.5/lgbm": {
         "n_orders": 2696,
@@ -2015,7 +2015,7 @@
         "daily_ret_skew": -1.9386557454167717,
         "daily_ret_kurt": 61.31114274931154,
         "n_days": 3327,
-        "dsr": 9.586688149388975e-21
+        "dsr": 1.0887888199497383e-24
       },
       "dip/threshold_0.55/logit": {
         "n_orders": 660,
@@ -2051,7 +2051,7 @@
         "daily_ret_skew": -3.5626435487894614,
         "daily_ret_kurt": 140.89329098597955,
         "n_days": 3327,
-        "dsr": 1.2151645503155507e-10
+        "dsr": 2.441532207346812e-13
       },
       "dip/threshold_0.55/lgbm": {
         "n_orders": 728,
@@ -2087,7 +2087,7 @@
         "daily_ret_skew": -1.5105328634329094,
         "daily_ret_kurt": 111.16808172794693,
         "n_days": 3327,
-        "dsr": 6.412816899819704e-10
+        "dsr": 1.6574551906558802e-12
       },
       "dip/threshold_0.6/logit": {
         "n_orders": 343,
@@ -2123,7 +2123,7 @@
         "daily_ret_skew": -3.7515153813444773,
         "daily_ret_kurt": 190.51513922996756,
         "n_days": 3327,
-        "dsr": 2.600915351710305e-11
+        "dsr": 4.081117876033717e-14
       },
       "dip/threshold_0.6/lgbm": {
         "n_orders": 204,
@@ -2159,7 +2159,7 @@
         "daily_ret_skew": -1.3500636777643316,
         "daily_ret_kurt": 360.93527268621125,
         "n_days": 3327,
-        "dsr": 1.6948176464365616e-09
+        "dsr": 5.12471554949425e-12
       },
       "dip/meta/logit": {
         "n_orders": 1511,
@@ -2195,7 +2195,7 @@
         "daily_ret_skew": -7.8586663361191205,
         "daily_ret_kurt": 314.65462759153803,
         "n_days": 3327,
-        "dsr": 1.0030704378005272e-11
+        "dsr": 1.2847851317175575e-14
       },
       "dip/meta/lgbm": {
         "n_orders": 2675,
@@ -2231,7 +2231,7 @@
         "daily_ret_skew": -6.981830827563015,
         "daily_ret_kurt": 208.23676185707689,
         "n_days": 3327,
-        "dsr": 2.1979127234749882e-13
+        "dsr": 1.4915279229048282e-16
       },
       "breakout/primary": {
         "n_orders": 4495,
@@ -2267,7 +2267,7 @@
         "daily_ret_skew": -3.6923036566240035,
         "daily_ret_kurt": 61.325233472859594,
         "n_days": 3327,
-        "dsr": 2.8981753031627733e-85
+        "dsr": 1.4791166423233745e-93
       },
       "breakout/threshold_0.5/logit": {
         "n_orders": 901,
@@ -2303,7 +2303,7 @@
         "daily_ret_skew": -1.242813237533165,
         "daily_ret_kurt": 134.66169174033993,
         "n_days": 3327,
-        "dsr": 7.485161721745546e-26
+        "dsr": 7.016715491700617e-30
       },
       "breakout/threshold_0.5/lgbm": {
         "n_orders": 772,
@@ -2339,7 +2339,7 @@
         "daily_ret_skew": -4.741775415679642,
         "daily_ret_kurt": 86.59644038064836,
         "n_days": 3327,
-        "dsr": 3.5571345568907394e-37
+        "dsr": 3.988405715800614e-43
       },
       "breakout/threshold_0.55/logit": {
         "n_orders": 417,
@@ -2375,7 +2375,7 @@
         "daily_ret_skew": 4.374861231702207,
         "daily_ret_kurt": 302.841066517249,
         "n_days": 3327,
-        "dsr": 5.7646252767855946e-15
+        "dsr": 1.0675358815971525e-17
       },
       "breakout/threshold_0.55/lgbm": {
         "n_orders": 124,
@@ -2411,7 +2411,7 @@
         "daily_ret_skew": -7.756676763374063,
         "daily_ret_kurt": 308.312305554763,
         "n_days": 3327,
-        "dsr": 2.004137706269769e-14
+        "dsr": 9.061560675470022e-18
       },
       "breakout/threshold_0.6/logit": {
         "n_orders": 231,
@@ -2447,7 +2447,7 @@
         "daily_ret_skew": -1.587373337555028,
         "daily_ret_kurt": 234.8178281087,
         "n_days": 3327,
-        "dsr": 2.962203259884478e-18
+        "dsr": 9.177114755401895e-22
       },
       "breakout/threshold_0.6/lgbm": {
         "n_orders": 10,
@@ -2478,7 +2478,7 @@
         "daily_ret_skew": 13.93204169177237,
         "daily_ret_kurt": 1399.2228877409575,
         "n_days": 3327,
-        "dsr": 1.9541013187307823e-10
+        "dsr": 3.5316811665930673e-13
       },
       "breakout/meta/logit": {
         "n_orders": 898,
@@ -2514,7 +2514,7 @@
         "daily_ret_skew": 10.330867968389732,
         "daily_ret_kurt": 482.89070082975235,
         "n_days": 3327,
-        "dsr": 7.050296327850797e-12
+        "dsr": 2.7922464319768716e-14
       },
       "breakout/meta/lgbm": {
         "n_orders": 764,
@@ -2550,7 +2550,7 @@
         "daily_ret_skew": -4.9557896620776045,
         "daily_ret_kurt": 180.4481637980922,
         "n_days": 3327,
-        "dsr": 2.479575719980738e-22
+        "dsr": 1.301772312706922e-26
       }
     },
     "holdout": {
@@ -2950,16 +2950,18 @@
   "baselines": {
     "dev": {
       "dip/random": {
-        "n_orders": 8799,
-        "total_return_mean": -0.9999249089679412,
-        "total_return_p05": -0.9999332218522538,
-        "total_return_p95": -0.9999031829773094
+        "n_candidates": 8799,
+        "n_orders_mean": 5899.95,
+        "total_return_mean": -0.99950827401005,
+        "total_return_p05": -0.9996277231455835,
+        "total_return_p95": -0.9993476417010577
       },
       "breakout/random": {
-        "n_orders": 4495,
-        "total_return_mean": -0.9973486233092801,
-        "total_return_p05": -0.9990802429695077,
-        "total_return_p95": -0.9956303124172614
+        "n_candidates": 4495,
+        "n_orders_mean": 4287.35,
+        "total_return_mean": -0.9958133281896753,
+        "total_return_p05": -0.9973959866550435,
+        "total_return_p95": -0.9939714910007891
       },
       "buy_and_hold": {
         "total_return": 99.81350247283427,
@@ -2969,16 +2971,18 @@
     },
     "holdout": {
       "dip/random": {
-        "n_orders": 1328,
-        "total_return_mean": -0.8141724783435462,
-        "total_return_p05": -0.8431584445342685,
-        "total_return_p95": -0.7892369285846522
+        "n_candidates": 1328,
+        "n_orders_mean": 1063.55,
+        "total_return_mean": -0.7081780511142859,
+        "total_return_p05": -0.738696812425609,
+        "total_return_p95": -0.6720961023899532
       },
       "breakout/random": {
-        "n_orders": 1347,
-        "total_return_mean": -0.8126671429460194,
-        "total_return_p05": -0.8444039743403625,
-        "total_return_p95": -0.7825030020546356
+        "n_candidates": 1347,
+        "n_orders_mean": 1073.5,
+        "total_return_mean": -0.7079841889740786,
+        "total_return_p05": -0.7312381517806011,
+        "total_return_p95": -0.670824807782317
       },
       "buy_and_hold": {
         "total_return": 0.19537338037897567,
@@ -2987,5 +2991,6 @@
       }
     }
   },
-  "n_trials_total": 18
+  "trial_hash": "f0f6dcc7d5e5",
+  "n_trials_total": 36
 }

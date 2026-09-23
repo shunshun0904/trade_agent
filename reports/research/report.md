@@ -1,9 +1,9 @@
-# 研究パイプライン結果（2026-09-23T17:20:14+00:00）
+# 研究パイプライン結果（2026-09-23T17:41:43+00:00）
 
 - pair: `btc_jpy`、期間 2017-02-14 〜 2026-09-22（ホールドアウト 180 日）
 - 足 336672 本（約定なし 4237）、約定 72488969 件、config_hash `f7788a7e6e52`
 - 手数料率: メイカー 0.0、テイカー 0.001
-- 試行数（DSR 用、過去の実験ログを含む）: 18
+- 試行数（DSR 用、過去の実験ログを含む）: 36
 
 ## イベントとラベル
 
@@ -69,8 +69,8 @@ exit_type 別:
 
 比較対象:
 
-- dip/random: n_orders=8799, total_return_mean=-0.9999, total_return_p05=-0.9999, total_return_p95=-0.9999
-- breakout/random: n_orders=4495, total_return_mean=-0.9973, total_return_p05=-0.9991, total_return_p95=-0.9956
+- dip/random: n_candidates=8799, n_orders_mean=5899.9500, total_return_mean=-0.9995, total_return_p05=-0.9996, total_return_p95=-0.9993
+- breakout/random: n_candidates=4495, n_orders_mean=4287.3500, total_return_mean=-0.9958, total_return_p05=-0.9974, total_return_p95=-0.9940
 - buy_and_hold: total_return=99.8135, sharpe=1.0697, max_drawdown=-0.8513
 
 ## バックテスト（holdout）
@@ -111,6 +111,6 @@ exit_type 別:
 
 比較対象:
 
-- dip/random: n_orders=1328, total_return_mean=-0.8142, total_return_p05=-0.8432, total_return_p95=-0.7892
-- breakout/random: n_orders=1347, total_return_mean=-0.8127, total_return_p05=-0.8444, total_return_p95=-0.7825
+- dip/random: n_candidates=1328, n_orders_mean=1063.5500, total_return_mean=-0.7082, total_return_p05=-0.7387, total_return_p95=-0.6721
+- breakout/random: n_candidates=1347, n_orders_mean=1073.5000, total_return_mean=-0.7080, total_return_p05=-0.7312, total_return_p95=-0.6708
 - buy_and_hold: total_return=0.1954, sharpe=1.3484, max_drawdown=-0.2709
