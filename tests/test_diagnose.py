@@ -42,6 +42,10 @@ def test_horizon_analysis(tmp_path):
     rep = run_horizon(cfg, {"sets": {"a": {"signal.k_h": 1.0}}, "horizons": [1, 16]})
     r = rep["sets"]["a"]["signals"]["dip"]
     assert r[1]["event"]["n"] >= r[16]["event"]["n"] > 0
-    # 成行往復は費用の分だけ event より低い（ランダムウォークでは平均 −0.3% 前後）
-    assert r[1]["market_rt"]["mean"] < 0
+    # 成行往復: 手数料と滑りだけで −0.3%。価格が動くので、ちょうど −0.3% にはならない
+    # （買値と売値が同じ約定を指すと全件ちょうど −0.3% になる。時刻の単位の誤りで起きた）
+    fees_only = (1 - 0.0005) * (1 - 0.001) / ((1 + 0.0005) * (1 + 0.001)) - 1
+    assert r[16]["market_rt"]["n"] > 0 and abs(r[16]["market_rt"]["mean"] - fees_only) > 1e-6
+    assert r[16]["maker_in"]["n"] > 0
+    assert np.isfinite(r[16]["baseline_mean"]) and r[16]["t_nonoverlap"] is not None
     assert "成行往復" in render_horizon(rep)

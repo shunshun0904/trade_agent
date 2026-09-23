@@ -230,7 +230,8 @@ def horizon_set(cfg: dict, market, horizons) -> dict:
     for sig in ("dip", "breakout"):
         e = events[(events["signal_type"] == sig) & (events["t0"] < holdout_start)].reset_index(drop=True)
         p = bars.index.get_indexer(e["t0"] - step)
-        t0_ms = (e["t0"].astype("int64") // 1_000_000).to_numpy()
+        # Timestamp.value は常にナノ秒（Series の astype("int64") は日時の解像度に依存するので使わない）
+        t0_ms = np.array([t.value // 1_000_000 for t in e["t0"]], dtype="int64")
         k_in = np.searchsorted(tape.ts, t0_ms, side="left")
         from .labeling import entry_price, fill_time
 
@@ -242,9 +243,11 @@ def horizon_set(cfg: dict, market, horizons) -> dict:
         rows = {}
         for h in horizons:
             ok = (p >= 0) & (p + h < len(c)) & (e["t0"] + h * step <= holdout_start).to_numpy()
+            ok[ok] = np.isfinite(lc[p[ok] + h] - lc[p[ok]])  # close が NaN の足（期間の先頭）を除く
             ev_r = lc[p[ok] + h] - lc[p[ok]]
             base_idx = dev_bars[dev_bars + h < len(c)]
             base = lc[base_idx + h] - lc[base_idx]
+            base = base[np.isfinite(base)]  # 期間の先頭の約定がない足（close が NaN）を除く
             sel = _non_overlapping(p[ok], h)
             sub = ev_r[sel] - base.mean()
             t_no = float(sub.mean() / sub.std(ddof=1) * np.sqrt(len(sub))) if len(sub) > 2 and sub.std(ddof=1) > 0 else None
