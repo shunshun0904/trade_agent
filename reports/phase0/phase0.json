@@ -1,0 +1,271 @@
+{
+  "run_at": "2026-09-23T15:55:22+00:00",
+  "pair": "btc_jpy",
+  "spot": {
+    "pair_spec": {
+      "name": "btc_jpy",
+      "base_asset": "btc",
+      "quote_asset": "jpy",
+      "maker_fee_rate_base": "0",
+      "taker_fee_rate_base": "0",
+      "maker_fee_rate_quote": "0",
+      "taker_fee_rate_quote": "0.001",
+      "margin_open_maker_fee_rate_quote": "0",
+      "margin_open_taker_fee_rate_quote": "0.001",
+      "margin_close_maker_fee_rate_quote": "0",
+      "margin_close_taker_fee_rate_quote": "0.001",
+      "margin_long_interest": "0.0004",
+      "margin_short_interest": "0.0004",
+      "margin_current_individual_ratio": "0.5",
+      "margin_current_individual_until": 1790693999999,
+      "margin_current_company_ratio": "0.0818",
+      "margin_current_company_until": 1790693999999,
+      "margin_next_individual_ratio": "0.5",
+      "margin_next_individual_until": 1791298799999,
+      "margin_next_company_ratio": "0.0818",
+      "margin_next_company_until": 1791298799999,
+      "unit_amount": "0.0001",
+      "limit_max_amount": "1000",
+      "market_max_amount": "10",
+      "market_allowance_rate": "0.2",
+      "market_in_cb_allowance_rate": "0.2",
+      "price_digits": 0,
+      "amount_digits": 4,
+      "is_enabled": true,
+      "stop_order": false,
+      "stop_order_and_cancel": false,
+      "stop_market_order": false,
+      "stop_stop_order": false,
+      "stop_stop_limit_order": false,
+      "stop_margin_long_order": false,
+      "stop_margin_short_order": false,
+      "stop_buy_order": false,
+      "stop_sell_order": false
+    },
+    "spot_status": {
+      "pair": "btc_jpy",
+      "status": "NORMAL",
+      "min_amount": "0.0001"
+    }
+  },
+  "v1": {
+    "start": "2026-09-15",
+    "end": "2026-09-22",
+    "n_bars": 672,
+    "n_empty_bars": 2,
+    "n_official": 672,
+    "table": [
+      {
+        "shift_bars": -1,
+        "n": 669,
+        "close_match_rate": 0.004484304932735426,
+        "ohlc_match_rate": 0.0,
+        "volume_rel_err_median": 0.7164339961843263,
+        "volume_rel_err_p99": 32.284754883604954
+      },
+      {
+        "shift_bars": 0,
+        "n": 670,
+        "close_match_rate": 1.0,
+        "ohlc_match_rate": 1.0,
+        "volume_rel_err_median": 0.0,
+        "volume_rel_err_p99": 2.060860024030369e-16
+      },
+      {
+        "shift_bars": 1,
+        "n": 669,
+        "close_match_rate": 0.0029895366218236174,
+        "ohlc_match_rate": 0.0,
+        "volume_rel_err_median": 0.7194241339875957,
+        "volume_rel_err_p99": 59.24846141543383
+      }
+    ],
+    "best_shift_bars": 0
+  },
+  "v5": {
+    "days": [
+      {
+        "date": "2026-09-15",
+        "n": 9074,
+        "first_utc": "2026-09-15T00:00:01.337000+00:00",
+        "last_utc": "2026-09-15T23:58:50.617000+00:00",
+        "first_minus_day0_h": 0.0,
+        "day0_plus_24h_minus_last_h": 0.019
+      },
+      {
+        "date": "2026-09-16",
+        "n": 7255,
+        "first_utc": "2026-09-16T00:00:07.107000+00:00",
+        "last_utc": "2026-09-16T23:58:45.950000+00:00",
+        "first_minus_day0_h": 0.002,
+        "day0_plus_24h_minus_last_h": 0.021
+      },
+      {
+        "date": "2026-09-17",
+        "n": 4631,
+        "first_utc": "2026-09-17T00:00:07.186000+00:00",
+        "last_utc": "2026-09-17T23:57:30.289000+00:00",
+        "first_minus_day0_h": 0.002,
+        "day0_plus_24h_minus_last_h": 0.042
+      },
+      {
+        "date": "2026-09-18",
+        "n": 11216,
+        "first_utc": "2026-09-18T00:00:02.999000+00:00",
+        "last_utc": "2026-09-18T23:59:52.276000+00:00",
+        "first_minus_day0_h": 0.001,
+        "day0_plus_24h_minus_last_h": 0.002
+      },
+      {
+        "date": "2026-09-19",
+        "n": 4621,
+        "first_utc": "2026-09-19T00:00:06.052000+00:00",
+        "last_utc": "2026-09-19T23:58:34.669000+00:00",
+        "first_minus_day0_h": 0.002,
+        "day0_plus_24h_minus_last_h": 0.024
+      },
+      {
+        "date": "2026-09-20",
+        "n": 4461,
+        "first_utc": "2026-09-20T00:00:08.740000+00:00",
+        "last_utc": "2026-09-20T23:56:06.561000+00:00",
+        "first_minus_day0_h": 0.002,
+        "day0_plus_24h_minus_last_h": 0.065
+      },
+      {
+        "date": "2026-09-21",
+        "n": 15222,
+        "first_utc": "2026-09-21T00:00:01.996000+00:00",
+        "last_utc": "2026-09-21T23:59:36.489000+00:00",
+        "first_minus_day0_h": 0.001,
+        "day0_plus_24h_minus_last_h": 0.007
+      }
+    ],
+    "guess": "UTC"
+  },
+  "v2": {
+    "n_snapshots": 182,
+    "n_trades": 112,
+    "depth_keys": [
+      "ask_market",
+      "asks",
+      "asks_over",
+      "asks_under",
+      "bid_market",
+      "bids",
+      "bids_over",
+      "bids_under",
+      "sequenceId",
+      "timestamp"
+    ],
+    "by_age": [
+      {
+        "max_age_ms": 500,
+        "n_buy": 2,
+        "buy_ge_prev_ask": 1.0,
+        "buy_gt_prev_mid": 1.0,
+        "n_sell": 23,
+        "sell_le_prev_bid": 1.0,
+        "sell_lt_prev_mid": 1.0
+      },
+      {
+        "max_age_ms": 1000,
+        "n_buy": 18,
+        "buy_ge_prev_ask": 1.0,
+        "buy_gt_prev_mid": 1.0,
+        "n_sell": 24,
+        "sell_le_prev_bid": 1.0,
+        "sell_lt_prev_mid": 1.0
+      },
+      {
+        "max_age_ms": 2000,
+        "n_buy": 23,
+        "buy_ge_prev_ask": 0.9130434782608695,
+        "buy_gt_prev_mid": 1.0,
+        "n_sell": 29,
+        "sell_le_prev_bid": 0.896551724137931,
+        "sell_lt_prev_mid": 0.896551724137931
+      },
+      {
+        "max_age_ms": 5000,
+        "n_buy": 23,
+        "buy_ge_prev_ask": 0.9130434782608695,
+        "buy_gt_prev_mid": 1.0,
+        "n_sell": 29,
+        "sell_le_prev_bid": 0.896551724137931,
+        "sell_lt_prev_mid": 0.896551724137931
+      }
+    ]
+  },
+  "v3": {
+    "oldest": "2017-02-14",
+    "probes": [
+      [
+        "2020-05-11",
+        true
+      ],
+      [
+        "2017-03-07",
+        true
+      ],
+      [
+        "2015-08-04",
+        false
+      ],
+      [
+        "2016-05-20",
+        false
+      ],
+      [
+        "2016-10-12",
+        false
+      ],
+      [
+        "2016-12-24",
+        false
+      ],
+      [
+        "2017-01-29",
+        false
+      ],
+      [
+        "2017-02-16",
+        true
+      ],
+      [
+        "2017-02-07",
+        false
+      ],
+      [
+        "2017-02-11",
+        false
+      ],
+      [
+        "2017-02-13",
+        false
+      ],
+      [
+        "2017-02-14",
+        true
+      ]
+    ],
+    "after_oldest_check": [
+      [
+        "2017-02-15",
+        true
+      ],
+      [
+        "2017-02-21",
+        true
+      ],
+      [
+        "2017-03-16",
+        true
+      ]
+    ]
+  },
+  "status_counts": {
+    "200": 391,
+    "404": 8
+  }
+}
