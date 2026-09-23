@@ -36,6 +36,9 @@ features:
   profile: true
   profile_window_hours: 24
   profile_bin_sigma: 0.25
+  # 収益率の分布のパラメータ推定とその変化（bbresearch/distfeat.py）。正規分布と t 分布、窓 4・16・96 本（オーナー決定、2026-09-23）
+  dist: true
+  dist_windows: [4, 16, 96]
 model:
   kinds: [logit, lgbm]
   n_splits: 5

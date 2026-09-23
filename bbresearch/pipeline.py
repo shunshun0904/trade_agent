@@ -28,6 +28,7 @@ from bbdata.download import to_utc
 from . import backtest as bt
 from .features import bar_features, event_features
 from .labeling import BarrierParams, TradeTape, label_events
+from .distfeat import dist_bar_features, dist_event_features
 from .profile import profile_event_features
 from .model import cross_validate, fit_final, metrics, params_hash, predict_by_fold, predict_proba, save_model
 from .signals import cusum_events, ewm_sigma
@@ -164,6 +165,11 @@ def run(cfg: dict, out_dir: Path, market: Market | None = None, evaluate_holdout
             events, bars, tape, sigma, prm.k_up, prm.k_dn,
             window=pd.Timedelta(hours=float(f_cfg.get("profile_window_hours", 24))),
             bin_sigma=float(f_cfg.get("profile_bin_sigma", 0.25))))
+    if f_cfg.get("dist"):
+        windows = tuple(int(k) for k in f_cfg.get("dist_windows", [4, 16, 96]))
+        t_windows = tuple(k for k in windows if k >= 16)  # 尖度は 4 本では推定できない
+        X_all = X_all.join(dist_event_features(
+            events, dist_bar_features(bars, windows, t_windows), sigma, prm.k_up, prm.k_dn, t_windows=t_windows))
 
     ev = events.merge(labels, on="event_id")
     ev["period"] = np.where(ev["t0"] < holdout_start, "dev", "holdout")
@@ -313,6 +319,8 @@ def render(rep: dict) -> str:
     md.append(f"- 手数料率: メイカー {rep['fees_used']['maker']}、テイカー {rep['fees_used']['taker']}")
     if not rep.get("evaluate_holdout", True):
         md.append("- ホールドアウトは評価していない（使用済み。`split.evaluate_holdout: false`）")
+    if (c.get("features") or {}).get("dist"):
+        md.append(f"- 収益率の分布の特徴量: あり（窓 {c['features'].get('dist_windows', [4, 16, 96])} 本）")
     if (c.get("features") or {}).get("profile"):
         md.append(f"- 価格帯別出来高・TPO の特徴量: あり（直近 {c['features'].get('profile_window_hours', 24)} 時間、"
                   f"刻み {c['features'].get('profile_bin_sigma', 0.25)}σ）")

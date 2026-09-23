@@ -15,6 +15,7 @@ def test_pipeline_end_to_end(tmp_path):
     cfg = yaml.safe_load(CFG.read_text())
     cfg["data"].update(root=str(tmp_path / "data"), start="2026-01-02", end="2026-01-30")
     cfg["split"].update(holdout_days=7, evaluate_holdout=True)
+    cfg["features"].update(profile=True, dist=True, dist_windows=[4, 16, 96])
     cfg["signal"]["k_h"] = 1.0
     cfg["model"].update(min_train=30, n_splits=3)
     cfg["backtest"]["n_random"] = 2
@@ -33,6 +34,7 @@ def test_pipeline_end_to_end(tmp_path):
         assert (tmp_path / "out" / "models" / f"btc_jpy_{s}_lgbm.joblib").exists()
         # 価格帯別出来高・TPO の特徴量がモデルに入っている
         assert any(k.startswith(("vp_", "tpo_")) for k in rep["cv"][s]["lgbm"]["feature_importance"])
+        assert any(k.startswith("dist_") for k in rep["cv"][s]["lgbm"]["feature_importance"])
 
     # ホールドアウトを使用済みにした設定では、ホールドアウトを一切評価しない
     no_ho = {**cfg, "split": {**cfg["split"], "evaluate_holdout": False},
