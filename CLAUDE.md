@@ -8,6 +8,8 @@
 - 実 API へのアクセスは GitHub Actions で行う。開発環境からは行わない。
   - `phase0.yml`: `scripts/phase0.py` の変更を push すると実行し、`reports/phase0/` をコミットする
   - `research.yml`: `configs/research.yaml` の変更を push すると（`run_on_actions: true` のとき）実行し、`reports/research/` をコミットする
+  - `auth-check.yml`: 認証付き API の疎通確認（参照系のみ）。キーは SSM から OIDC で読む。リポジトリ変数 `AWS_ROLE_ARN` が必要
+- リポジトリは公開。ログやコミットするレポートに残高・注文の内容・キーを出さない。
 - 次の作業: Phase 6 の結果をオーナーが確認する。Phase 7 はその後。
 
 ## コマンド
