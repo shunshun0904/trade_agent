@@ -231,6 +231,10 @@ def run(cfg: dict, out_dir: Path, market: Market | None = None, evaluate_holdout
                 p_dev = predict_by_fold(res, X_all.loc[dev_e["event_id"]], dev_e["t0"])
                 p_dev.update(res.oof)
                 report["cv"][sig][kind] = {"oof": res.overall, "folds": res.fold_metrics, "holdout": {}}
+                imps = [m.feature_importances_ for m in res.models if hasattr(m, "feature_importances_")]
+                if imps:  # fold モデルの重要度の平均（ホールドアウトを評価しないときも出す）
+                    report["cv"][sig][kind]["feature_importance_folds"] = dict(
+                        sorted(zip(X.columns, (float(v) for v in np.mean(imps, axis=0))), key=lambda kv: -kv[1]))
                 if not evaluate_holdout:
                     probas[kind] = p_dev
                     continue

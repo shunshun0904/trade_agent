@@ -41,6 +41,8 @@ def test_pipeline_end_to_end(tmp_path):
              "experiment_log": str(tmp_path / "no_ho.jsonl")}
     rep_no = run(no_ho, tmp_path / "out_no")
     assert set(rep_no["backtest"]) == {"dev"} and not rep_no["evaluate_holdout"]
+    for s in [s for s, v in rep_no["cv"].items() if "skipped" not in v]:
+        assert rep_no["cv"][s]["lgbm"]["feature_importance_folds"]
 
     # 同じ設定の再実行は試行数を増やさない。設定を変えると過去の試行として数える
     n_lines = len((tmp_path / "experiments.jsonl").read_text().splitlines())
