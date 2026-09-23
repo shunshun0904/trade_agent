@@ -1,16 +1,16 @@
 # 研究パイプラインの設定。値は SPEC.md §7 の初期値（検証の出発点としての提案値）。
 # true にして push すると GitHub Actions で実データに対して実行する（.github/workflows/research.yml）
-run_on_actions: false
+run_on_actions: true
 seed: 0
 data:
   root: data
   pair: btc_jpy
-  # 【未決】U4 過去データの取得開始日。下の値は仮置き
-  start: "2025-09-01"
+  # U4（2026-09-23 決定）: 取得できる最古日（V3）から全期間を使う
+  start: "2017-02-14"
   end: "2026-09-22"
   large_trade_amount: null        # 【未決】null なら large_share 特徴量を作らない
 split:
-  holdout_days: 60                # 【未決】U5 ホールドアウト期間。仮置き
+  holdout_days: 180               # U5（2026-09-23 決定）。再学習は当面行わず、開発期間で一度だけ学習する
 signal:
   sigma_span: 96
   k_h: 2.0
@@ -23,9 +23,10 @@ label:
   bar_minutes: 15
   s_slip: 0.0005
   fill_rule: strict
-  # 【要検証】V6 手数料率の符号。メイカー報酬を負の値として扱う
-  maker_fee: -0.0002
-  taker_fee: 0.0012
+  # null なら /spot/pairs の maker_fee_rate_quote / taker_fee_rate_quote を使う（2026-09-23 時点で 0 / 0.001）。
+  # 課金通貨と符号は【要検証】V6（実取引の trade_history で確認）
+  maker_fee: null
+  taker_fee: null
 model:
   kinds: [logit, lgbm]
   n_splits: 5

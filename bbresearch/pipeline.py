@@ -69,7 +69,13 @@ def run(cfg: dict, out_dir: Path) -> dict:
     spec = cfg.get("pair_spec") or fetch_pair_spec(pair)
     tick = 10.0 ** -int(spec["price_digits"])
     min_amount = max(float(spec.get("unit_amount") or 0), float(spec.get("status_min_amount") or 0))
-    prm = BarrierParams(**lab_cfg)
+    # 手数料率は設定で上書きしない限り /spot/pairs の値を使う（ハードコードしない。SPEC §3.5）
+    lab = dict(lab_cfg)
+    if lab.get("maker_fee") is None:
+        lab["maker_fee"] = float(spec["maker_fee_rate_quote"])
+    if lab.get("taker_fee") is None:
+        lab["taker_fee"] = float(spec["taker_fee_rate_quote"])
+    prm = BarrierParams(**lab)
 
     log.info("足を構築 %s %s〜%s", pair, start, end)
     bars = build_bars(root, pair, start, end, "15min", large_trade_amount=d.get("large_trade_amount"))
@@ -97,6 +103,7 @@ def run(cfg: dict, out_dir: Path) -> dict:
     report: dict = {
         "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "config": cfg, "config_hash": params_hash(cfg), "pair_spec": spec,
+        "fees_used": {"maker": prm.maker_fee, "taker": prm.taker_fee},
         "n_bars": len(bars), "n_empty_bars": int(bars["is_empty"].sum()), "n_trades_raw": len(tape),
         "events": {}, "cv": {}, "backtest": {}, "baselines": {},
     }
@@ -216,6 +223,7 @@ def render(rep: dict) -> str:
     c = rep["config"]
     md.append(f"- pair: `{c['data']['pair']}`、期間 {c['data']['start']} 〜 {c['data']['end']}（ホールドアウト {c['split']['holdout_days']} 日）")
     md.append(f"- 足 {rep['n_bars']} 本（約定なし {rep['n_empty_bars']}）、約定 {rep['n_trades_raw']} 件、config_hash `{rep['config_hash']}`")
+    md.append(f"- 手数料率: メイカー {rep['fees_used']['maker']}、テイカー {rep['fees_used']['taker']}")
     md.append(f"- 試行数（DSR 用、過去の実験ログを含む）: {rep['n_trials_total']}\n")
     md.append("## イベントとラベル\n")
     md.append("| signal | period | events | fill_rate | y_rate | mean_ret_net | exit_types |\n|---|---|---|---|---|---|---|")

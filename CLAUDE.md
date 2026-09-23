@@ -4,8 +4,11 @@
 
 ## 現在の状態
 
-- Phase 1（`bbdata/`: 過去データ取得と足の構築）は実装済み。実 API では未検証。
-- 次の作業は Phase 0（実データ検証、SPEC.md §5）。
+- Phase 1（`bbdata/`）、Phase 0（`scripts/phase0.py`、結果は SPEC.md §9）、Phase 2〜6（`bbresearch/`）は実装済み。
+- 実 API へのアクセスは GitHub Actions で行う。開発環境からは行わない。
+  - `phase0.yml`: `scripts/phase0.py` の変更を push すると実行し、`reports/phase0/` をコミットする
+  - `research.yml`: `configs/research.yaml` の変更を push すると（`run_on_actions: true` のとき）実行し、`reports/research/` をコミットする
+- 次の作業: Phase 6 の結果をオーナーが確認する。Phase 7 はその後。
 
 ## コマンド
 
@@ -15,6 +18,7 @@ python -m pytest -q
 python -m bbdata download   --pairs btc_jpy --start 2026-09-15 --end 2026-09-22 --candles 15min
 python -m bbdata build-bars --pairs btc_jpy --start 2026-09-15 --end 2026-09-22 --freqs 15min 1h
 python -m bbdata validate   --pair  btc_jpy --start 2026-09-15 --end 2026-09-22
+python -m bbresearch run --config configs/research.yaml --out reports/research
 ```
 
 ## 作業ルール

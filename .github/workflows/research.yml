@@ -26,7 +26,7 @@ jobs:
     needs: check
     if: needs.check.outputs.enabled == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -45,13 +45,21 @@ jobs:
           print(f"end={d['end']}")
           PY
       # 過去の約定は確定しているので、前回までに取得した分をキャッシュから戻す
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: restore
         with:
           path: data/raw
           key: bbdata-raw-${{ steps.cfg.outputs.pair }}-${{ steps.cfg.outputs.start }}-${{ steps.cfg.outputs.end }}
           restore-keys: bbdata-raw-${{ steps.cfg.outputs.pair }}-
       - name: Download transactions
         run: python -m bbdata download --pairs ${{ steps.cfg.outputs.pair }} --start ${{ steps.cfg.outputs.start }} --end ${{ steps.cfg.outputs.end }}
+      # 後続のステップが失敗しても取得済みのデータを残すため、取得直後に保存する
+      - uses: actions/cache/save@v4
+        if: steps.restore.outputs.cache-hit != 'true'
+        with:
+          path: data/raw
+          key: bbdata-raw-${{ steps.cfg.outputs.pair }}-${{ steps.cfg.outputs.start }}-${{ steps.cfg.outputs.end }}
+      - run: du -sh data/raw && free -h
       - name: Run research pipeline
         run: python -m bbresearch run --config configs/research.yaml --out reports/research
       - run: cat reports/research/report.md >> "$GITHUB_STEP_SUMMARY"

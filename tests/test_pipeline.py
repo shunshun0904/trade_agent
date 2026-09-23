@@ -20,7 +20,8 @@ def test_pipeline_end_to_end(tmp_path):
     cfg["backtest"]["n_random"] = 2
     cfg["experiment_log"] = str(tmp_path / "experiments.jsonl")
     cfg["pair_spec"] = {"name": "btc_jpy", "price_digits": 0, "amount_digits": 4, "unit_amount": "0.0001",
-                        "status_min_amount": "0.0001"}
+                        "status_min_amount": "0.0001",
+                        "maker_fee_rate_quote": "0", "taker_fee_rate_quote": "0.001"}
     rep = run(cfg, tmp_path / "out")
     md = render(rep)
     assert "バックテスト（dev）" in md and "バックテスト（holdout）" in md

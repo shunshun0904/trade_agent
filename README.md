@@ -1,3 +1,21 @@
+# bitbank 現物トレードエージェント（研究段階）
+
+- `bbdata/`: 過去データ取得と足・約定集計（Phase 1）
+- `scripts/phase0.py`: 実データ検証（Phase 0、結果は `docs/SPEC.md` §9）
+- `bbresearch/`: CUSUM → 約定考慮トリプルバリア → 特徴量 → メタモデル → バックテスト（Phase 2〜6）
+
+実 API へのアクセスは GitHub Actions で行う（`.github/workflows/phase0.yml`、`research.yml`）。
+
+## 研究パイプライン（bbresearch）
+
+```bash
+python -m bbresearch run --config configs/research.yaml --out reports/research
+```
+
+設定は `configs/research.yaml`。`run_on_actions: true` の状態でこのファイルを変更して push すると、
+GitHub Actions が約定履歴を取得してパイプラインを実行し、`reports/research/report.md` をコミットする。
+試行ごとの結果は `reports/experiments.jsonl` に追記され、Deflated Sharpe Ratio の試行数に数えられる。
+
 # bbdata — bitbank 過去データ取得と足・約定集計
 
 bitbank の公開API（認証不要）から約定履歴を日付単位で取得して Parquet に保存し、
@@ -8,7 +26,7 @@ bitbank の公開API（認証不要）から約定履歴を日付単位で取得
 
 ```bash
 pip install -r requirements.txt
-python -m pytest -q        # 13 件のテスト（HTTP はモック）
+python -m pytest -q        # HTTP はモック、ネットワークにアクセスしない
 ```
 
 ## 使い方
@@ -46,10 +64,10 @@ data/bars/{pair}/{freq}.parquet                   集計済みの足
 - **大口約定の閾値は固定値**: 全期間の分位点で決めると先読みになるため、数量の固定値で指定します。
 - **レート制限**: 公開APIのレート制限は公式ドキュメントに数値の記載がありません。既定では 0.3 秒間隔でリクエストし、429 と 5xx は指数バックオフで最大5回再試行します。
 
-## 実データで確認が必要な点
+## 実データで確認が必要だった点
 
-コードは公式ドキュメントのレスポンス形式に合わせ、モックでテストしています。
-次の点はドキュメントに明記がないため、実データで確認してください。
+以下は Phase 0 で確認済み（結果は `docs/SPEC.md` §9）。side はテイカー側、公式足の timestamp は開始時刻、
+最古日は 2017-02-14、日付境界は UTC。
 
 1. **`side` の意味**: テイカー側の売買方向という前提で `min_sell_price`（売りテイカーが買い板に当たった最安値）を作っています。約定と板のスナップショットを同時に記録し、`buy` の約定価格が売り気配付近にあるかを見れば確認できます。
 2. **公式ロウソク足の timestamp**: 足の開始時刻か終了時刻かが不明です。`validate` の出力で `ohlc_match_rate` が最も高い `shift_bars` を見れば分かります（0 なら開始時刻、-1 なら終了時刻の表記）。
