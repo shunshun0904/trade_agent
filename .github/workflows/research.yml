@@ -1,6 +1,6 @@
 # 研究パイプライン（Phase 2〜6）を実データで実行する。公開 API のみ、認証不要。
-# workflow_dispatch は既定ブランチにこのファイルがないと使えないため、
-# configs/research.yaml を変更して push したときにも実行する。
+# 実行方法: API の workflow_dispatch（ref にこのブランチを指定）か、
+# configs/research.yaml を変更して push する。
 name: research
 on:
   workflow_dispatch:

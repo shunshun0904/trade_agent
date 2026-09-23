@@ -2,8 +2,8 @@
 # キーはリポジトリの Secrets（bitbank_API / bitbank_secret）から読む。
 # Secrets の値は GitHub がログ上でマスクする。リポジトリは公開なので、
 # スクリプトも残高の数値や注文の内容は出力しない。
-# workflow_dispatch は既定ブランチにこのファイルがないと使えないため、
-# scripts/auth_check.py かこのファイルを変更して push したときにも実行する。
+# 実行方法: API の workflow_dispatch（ref にこのブランチを指定）か、
+# scripts/auth_check.py・bblive/private_client.py・このファイルを変更して push する。
 name: auth-check
 on:
   workflow_dispatch:

@@ -1,6 +1,6 @@
 # Phase 0 の実データ検証（公開 API のみ、認証不要）。
-# workflow_dispatch は既定ブランチにこのファイルがないと使えないため、
-# このファイルか scripts/phase0.py を変更して push したときにも実行する。
+# 実行方法: API の workflow_dispatch（ref にこのブランチを指定）か、
+# このファイルか scripts/phase0.py を変更して push する。
 name: phase0
 on:
   workflow_dispatch:
