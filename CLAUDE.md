@@ -10,6 +10,8 @@
   - `phase0.yml`: `scripts/phase0.py` の変更を push すると実行し、`reports/phase0/` をコミットする
   - `research.yml`: `configs/research.yaml` の変更を push すると（`run_on_actions: true` のとき）実行し、`reports/research/` をコミットする
   - `search.yml`: `configs/search.yaml` の変更を push すると（`run_on_actions: true` のとき）パラメータ探索を実行し、`reports/search/` をコミットする（開発期間のみ。ホールドアウトは評価しない）
+  - `diagnose.yml`: 損失の要因分解・ホライズン・エントリー方法の比較（`configs/diagnose.yaml`）
+  - `maker_search.yml`: 深い指値・短い保有・売りも指値の決済条件の探索と確認期間での評価（`configs/maker_search.yaml`）
   - `auth-check.yml`: 認証付き API の疎通確認（参照系のみ）。キーは Secrets `bitbank_API` / `bitbank_secret` から読む
 - リポジトリは公開。ログやコミットするレポートに残高・注文の内容・キーを出さない。
 - 次の作業: Phase 6 の結果をオーナーが確認する。Phase 7 はその後。

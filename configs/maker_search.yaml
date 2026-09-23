@@ -1,0 +1,13 @@
+# 深い指値・短い保有・売りも指値の決済条件の探索（python -m bbresearch maker-search）。2026-09-23 オーナー指示。
+# 探索期間は data.start 〜 search_end、確認期間は search_end 〜 ホールドアウト開始（オーナー決定）。
+search_end: "2024-01-01"
+min_trades: 200          # 選択の対象にする探索期間の取引数の下限
+signals: [dip, breakout]
+grid:
+  k_h: [2.0, 4.0]                 # CUSUM の閾値（σ 倍）
+  delta_sigma: [1.0, 1.5, 2.0, 3.0]  # エントリー指値を close から何 σ 下に置くか
+  t_fill_min: [15, 60]
+  k_up: [0.5, 1.0, 2.0]           # 利確（売り指値）の σ 倍
+  k_dn: [2.0, 4.0, 8.0]           # 損切り（成行）の σ 倍
+  n_v: [1, 2, 4]                  # 時間切れまでの本数（15 分足）
+  grace_min: [15]                 # 時間切れの売り指値を待つ時間（分）

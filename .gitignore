@@ -5,3 +5,4 @@ __pycache__/
 .env
 reports/research/models/
 reports/search/stage2/
+reports/maker_search/models/

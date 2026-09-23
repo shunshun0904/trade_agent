@@ -28,11 +28,22 @@ def main(argv: list[str] | None = None) -> None:
     dg.add_argument("--sets", default="configs/diagnose.yaml")
     dg.add_argument("--out", default="reports/diagnose")
     dg.add_argument("-v", "--verbose", action="store_true")
+    ms = sub.add_parser("maker-search", help="深い指値・短い保有・売りも指値の決済条件を探索し、確認期間で1回評価する")
+    ms.add_argument("--config", default="configs/research.yaml")
+    ms.add_argument("--grid", default="configs/maker_search.yaml")
+    ms.add_argument("--out", default="reports/maker_search")
+    ms.add_argument("--workers", type=int, default=None)
+    ms.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    if args.cmd == "maker-search":
+        from .maker_search import main as maker_main
+
+        maker_main(args)
+        return
     if args.cmd == "diagnose":
         from .diagnose import main as diagnose_main
 

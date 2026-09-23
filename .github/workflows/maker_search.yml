@@ -1,0 +1,62 @@
+# 深い指値・短い保有・売りも指値の決済条件の探索と、確認期間での1回だけの評価。公開 API のみ、認証不要。
+# 実行方法: API の workflow_dispatch（ref にこのブランチを指定）か、
+# configs/maker_search.yaml を変更して push する。
+name: maker-search
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - configs/maker_search.yaml
+permissions:
+  contents: write
+concurrency:
+  group: research-${{ github.ref }}
+jobs:
+  maker-search:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Read period from config
+        id: cfg
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import yaml
+          d = yaml.safe_load(open("configs/research.yaml"))["data"]
+          print(f"pair={d['pair']}")
+          print(f"start={d['start']}")
+          print(f"end={d['end']}")
+          PY
+      - uses: actions/cache/restore@v4
+        with:
+          path: data/raw
+          key: bbdata-raw-${{ steps.cfg.outputs.pair }}-${{ github.run_id }}
+          restore-keys: bbdata-raw-${{ steps.cfg.outputs.pair }}-
+      - name: Download transactions
+        timeout-minutes: 300
+        run: python -m bbdata download --pairs ${{ steps.cfg.outputs.pair }} --start ${{ steps.cfg.outputs.start }} --end ${{ steps.cfg.outputs.end }}
+      - uses: actions/cache/save@v4
+        if: always() && steps.cfg.outcome == 'success'
+        with:
+          path: data/raw
+          key: bbdata-raw-${{ steps.cfg.outputs.pair }}-${{ github.run_id }}
+      - run: du -sh data/raw && free -h && nproc
+      - name: Count experiment log lines
+        id: pre
+        run: echo "n=$( [ -f reports/experiments.jsonl ] && wc -l < reports/experiments.jsonl || echo 0 )" >> "$GITHUB_OUTPUT"
+      - name: Run maker-exit search
+        run: python -m bbresearch maker-search --config configs/research.yaml --grid configs/maker_search.yaml --out reports/maker_search
+      - run: cat reports/maker_search/report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maker-search
+          path: reports/maker_search
+      - name: Commit report
+        run: >-
+          scripts/commit_report.sh "${{ steps.pre.outputs.n }}" "Maker-exit search report from run ${{ github.run_id }}"
+          reports/maker_search/report.md reports/maker_search/report.json reports/maker_search/screen.csv
