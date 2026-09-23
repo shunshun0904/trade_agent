@@ -11,15 +11,17 @@ data:
   large_trade_amount: null        # 【未決】null なら large_share 特徴量を作らない
 split:
   holdout_days: 180               # U5（2026-09-23 決定）。再学習は当面行わず、開発期間で一度だけ学習する
+# signal / label は 2026-09-23 のパラメータ探索で選んだ設定（reports/search/selected.yaml）。
+# ホールドアウトで評価する対象は dip/threshold_0.6/lgbm の1つだけ（探索の前に決めた基準で選択）。
 signal:
   sigma_span: 96
-  k_h: 2.0
+  k_h: 4.0
 label:
-  delta: 0.0
+  delta: 0.001
   t_fill_min: 15
-  k_up: 2.0
-  k_dn: 2.0
-  n_v: 8
+  k_up: 3.0
+  k_dn: 4.0
+  n_v: 16
   bar_minutes: 15
   s_slip: 0.0005
   fill_rule: strict
