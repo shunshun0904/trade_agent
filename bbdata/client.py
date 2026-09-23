@@ -7,6 +7,7 @@ from __future__ import annotations
 import logging
 import random
 import time
+from collections import Counter
 from typing import Any, Callable
 
 import requests
@@ -47,6 +48,8 @@ class PublicClient:
         self.session = session or requests.Session()
         self._sleep = sleep
         self._last_request = float("-inf")
+        # HTTP ステータス（通信例外は "error"）ごとの応答数。レート制限の観察（V4）に使う
+        self.status_counts: Counter = Counter()
 
     def _throttle(self) -> None:
         wait = self.min_interval - (time.monotonic() - self._last_request)
@@ -62,8 +65,10 @@ class PublicClient:
             try:
                 resp = self.session.get(url, timeout=self.timeout)
             except requests.RequestException as exc:
+                self.status_counts["error"] += 1
                 reason = repr(exc)
             else:
+                self.status_counts[resp.status_code] += 1
                 if resp.status_code not in RETRYABLE_STATUS:
                     return self._parse(path, resp)
                 reason = f"HTTP {resp.status_code}"
@@ -99,3 +104,13 @@ class PublicClient:
         data = self.get(f"/{pair}/candlestick/{candle_type}/{period}")
         blocks = data.get("candlestick") or []
         return blocks[0]["ohlcv"] if blocks else []
+
+    def depth(self, pair: str) -> dict:
+        """現在の板。asks / bids は [価格, 数量] の文字列ペア、timestamp は UnixTime ミリ秒。"""
+        return self.get(f"/{pair}/depth")
+
+    def ticker(self, pair: str) -> dict:
+        return self.get(f"/{pair}/ticker")
+
+    def circuit_break_info(self, pair: str) -> dict:
+        return self.get(f"/{pair}/circuit_break_info")
