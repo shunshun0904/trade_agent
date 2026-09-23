@@ -1,6 +1,6 @@
 # 板・約定の記録（.github/workflows/recorder.yml）。2026-09-23 オーナー指示（強化学習の検討に向けたデータ収集）。
 # enabled を false にして push すると、実行中のジョブが終わった時点で連鎖が止まる。
-enabled: true
+enabled: false          # 2026-09-23 オーナー判断で強化学習の検討を取りやめたため停止
 pair: btc_jpy
 hours_per_run: 5.75      # 1 ジョブで記録する時間（ジョブの上限 6 時間に収める）。push で起動した場合は 3 分の試験運転
 retention_days: 90       # 成果物の保存期間（GitHub の上限 90 日）。長期保存先は後で決める
