@@ -3,8 +3,13 @@
 # 連続させる（GITHUB_TOKEN による workflow_dispatch は新しい実行を起動できる）。定期実行（schedule）は既定ブランチでしか
 # 動かないため使わない。止めるには configs/recorder.yaml の enabled を false にして push する。
 # 実行方法: API の workflow_dispatch（ref にこのブランチを指定）。
+# configs/recorder.yaml を変更して push したときは、試験運転（3 分だけ記録し、次のジョブを起動しない）になる。
+# （既定ブランチにないワークフローは、一度 push で起動しないと workflow_dispatch できないため）
 name: recorder
 on:
+  push:
+    paths:
+      - configs/recorder.yaml
   workflow_dispatch:
     inputs:
       hours:
@@ -27,7 +32,7 @@ jobs:
       - name: Read settings
         id: cfg
         env:
-          IN_HOURS: ${{ inputs.hours }}
+          IN_HOURS: ${{ github.event_name == 'push' && '0.05' || inputs.hours }}
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import yaml
@@ -50,7 +55,7 @@ jobs:
         run: python -m bblive.recorder --pair ${{ steps.cfg.outputs.pair }} --hours ${{ steps.cfg.outputs.hours }} --out rec
       # 記録が終わったらすぐ次のジョブを起動する（空白をできるだけ短くするため、成果物の保存より先に行う）
       - name: Start the next run
-        if: always() && steps.cfg.outputs.enabled == 'true' && inputs.chain != 'false'
+        if: always() && steps.cfg.outputs.enabled == 'true' && github.event_name == 'workflow_dispatch' && inputs.chain != 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
