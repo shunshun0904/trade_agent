@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -198,13 +199,26 @@ def run(cfg: dict, out_dir: Path) -> dict:
         report["baselines"].setdefault(pname, {})["buy_and_hold"] = bt.buy_and_hold(
             bars, ps, pe, prm.maker_fee, prm.taker_fee)
 
-    # Deflated Sharpe Ratio: 今回と過去の実験ログの全試行を試行数に数える
+    # Deflated Sharpe Ratio: 今回の試行と、実験ログに記録された過去の試行を試行数に数える。
+    # 試行は「戦略を決める設定（trial_hash）× 戦略（key）」で数え、同じ組み合わせの再実行は1試行とする
+    trial_hash = params_hash({
+        **{k: cfg[k] for k in ("data", "split", "signal", "label", "model")},
+        "backtest": {k: v for k, v in b_cfg.items() if k != "n_random"},
+        "fees": report["fees_used"],
+    })
+    report["trial_hash"] = trial_hash
     log_path = Path(cfg.get("experiment_log", "reports/experiments.jsonl"))
-    past = []
+    past: dict[tuple, float | None] = {}
     if log_path.exists():
-        past = [json.loads(line) for line in log_path.read_text().splitlines() if line.strip()]
+        for line in log_path.read_text().splitlines():
+            if not line.strip():
+                continue
+            p = json.loads(line)
+            th = p.get("trial_hash", p.get("config_hash"))
+            if th != trial_hash:  # 今回と同じ設定の試行は今回の結果で数える
+                past[(th, p.get("key"))] = p.get("daily_sr")
     sr_d = lambda t: t["sharpe"] / np.sqrt(365) if t.get("sharpe") is not None else None  # noqa: E731
-    all_sr = [x for x in [sr_d(t) for t in trials] + [p.get("daily_sr") for p in past] if x is not None]
+    all_sr = [x for x in [sr_d(t) for t in trials] + list(past.values()) if x is not None]
     report["n_trials_total"] = len(all_sr)
     for t in trials:
         sr = sr_d(t)
@@ -215,8 +229,9 @@ def run(cfg: dict, out_dir: Path) -> dict:
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a") as f:
         for t in trials:
-            f.write(json.dumps({"run_at": report["run_at"], "config_hash": report["config_hash"], "key": t["key"],
-                                "daily_sr": sr_d(t), "total_return": t["total_return"],
+            f.write(json.dumps({"run_at": report["run_at"], "config_hash": report["config_hash"],
+                                "trial_hash": trial_hash, "code_version": os.environ.get("GITHUB_SHA"),
+                                "key": t["key"], "daily_sr": sr_d(t), "total_return": t["total_return"],
                                 "n_trades": t["n_trades"]}, ensure_ascii=False) + "\n")
     return report
 

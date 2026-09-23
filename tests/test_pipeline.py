@@ -32,6 +32,19 @@ def test_pipeline_end_to_end(tmp_path):
     for s in trained:
         assert (tmp_path / "out" / "models" / f"btc_jpy_{s}_lgbm.joblib").exists()
 
+    # 同じ設定の再実行は試行数を増やさない。設定を変えると過去の試行として数える
+    n_lines = len((tmp_path / "experiments.jsonl").read_text().splitlines())
+    rep2 = run(cfg, tmp_path / "out")
+    assert rep2["n_trials_total"] == rep["n_trials_total"]
+    assert rep2["trial_hash"] == rep["trial_hash"]
+    cfg["backtest"]["n_random"] = 1  # 戦略を変えない設定は同じ試行
+    assert run(cfg, tmp_path / "out")["n_trials_total"] == rep["n_trials_total"]
+    cfg["signal"]["k_h"] = 1.5
+    rep3 = run(cfg, tmp_path / "out")
+    assert rep3["trial_hash"] != rep["trial_hash"]
+    assert rep3["n_trials_total"] > rep["n_trials_total"]
+    assert len((tmp_path / "experiments.jsonl").read_text().splitlines()) > n_lines
+
 
 def test_random_events_cover_the_whole_period():
     import numpy as np
