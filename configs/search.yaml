@@ -1,0 +1,17 @@
+# パラメータ探索（python -m bbresearch search）の設定。探索範囲は SPEC §7 の範囲内。
+# 探索は開発期間だけで行い、ホールドアウトは評価しない。
+# run_on_actions が true のときにこのファイルを変更して push すると、GitHub Actions で実行する（search.yml）。
+run_on_actions: true
+grid:
+  signal.k_h: [1.0, 2.0, 3.0, 4.0]
+  label.k_up: [1.0, 2.0, 3.0, 4.0]
+  label.k_dn: [1.0, 2.0, 3.0, 4.0]
+  label.n_v: [4, 8, 16]
+  label.delta: [0.0, 0.001]
+  label.t_fill_min: [15, 60]
+stage1:
+  min_filled: 200        # 約定した取引がこれ未満の組み合わせは順位付けしない
+stage2:
+  top_n: 5               # t 値の上位からメタモデル込みで評価する数（組み合わせの重複は除く）
+  min_trades: 100        # 選択の対象にする取引数の下限
+  n_random: 0            # ステージ2ではランダムエントリーの比較を省く

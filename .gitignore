@@ -4,3 +4,4 @@ __pycache__/
 *.tmp
 .env
 reports/research/models/
+reports/search/stage2/

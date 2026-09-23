@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -59,32 +60,98 @@ def random_events(bars: pd.DataFrame, sigma: pd.Series, n: int, start, end, rng:
     })
 
 
-def run(cfg: dict, out_dir: Path) -> dict:
-    d, s, lab_cfg, m_cfg, b_cfg = cfg["data"], cfg["signal"], cfg["label"], cfg["model"], cfg["backtest"]
+@dataclass
+class Market:
+    """設定の data 節から作る、パラメータ探索で使い回せるデータ。"""
+
+    bars: pd.DataFrame
+    tape: TradeTape
+    spec: dict
+    tick: float
+    min_amount: float
+
+
+def load_market(cfg: dict) -> Market:
+    d = cfg["data"]
     pair = d["pair"]
     start, end = to_utc(d["start"]), to_utc(d["end"])
-    holdout_start = end - pd.Timedelta(days=int(cfg["split"]["holdout_days"]))
     root = d.get("root", "data")
-    seed = int(cfg.get("seed", 0))
-
     spec = cfg.get("pair_spec") or fetch_pair_spec(pair)
-    tick = 10.0 ** -int(spec["price_digits"])
-    min_amount = max(float(spec.get("unit_amount") or 0), float(spec.get("status_min_amount") or 0))
+    log.info("足を構築 %s %s〜%s", pair, start, end)
+    bars = build_bars(root, pair, start, end, "15min", large_trade_amount=d.get("large_trade_amount"))
+    tape = TradeTape.load(root, pair, start, end)
+    return Market(
+        bars=bars, tape=tape, spec=spec, tick=10.0 ** -int(spec["price_digits"]),
+        min_amount=max(float(spec.get("unit_amount") or 0), float(spec.get("status_min_amount") or 0)),
+    )
+
+
+def barrier_params(cfg: dict, spec: dict) -> BarrierParams:
     # 手数料率は設定で上書きしない限り /spot/pairs の値を使う（ハードコードしない。SPEC §3.5）
-    lab = dict(lab_cfg)
+    lab = dict(cfg["label"])
     if lab.get("maker_fee") is None:
         lab["maker_fee"] = float(spec["maker_fee_rate_quote"])
     if lab.get("taker_fee") is None:
         lab["taker_fee"] = float(spec["taker_fee_rate_quote"])
-    prm = BarrierParams(**lab)
+    return BarrierParams(**lab)
 
-    log.info("足を構築 %s %s〜%s", pair, start, end)
-    bars = build_bars(root, pair, start, end, "15min", large_trade_amount=d.get("large_trade_amount"))
+
+def trial_hash(cfg: dict, prm: BarrierParams) -> str:
+    """試行を識別するハッシュ。戦略を決める設定（data / split / signal / label / model /
+    backtest（n_random を除く）/ 実際に使った手数料率）から作る。"""
+    return params_hash({
+        **{k: cfg[k] for k in ("data", "split", "signal", "label", "model")},
+        "backtest": {k: v for k, v in cfg["backtest"].items() if k != "n_random"},
+        "fees": {"maker": prm.maker_fee, "taker": prm.taker_fee},
+    })
+
+
+def daily_sr(summary: dict) -> float | None:
+    """年率化していない日次シャープレシオ（DSR の入力）。"""
+    return summary["sharpe"] / np.sqrt(365) if summary.get("sharpe") is not None else None
+
+
+def read_past_trials(log_path: Path, current_trial_hash: str, current_config_hash: str | None) -> dict[tuple, float | None]:
+    """実験ログの試行（(trial_hash, key) → 日次シャープレシオ）。同じ組み合わせの再実行は1つにまとめ、
+    今回と同じ設定の行は除く（今回の結果で数える）。"""
+    past: dict[tuple, float | None] = {}
+    if not log_path.exists():
+        return past
+    for line in log_path.read_text().splitlines():
+        if not line.strip():
+            continue
+        p = json.loads(line)
+        th = p.get("trial_hash")
+        if th is None:  # trial_hash を記録する前の行は config_hash で同じ設定かを判断する
+            if current_config_hash is not None and p.get("config_hash") == current_config_hash:
+                continue
+            th = "config:" + str(p.get("config_hash"))
+        if th == current_trial_hash:
+            continue
+        past[(th, p.get("key"))] = p.get("daily_sr")
+    return past
+
+
+def run(cfg: dict, out_dir: Path, market: Market | None = None, evaluate_holdout: bool = True) -> dict:
+    """研究パイプラインを実行してレポート（dict）を返す。
+
+    evaluate_holdout=False ではホールドアウト期間のイベントを一切評価しない（パラメータ探索用）。
+    """
+    d, s, m_cfg, b_cfg = cfg["data"], cfg["signal"], cfg["model"], cfg["backtest"]
+    pair = d["pair"]
+    start, end = to_utc(d["start"]), to_utc(d["end"])
+    holdout_start = end - pd.Timedelta(days=int(cfg["split"]["holdout_days"]))
+    seed = int(cfg.get("seed", 0))
+
+    market = market or load_market(cfg)
+    bars, tape, spec, tick = market.bars, market.tape, market.spec, market.tick
+    prm = barrier_params(cfg, spec)
     sigma = ewm_sigma(bars, s["sigma_span"])
     events = cusum_events(bars, pair, s["sigma_span"], s["k_h"])
+    if not evaluate_holdout:
+        events = events[events["t0"] < holdout_start].reset_index(drop=True)
     log.info("イベント %d 件", len(events))
 
-    tape = TradeTape.load(root, pair, start, end)
     labels = label_events(events, bars, tape, prm, tick, sigma)
     X_all = event_features(events, bar_features(bars, s["sigma_span"]))
 
@@ -94,18 +161,21 @@ def run(cfg: dict, out_dir: Path) -> dict:
     embargo = pd.Timedelta(minutes=prm.bar_minutes * int(m_cfg.get("embargo_bars", prm.n_v)))
     account = bt.Account(
         initial_capital=float(b_cfg["initial_capital"]), max_fraction=float(b_cfg["max_fraction"]),
-        amount_digits=int(spec["amount_digits"]), min_amount=min_amount,
+        amount_digits=int(spec["amount_digits"]), min_amount=market.min_amount,
     )
     strategies = [bt.Strategy("primary", "all")]
     strategies += [bt.Strategy(f"threshold_{th}", "threshold", theta=float(th)) for th in b_cfg["thetas"]]
     strategies += [bt.Strategy("meta", "meta", size_step=float(b_cfg.get("size_step", 0.0)))]
-    periods = {"dev": (start, holdout_start), "holdout": (holdout_start, end)}
+    periods = {"dev": (start, holdout_start)}
+    if evaluate_holdout:
+        periods["holdout"] = (holdout_start, end)
 
     report: dict = {
         "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "config": cfg, "config_hash": params_hash(cfg), "pair_spec": spec,
         "fees_used": {"maker": prm.maker_fee, "taker": prm.taker_fee},
         "n_bars": len(bars), "n_empty_bars": int(bars["is_empty"].sum()), "n_trades_raw": len(tape),
+        "evaluate_holdout": evaluate_holdout,
         "events": {}, "cv": {}, "backtest": {}, "baselines": {},
     }
     trials: list[dict] = []
@@ -144,17 +214,19 @@ def run(cfg: dict, out_dir: Path) -> dict:
                 dev_e = e[e["period"] == "dev"]
                 p_dev = predict_by_fold(res, X_all.loc[dev_e["event_id"]], dev_e["t0"])
                 p_dev.update(res.oof)
+                report["cv"][sig][kind] = {"oof": res.overall, "folds": res.fold_metrics, "holdout": {}}
+                if not evaluate_holdout:
+                    probas[kind] = p_dev
+                    continue
                 final = fit_final(kind, X, y, w, seed, params)
                 ho_e = e[e["period"] == "holdout"]
                 p_ho = pd.Series(predict_proba(final, X_all.loc[ho_e["event_id"]]) if len(ho_e) else [],
                                  index=ho_e["event_id"].to_numpy(), dtype="float64")
                 probas[kind] = pd.concat([p_dev, p_ho])
                 ho_lab = ho_e[ho_e["filled"] & ho_e["y"].notna()]
-                report["cv"][sig][kind] = {
-                    "oof": res.overall, "folds": res.fold_metrics,
-                    "holdout": metrics(ho_lab["y"].astype(int).to_numpy(), probas[kind].loc[ho_lab["event_id"]].to_numpy())
-                    if len(ho_lab) else {},
-                }
+                if len(ho_lab):
+                    report["cv"][sig][kind]["holdout"] = metrics(
+                        ho_lab["y"].astype(int).to_numpy(), probas[kind].loc[ho_lab["event_id"]].to_numpy())
                 if hasattr(final, "feature_importances_"):
                     report["cv"][sig][kind]["feature_importance"] = dict(
                         sorted(zip(X.columns, map(int, final.feature_importances_)), key=lambda kv: -kv[1]))
@@ -201,32 +273,14 @@ def run(cfg: dict, out_dir: Path) -> dict:
 
     # Deflated Sharpe Ratio: 今回の試行と、実験ログに記録された過去の試行を試行数に数える。
     # 試行は「戦略を決める設定（trial_hash）× 戦略（key）」で数え、同じ組み合わせの再実行は1試行とする
-    trial_hash = params_hash({
-        **{k: cfg[k] for k in ("data", "split", "signal", "label", "model")},
-        "backtest": {k: v for k, v in b_cfg.items() if k != "n_random"},
-        "fees": report["fees_used"],
-    })
-    report["trial_hash"] = trial_hash
+    th = trial_hash(cfg, prm)
+    report["trial_hash"] = th
     log_path = Path(cfg.get("experiment_log", "reports/experiments.jsonl"))
-    past: dict[tuple, float | None] = {}
-    if log_path.exists():
-        for line in log_path.read_text().splitlines():
-            if not line.strip():
-                continue
-            p = json.loads(line)
-            th = p.get("trial_hash")
-            if th is None:  # trial_hash を記録する前の行は config_hash で同じ設定かを判断する
-                if p.get("config_hash") == report["config_hash"]:
-                    continue
-                th = "config:" + str(p.get("config_hash"))
-            if th == trial_hash:  # 今回と同じ設定の試行は今回の結果で数える
-                continue
-            past[(th, p.get("key"))] = p.get("daily_sr")
-    sr_d = lambda t: t["sharpe"] / np.sqrt(365) if t.get("sharpe") is not None else None  # noqa: E731
-    all_sr = [x for x in [sr_d(t) for t in trials] + list(past.values()) if x is not None]
+    past = read_past_trials(log_path, th, report["config_hash"])
+    all_sr = [x for x in [daily_sr(t) for t in trials] + list(past.values()) if x is not None]
     report["n_trials_total"] = len(all_sr)
     for t in trials:
-        sr = sr_d(t)
+        sr = daily_sr(t)
         if sr is None or t.get("daily_ret_skew") is None:
             continue
         report["backtest"]["dev"][t["key"]]["dsr"] = bt.deflated_sharpe(
@@ -235,8 +289,8 @@ def run(cfg: dict, out_dir: Path) -> dict:
     with log_path.open("a") as f:
         for t in trials:
             f.write(json.dumps({"run_at": report["run_at"], "config_hash": report["config_hash"],
-                                "trial_hash": trial_hash, "code_version": os.environ.get("GITHUB_SHA"),
-                                "key": t["key"], "daily_sr": sr_d(t), "total_return": t["total_return"],
+                                "trial_hash": th, "code_version": os.environ.get("GITHUB_SHA"),
+                                "key": t["key"], "daily_sr": daily_sr(t), "total_return": t["total_return"],
                                 "n_trades": t["n_trades"]}, ensure_ascii=False) + "\n")
     return report
 

@@ -1,4 +1,5 @@
-"""python -m bbresearch run --config configs/research.yaml --out reports/research"""
+"""python -m bbresearch run    --config configs/research.yaml --out reports/research
+python -m bbresearch search --config configs/research.yaml --grid configs/search.yaml --out reports/search"""
 from __future__ import annotations
 
 import argparse
@@ -16,11 +17,27 @@ def main(argv: list[str] | None = None) -> None:
     r.add_argument("--config", default="configs/research.yaml")
     r.add_argument("--out", default="reports/research")
     r.add_argument("-v", "--verbose", action="store_true")
+    sr = sub.add_parser("search", help="SPEC §7 の範囲でパラメータを探索する（開発期間のみ）")
+    sr.add_argument("--config", default="configs/research.yaml")
+    sr.add_argument("--grid", default="configs/search.yaml")
+    sr.add_argument("--out", default="reports/search")
+    sr.add_argument("--workers", type=int, default=None)
+    sr.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    if args.cmd == "search":
+        from .search import render as render_search
+        from .search import run_search
+
+        res = run_search(load_config(args.config), load_config(args.grid), out, workers=args.workers)
+        (out / "report.json").write_text(json.dumps(res["report"], ensure_ascii=False, indent=2, default=str))
+        md = render_search(res)
+        (out / "report.md").write_text(md)
+        print(md)
+        return
     rep = run(load_config(args.config), out)
     (out / "report.json").write_text(json.dumps(rep, ensure_ascii=False, indent=2, default=str))
     md = render(rep)

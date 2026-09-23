@@ -9,6 +9,7 @@
   - どのワークフローも、API の workflow_dispatch でこのブランチを ref に指定して実行できる（既定ブランチになくてもよいことを 2026-09-23 に確認）
   - `phase0.yml`: `scripts/phase0.py` の変更を push すると実行し、`reports/phase0/` をコミットする
   - `research.yml`: `configs/research.yaml` の変更を push すると（`run_on_actions: true` のとき）実行し、`reports/research/` をコミットする
+  - `search.yml`: `configs/search.yaml` の変更を push すると（`run_on_actions: true` のとき）パラメータ探索を実行し、`reports/search/` をコミットする（開発期間のみ。ホールドアウトは評価しない）
   - `auth-check.yml`: 認証付き API の疎通確認（参照系のみ）。キーは Secrets `bitbank_API` / `bitbank_secret` から読む
 - リポジトリは公開。ログやコミットするレポートに残高・注文の内容・キーを出さない。
 - 次の作業: Phase 6 の結果をオーナーが確認する。Phase 7 はその後。
@@ -22,6 +23,7 @@ python -m bbdata download   --pairs btc_jpy --start 2026-09-15 --end 2026-09-22 
 python -m bbdata build-bars --pairs btc_jpy --start 2026-09-15 --end 2026-09-22 --freqs 15min 1h
 python -m bbdata validate   --pair  btc_jpy --start 2026-09-15 --end 2026-09-22
 python -m bbresearch run --config configs/research.yaml --out reports/research
+python -m bbresearch search --config configs/research.yaml --grid configs/search.yaml --out reports/search
 ```
 
 ## 作業ルール

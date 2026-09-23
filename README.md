@@ -16,6 +16,15 @@ python -m bbresearch run --config configs/research.yaml --out reports/research
 GitHub Actions が約定履歴を取得してパイプラインを実行し、`reports/research/report.md` をコミットする。
 試行ごとの結果は `reports/experiments.jsonl` に追記され、Deflated Sharpe Ratio の試行数に数えられる。
 
+パラメータ探索（SPEC §7 の範囲、開発期間のみ）:
+
+```bash
+python -m bbresearch search --config configs/research.yaml --grid configs/search.yaml --out reports/search
+```
+
+`configs/search.yaml` を変更して push すると GitHub Actions（`search.yml`）で実行し、`reports/search/`
+（`report.md`、`screen.csv`、`selected.yaml`）をコミットする。
+
 # bbdata — bitbank 過去データ取得と足・約定集計
 
 bitbank の公開API（認証不要）から約定履歴を日付単位で取得して Parquet に保存し、
