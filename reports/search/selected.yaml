@@ -1,0 +1,27 @@
+selected_at: '2026-09-23T20:32:06+00:00'
+strategy: dip/threshold_0.6/lgbm
+combo:
+  label.delta: 0.001
+  label.k_dn: 4.0
+  label.k_up: 3.0
+  label.n_v: 16
+  label.t_fill_min: 15
+  signal.k_h: 4.0
+dev_sharpe: 0.5534870412060324
+dev_total_return: 1.2272912755065044
+dev_n_trades: 899
+dev_dsr: 5.361180209666406e-19
+signal:
+  sigma_span: 96
+  k_h: 4.0
+label:
+  delta: 0.001
+  t_fill_min: 15
+  k_up: 3.0
+  k_dn: 4.0
+  n_v: 16
+  bar_minutes: 15
+  s_slip: 0.0005
+  fill_rule: strict
+  maker_fee: null
+  taker_fee: null
