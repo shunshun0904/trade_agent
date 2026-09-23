@@ -31,3 +31,22 @@ def test_pipeline_end_to_end(tmp_path):
     trained = [s for s, v in rep["cv"].items() if "skipped" not in v]
     for s in trained:
         assert (tmp_path / "out" / "models" / f"btc_jpy_{s}_lgbm.joblib").exists()
+
+
+def test_random_events_cover_the_whole_period():
+    import numpy as np
+    import pandas as pd
+
+    from bbresearch.pipeline import random_events
+
+    idx = pd.date_range("2026-01-01", periods=96 * 20, freq="15min", tz="UTC")
+    bars = pd.DataFrame({"close": 100.0}, index=idx)
+    sigma = pd.Series(0.01, index=idx)
+    start, end = idx[0], idx[-1]
+    rev = random_events(bars, sigma, 400, start, end, np.random.default_rng(0))
+    assert len(rev) == 400
+    assert rev["t0"].is_monotonic_increasing
+    assert (rev["t0"] > start).all() and (rev["t0"] <= end).all()
+    # 期間の前半だけに偏らない
+    mid = start + (end - start) / 2
+    assert 0.35 < (rev["t0"] < mid).mean() < 0.65

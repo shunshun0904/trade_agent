@@ -114,12 +114,19 @@ def run_backtest(
 # ------------------------------------------------------------------ 評価
 
 def equity_curve(trades: pd.DataFrame, initial: float, start, end) -> pd.Series:
-    """日次の資産推移（決済時点で損益を計上）。"""
-    days = pd.date_range(pd.Timestamp(start).floor("D"), pd.Timestamp(end).ceil("D"), freq="D")
-    s = pd.Series(initial, index=days, dtype="float64")
+    """日次の資産推移（決済時点で損益を計上）。
+
+    期間の終わり直前に建てて期間を越えて決済した取引も含めるよう、最後の決済日まで伸ばす。
+    """
     if trades.empty or "pnl" not in trades:
-        return s
-    f = trades[trades["filled"]]
+        f = None
+        last = pd.Timestamp(end)
+    else:
+        f = trades[trades["filled"]]
+        last = max(pd.Timestamp(end), f["t_x"].max()) if len(f) else pd.Timestamp(end)
+    days = pd.date_range(pd.Timestamp(start).floor("D"), last.ceil("D"), freq="D")
+    if f is None or f.empty:
+        return pd.Series(initial, index=days, dtype="float64")
     daily = f.groupby(f["t_x"].dt.floor("D"))["pnl"].sum()
     return initial + daily.reindex(days, fill_value=0.0).cumsum()
 

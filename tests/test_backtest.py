@@ -72,3 +72,15 @@ def test_deflated_sharpe():
     hi = bt.deflated_sharpe(0.2, [0.0, 0.05, 0.2], 365, 0, 3)
     lo = bt.deflated_sharpe(0.2, [0.0, 0.05, 0.2] * 30, 365, 0, 3)
     assert 0 <= lo < hi <= 1
+
+
+def test_equity_curve_includes_trade_closing_after_period_end():
+    trades = pd.DataFrame({
+        "filled": [True], "t_x": [T("2026-01-03 01:00")], "pnl": [500.0],
+    })
+    curve = bt.equity_curve(trades, 10_000, T("2026-01-01"), T("2026-01-02"))
+    assert curve.iloc[-1] == 10_500
+    s = bt.summarize(trades.assign(t_f=T("2026-01-01 23:00"), exit_type="tp", ret_net=0.05,
+                                   entry_fee=0.0, exit_fee=0.0),
+                     ACC, T("2026-01-01"), T("2026-01-02"))
+    assert s["total_return"] == pytest.approx(0.05)

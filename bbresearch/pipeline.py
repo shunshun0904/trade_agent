@@ -176,19 +176,22 @@ def run(cfg: dict, out_dir: Path) -> dict:
                     report["backtest"].setdefault(pname, {})[key] = summ
                     if pname == "dev":
                         trials.append({"key": key, **summ})
-            # ランダムエントリー（一次シグナルのみの方式と同じ発注回数）
+            # ランダムエントリー: 一次シグナルのみの方式の発注回数と同じ数の候補時刻を、期間内の足の終了時刻から
+            # 一様に選ぶ。待機中・保有中に当たった候補は見送るので、実際の発注回数はそれ以下になる
             n_orders = report["backtest"][pname][f"{sig}/primary"]["n_orders"]
-            rand_res = []
+            rand_ret, rand_orders = [], []
             for _ in range(int(b_cfg.get("n_random", 20))):
-                rev = random_events(bars, sigma, n_orders * 3, ps, pe, rng)
+                rev = random_events(bars, sigma, n_orders, ps, pe, rng)
                 rlab = label_events(rev, bars, tape, prm, tick, sigma)
                 tr = bt.run_backtest(rev, rlab, None, bt.Strategy("random", "all"), account, t_fill)
-                tr = tr.head(n_orders)
-                rand_res.append(bt.summarize(tr, account, ps, pe)["total_return"])
+                rand_ret.append(bt.summarize(tr, account, ps, pe)["total_return"])
+                rand_orders.append(len(tr))
             report["baselines"].setdefault(pname, {})[f"{sig}/random"] = {
-                "n_orders": n_orders, "total_return_mean": float(np.mean(rand_res)) if rand_res else None,
-                "total_return_p05": float(np.percentile(rand_res, 5)) if rand_res else None,
-                "total_return_p95": float(np.percentile(rand_res, 95)) if rand_res else None,
+                "n_candidates": n_orders,
+                "n_orders_mean": float(np.mean(rand_orders)) if rand_orders else None,
+                "total_return_mean": float(np.mean(rand_ret)) if rand_ret else None,
+                "total_return_p05": float(np.percentile(rand_ret, 5)) if rand_ret else None,
+                "total_return_p95": float(np.percentile(rand_ret, 95)) if rand_ret else None,
             }
 
     for pname, (ps, pe) in periods.items():
