@@ -37,6 +37,7 @@ bitbank の現物取引所で、統計・機械学習モデルの判断に基づ
 - Phase 0: V1〜V5 を GitHub Actions 上で実施し、結果を §9 に記録した（V6 は Phase 7 で実施）。
 - Phase 2〜6（`bbresearch`）: 実装済み。単体テストは合成データで通過。実データでの結果は `reports/research/report.md`（GitHub Actions の `research` ワークフローが書き込む）。
 - 実 API へのアクセスは GitHub Actions 上で行う（`.github/workflows/`）。開発環境からは行わない。
+- Phase 6 の初回結果（2026-09-23、run 35897632078、§7 の初期値のまま）: 一次シグナルだけでは開発期間・ホールドアウトとも大きく負け、ランダムエントリーと同程度。メタモデルの AUC は 0.53〜0.57 で、損失は減るが手数料込みでプラスにはならない（DSR はほぼ 0）。詳細は `reports/research/report.md`。
 - 次の作業: Phase 6 の結果をオーナーが確認する。Phase 7 はその後。
 
 ---
