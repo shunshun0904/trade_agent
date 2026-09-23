@@ -119,14 +119,24 @@ def diagnose_set(cfg: dict, market) -> dict:
     return out
 
 
-def run_diagnose(cfg: dict, sets: dict) -> dict:
-    market = load_market(cfg)
+def run_diagnose(cfg: dict, sets: dict, market=None) -> dict:
+    market = market or load_market(cfg)
     base = copy.deepcopy(cfg)
     base["pair_spec"] = market.spec
     results = {}
     for name, combo in sets["sets"].items():
         log.info("パラメータの組 %s", name)
         results[name] = {"combo": combo, **diagnose_set(apply_combo(base, combo), market)}
+    return {"run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "sets": results}
+
+
+def run_horizon(cfg: dict, sets: dict, market=None) -> dict:
+    market = market or load_market(cfg)
+    base = copy.deepcopy(cfg)
+    base["pair_spec"] = market.spec
+    horizons = sets.get("horizons", [1, 4, 16, 32, 96, 192, 384, 672])
+    results = {name: {"combo": combo, **horizon_set(apply_combo(base, combo), market, horizons)}
+               for name, combo in sets["sets"].items()}
     return {"run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "sets": results}
 
 
@@ -166,10 +176,118 @@ def main(args) -> None:
 
     from .pipeline import load_config
 
-    rep = run_diagnose(load_config(args.config), yaml.safe_load(Path(args.sets).read_text()))
+    cfg = load_config(args.config)
+    sets = yaml.safe_load(Path(args.sets).read_text())
+    market = load_market(cfg)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    rep = run_diagnose(cfg, sets, market)
     (out / "report.json").write_text(json.dumps(rep, ensure_ascii=False, indent=2, default=str))
     md = render(rep)
     (out / "report.md").write_text(md)
-    print(md)
+    hz = run_horizon(cfg, sets, market)
+    (out / "horizon.json").write_text(json.dumps(hz, ensure_ascii=False, indent=2, default=str))
+    md_h = render_horizon(hz)
+    (out / "horizon.md").write_text(md_h)
+    print(md + "\n" + md_h)
+
+
+# ---------------------------------------------------------------- ホライズン（案 A の測定）
+
+def _non_overlapping(t: np.ndarray, gap: int) -> np.ndarray:
+    """時刻（足の番号）t の昇順の配列から、間隔が gap 以上になるよう前から選んだ位置。"""
+    keep, last = [], -np.inf
+    for i, v in enumerate(t):
+        if v - last >= gap:
+            keep.append(i)
+            last = v
+    return np.array(keep, dtype=int)
+
+
+def horizon_set(cfg: dict, market, horizons) -> dict:
+    """イベント後 h 本の値動きと、費用込みの損益（開発期間のみ）。
+
+    - event:     close(t0) から h 本後の close までの対数リターン（全イベントの平均）
+    - baseline:  開発期間のすべての足を起点にした同じ量（相場全体の上昇・下落の影響）
+    - excess:    event − baseline
+    - t_nonoverlap: 測定期間が重ならないイベントだけを選んだ t 値（重なると t 値が過大になるため）
+    - market_rt: t0 直後の約定で成行買い、t0 + h 本の直後の約定で成行売り（テイカー手数料 + 滑りを往復）
+    - maker_in:  post_only 買い指値（ラベルと同じ約定判定）で約定した取引を、約定から h 本後に成行売り
+    """
+    s = cfg["signal"]
+    start, end = to_utc(cfg["data"]["start"]), to_utc(cfg["data"]["end"])
+    holdout_start = end - pd.Timedelta(days=int(cfg["split"]["holdout_days"]))
+    bars, tape = market.bars, market.tape
+    prm = barrier_params(cfg, market.spec)
+    events = cusum_events(bars, cfg["data"]["pair"], s["sigma_span"], s["k_h"])
+    step = bars.index[1] - bars.index[0]
+    c = bars["close"].to_numpy()
+    lc = np.log(c)
+    dev_bars = np.flatnonzero((bars.index >= start) & (bars.index + step <= holdout_start))
+    fee_t, slip = prm.taker_fee, prm.s_slip
+    step_ms = int(step / pd.Timedelta(milliseconds=1))
+    out: dict = {"horizons": list(horizons), "signals": {}}
+    for sig in ("dip", "breakout"):
+        e = events[(events["signal_type"] == sig) & (events["t0"] < holdout_start)].reset_index(drop=True)
+        p = bars.index.get_indexer(e["t0"] - step)
+        t0_ms = (e["t0"].astype("int64") // 1_000_000).to_numpy()
+        k_in = np.searchsorted(tape.ts, t0_ms, side="left")
+        from .labeling import entry_price, fill_time
+
+        fills = []
+        for tm, cl in zip(t0_ms, c[p]):
+            pe = entry_price(float(cl), prm.delta, market.tick)
+            f = fill_time(tape, pe, int(tm), int(tm) + prm.t_fill_min * 60_000, prm.fill_rule)
+            fills.append((f[0], pe) if f else (None, pe))
+        rows = {}
+        for h in horizons:
+            ok = (p >= 0) & (p + h < len(c)) & (e["t0"] + h * step <= holdout_start).to_numpy()
+            ev_r = lc[p[ok] + h] - lc[p[ok]]
+            base_idx = dev_bars[dev_bars + h < len(c)]
+            base = lc[base_idx + h] - lc[base_idx]
+            sel = _non_overlapping(p[ok], h)
+            sub = ev_r[sel] - base.mean()
+            t_no = float(sub.mean() / sub.std(ddof=1) * np.sqrt(len(sub))) if len(sub) > 2 and sub.std(ddof=1) > 0 else None
+            # 成行の往復
+            k_out = np.searchsorted(tape.ts, t0_ms[ok] + h * step_ms, side="left")
+            k_i = k_in[ok]
+            good = (k_out < len(tape)) & (k_i < len(tape))
+            p_in = tape.price[k_i[good]] * (1 + slip)
+            p_out = tape.price[k_out[good]] * (1 - slip)
+            mrt = (p_out * (1 - fee_t)) / (p_in * (1 + fee_t)) - 1
+            # 指値で買い、約定から h 本後に成行売り
+            mk = []
+            for (tf, pe), okk in zip(fills, ok):
+                if tf is None or not okk:
+                    continue
+                ko = int(np.searchsorted(tape.ts, tf + h * step_ms, side="left"))
+                if ko >= len(tape):
+                    continue
+                px = tape.price[ko] * (1 - slip)
+                mk.append(net_return(pe, px, prm.maker_fee, fee_t))
+            rows[h] = {
+                "event": _stats(ev_r), "baseline_mean": float(base.mean()), "excess_mean": float(ev_r.mean() - base.mean()),
+                "n_nonoverlap": int(len(sel)), "t_nonoverlap": t_no,
+                "market_rt": _stats(mrt), "maker_in": _stats(mk),
+            }
+        out["signals"][sig] = rows
+    return out
+
+
+def render_horizon(rep: dict) -> str:
+    md = [f"# ホライズン別の優位と費用（{rep['run_at']}、開発期間のみ）\n",
+          "event: close(t0) から h 本後までの対数リターン。baseline: 開発期間のすべての足を起点にした同じ量。"
+          "excess = event − baseline。t（重なりなし）は測定期間が重ならないイベントだけで計算した excess の t 値。"
+          "成行往復・指値買いは手数料と滑りを含む1取引あたりの損益。\n"]
+    for name, r in rep["sets"].items():
+        md.append(f"## {name}: `{r['combo']}`\n")
+        for sig, rows in r["signals"].items():
+            md.append(f"### {sig}\n")
+            md.append("| h（本） | 時間 | event | baseline | excess | t（重なりなし, n） | 成行往復 | 指値買い→成行売り |\n|---|---|---|---|---|---|---|---|")
+            for h, v in rows.items():
+                hrs = int(h) * 15 / 60
+                md.append(f"| {h} | {hrs:g}h | {_p(v['event'].get('mean'))} | {_p(v['baseline_mean'])} | {_p(v['excess_mean'])} | "
+                          f"{_p(v['t_nonoverlap'], False)}（{v['n_nonoverlap']}） | {_p(v['market_rt'].get('mean'))} | "
+                          f"{_p(v['maker_in'].get('mean'))} |")
+            md.append("")
+    return "\n".join(md) + "\n"

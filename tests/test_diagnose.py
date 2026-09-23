@@ -25,3 +25,23 @@ def test_diagnose_runs_on_dev_only(tmp_path):
     assert ms["mean"] >= base["mean"]
     assert d["market_entry"]["n"] >= d["pnl"]["base"]["n"]
     assert "事後の対数リターン" in render(rep)
+
+
+def test_horizon_analysis(tmp_path):
+    import numpy as np
+
+    from bbresearch.diagnose import _non_overlapping, render_horizon, run_horizon
+
+    assert list(_non_overlapping(np.array([0, 1, 5, 6, 12]), 5)) == [0, 2, 4]
+    write_trades(tmp_path / "data", "btc_jpy", synth_trades("2026-01-01", 15, seed=4, per_min=3, vol=0.0015))
+    cfg = yaml.safe_load(CFG.read_text())
+    cfg["data"].update(root=str(tmp_path / "data"), start="2026-01-02", end="2026-01-15")
+    cfg["split"]["holdout_days"] = 4
+    cfg["pair_spec"] = {"name": "btc_jpy", "price_digits": 0, "amount_digits": 4, "unit_amount": "0.0001",
+                        "status_min_amount": "0.0001", "maker_fee_rate_quote": "0", "taker_fee_rate_quote": "0.001"}
+    rep = run_horizon(cfg, {"sets": {"a": {"signal.k_h": 1.0}}, "horizons": [1, 16]})
+    r = rep["sets"]["a"]["signals"]["dip"]
+    assert r[1]["event"]["n"] >= r[16]["event"]["n"] > 0
+    # 成行往復は費用の分だけ event より低い（ランダムウォークでは平均 −0.3% 前後）
+    assert r[1]["market_rt"]["mean"] < 0
+    assert "成行往復" in render_horizon(rep)

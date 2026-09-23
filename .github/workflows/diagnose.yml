@@ -44,8 +44,8 @@ jobs:
         run: echo "n=$( [ -f reports/experiments.jsonl ] && wc -l < reports/experiments.jsonl || echo 0 )" >> "$GITHUB_OUTPUT"
       - name: Run diagnosis
         run: python -m bbresearch diagnose --config configs/research.yaml --sets configs/diagnose.yaml --out reports/diagnose
-      - run: cat reports/diagnose/report.md >> "$GITHUB_STEP_SUMMARY"
+      - run: cat reports/diagnose/report.md reports/diagnose/horizon.md >> "$GITHUB_STEP_SUMMARY"
       - name: Commit report
         run: >-
           scripts/commit_report.sh "${{ steps.pre.outputs.n }}" "Diagnosis report from run ${{ github.run_id }}"
-          reports/diagnose/report.md reports/diagnose/report.json
+          reports/diagnose/report.md reports/diagnose/report.json reports/diagnose/horizon.md reports/diagnose/horizon.json
