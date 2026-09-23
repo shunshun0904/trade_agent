@@ -1,0 +1,101 @@
+{
+  "run_at": "2026-09-23T21:40:43+00:00",
+  "grid": {
+    "k_h": [
+      2.0,
+      4.0
+    ],
+    "delta_sigma": [
+      1.0,
+      1.5,
+      2.0,
+      3.0
+    ],
+    "t_fill_min": [
+      15,
+      60
+    ],
+    "k_up": [
+      0.5,
+      1.0,
+      2.0
+    ],
+    "k_dn": [
+      2.0,
+      4.0,
+      8.0
+    ],
+    "n_v": [
+      1,
+      2,
+      4
+    ],
+    "grace_min": [
+      15
+    ]
+  },
+  "periods": {
+    "search": [
+      "2017-02-14 00:00:00+00:00",
+      "2024-01-01 00:00:00+00:00"
+    ],
+    "validate": [
+      "2024-01-01 00:00:00+00:00",
+      "2026-03-26 00:00:00+00:00"
+    ]
+  },
+  "n_combos": 432,
+  "signals": [
+    "dip",
+    "breakout"
+  ],
+  "min_trades": 200,
+  "n_positive_mean": 40,
+  "n_rows": 864,
+  "selected": {
+    "combo": {
+      "k_h": 4.0,
+      "delta_sigma": 2.0,
+      "t_fill_min": 15,
+      "k_up": 2.0,
+      "k_dn": 8.0,
+      "n_v": 4,
+      "grace_min": 15
+    },
+    "signal": "dip",
+    "search": {
+      "n_filled": 1088,
+      "mean_ret_net": 0.0008531472092166483,
+      "t_stat": 2.2848513029854107,
+      "bt_n_trades": 1043,
+      "bt_total_return": 1.2271882413052282,
+      "bt_sharpe": 0.8291254569265062,
+      "bt_max_drawdown": -0.34789708465363234
+    },
+    "search_dsr": 2.1732814400446358e-26,
+    "n_trials_total": 2550,
+    "validate": {
+      "n_events": 2475,
+      "fill_rate": 0.15474747474747474,
+      "n_filled": 383,
+      "mean_ret_net": -0.0007919090467702762,
+      "t_stat": -1.838335342889761,
+      "exit_types": {
+        "tp": 193,
+        "time_maker": 130,
+        "sl": 31,
+        "time_taker": 29
+      },
+      "bt_n_trades": 361,
+      "bt_total_return": -0.2314221137617457,
+      "bt_sharpe": -1.0496433762567507,
+      "bt_max_drawdown": -0.263494248732388,
+      "daily_sr": -0.05494084533211441
+    },
+    "validate_buy_and_hold": {
+      "total_return": 0.8921982861661091,
+      "sharpe": 0.7910974224445514,
+      "max_drawdown": -0.5014273002009282
+    }
+  }
+}
