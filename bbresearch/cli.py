@@ -23,11 +23,21 @@ def main(argv: list[str] | None = None) -> None:
     sr.add_argument("--out", default="reports/search")
     sr.add_argument("--workers", type=int, default=None)
     sr.add_argument("-v", "--verbose", action="store_true")
+    dg = sub.add_parser("diagnose", help="損失の要因分解（開発期間のみ）")
+    dg.add_argument("--config", default="configs/research.yaml")
+    dg.add_argument("--sets", default="configs/diagnose.yaml")
+    dg.add_argument("--out", default="reports/diagnose")
+    dg.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    if args.cmd == "diagnose":
+        from .diagnose import main as diagnose_main
+
+        diagnose_main(args)
+        return
     if args.cmd == "search":
         from .search import render as render_search
         from .search import run_search
