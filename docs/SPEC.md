@@ -478,6 +478,15 @@ TPO は 15 分足を t0 から過去へ 2 本ずつまとめた 30 分区間で�
 - 選択基準（探索前に決定）: 探索期間で取引 200 件以上のうち、日次シャープレシオ最大。メタモデルは使わない。
 - 設定は `configs/maker_search.yaml`、結果は `reports/maker_search/`。
 
+### 板・約定の記録（`bblive/recorder.py`、`bblive/orderbook.py`、2026-09-23）
+
+強化学習（執行の学習など）を検討するためのデータ収集（オーナー指示）。過去の板は API から取得できない（§3.4）ため、今から記録する。
+
+- Public Stream（`wss://stream.bitbank.cc`、Socket.IO 4.x）の `depth_whole_btc_jpy`、`depth_diff_btc_jpy`、`transactions_btc_jpy`、`circuit_break_info_btc_jpy` を受信したまま、受信時刻（ミリ秒）付きで UTC の時ごとの gzip JSONL に保存する。
+- 板は `OrderBook` で公式ドキュメントの「板情報の処理方法」どおりに組み立て直す（whole 受信時に sequenceId より後の diff を再適用）。
+- 実行は GitHub Actions（`recorder.yml`）。1 ジョブ約 5 時間 45 分で、終了時に次のジョブを起動して連続させる。ジョブの切り替えで数分の空白ができる（stats に記録）。止めるには `configs/recorder.yaml` の `enabled: false`。
+- 保存先は Actions の成果物（最大 90 日、オーナー決定）。長期保存先は後で決める。
+
 ### Phase 7: 本番実行
 
 Phase 6 の結果をオーナーが確認してから着手する。

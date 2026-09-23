@@ -1,0 +1,76 @@
+# bitbank Public Stream の板・約定を記録する（認証不要）。
+# 1 ジョブで約 5 時間 45 分記録して成果物（artifact）に保存し、終了時に次のジョブを workflow_dispatch で起動して
+# 連続させる（GITHUB_TOKEN による workflow_dispatch は新しい実行を起動できる）。定期実行（schedule）は既定ブランチでしか
+# 動かないため使わない。止めるには configs/recorder.yaml の enabled を false にして push する。
+# 実行方法: API の workflow_dispatch（ref にこのブランチを指定）。
+name: recorder
+on:
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: "記録する時間（空なら configs/recorder.yaml の hours_per_run）。試験運転用"
+        required: false
+        default: ""
+      chain:
+        description: "終了時に次のジョブを起動するか（試験運転では false）"
+        required: false
+        default: "true"
+permissions:
+  contents: read
+  actions: write
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read settings
+        id: cfg
+        env:
+          IN_HOURS: ${{ inputs.hours }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import yaml
+          c = yaml.safe_load(open("configs/recorder.yaml"))
+          print(f"enabled={str(bool(c.get('enabled'))).lower()}")
+          print(f"pair={c['pair']}")
+          import os
+          print(f"hours={os.environ.get('IN_HOURS') or c['hours_per_run']}")
+          print(f"retention={c.get('retention_days', 90)}")
+          PY
+      - uses: actions/setup-python@v5
+        if: steps.cfg.outputs.enabled == 'true'
+        with:
+          python-version: "3.12"
+          cache: pip
+      - if: steps.cfg.outputs.enabled == 'true'
+        run: pip install -r requirements.txt
+      - name: Record
+        if: steps.cfg.outputs.enabled == 'true'
+        run: python -m bblive.recorder --pair ${{ steps.cfg.outputs.pair }} --hours ${{ steps.cfg.outputs.hours }} --out rec
+      # 記録が終わったらすぐ次のジョブを起動する（空白をできるだけ短くするため、成果物の保存より先に行う）
+      - name: Start the next run
+        if: always() && steps.cfg.outputs.enabled == 'true' && inputs.chain != 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # 起動し直す前に、ブランチの最新の設定で止める指示が出ていないか確かめる
+          git fetch -q origin "${GITHUB_REF_NAME}"
+          if git show "origin/${GITHUB_REF_NAME}:configs/recorder.yaml" | grep -Eq '^enabled:[[:space:]]*true'; then
+            gh workflow run recorder.yml --ref "${GITHUB_REF_NAME}"
+          else
+            echo "enabled が false のため、次のジョブを起動しない"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.cfg.outputs.enabled == 'true'
+        with:
+          name: book-${{ steps.cfg.outputs.pair }}-${{ github.run_id }}
+          path: rec
+          retention-days: ${{ steps.cfg.outputs.retention }}
+          compression-level: 0
+          if-no-files-found: warn
+      - name: Summary
+        if: always() && steps.cfg.outputs.enabled == 'true'
+        run: |
+          for f in rec/stats_*.json; do [ -f "$f" ] && python3 -c "import json,sys; d=json.load(open('$f')); print('counts', d['counts']); print('disconnects', len(d['disconnects']))" >> "$GITHUB_STEP_SUMMARY"; done
+          du -sh rec >> "$GITHUB_STEP_SUMMARY" || true
