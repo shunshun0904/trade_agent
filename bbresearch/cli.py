@@ -1,0 +1,32 @@
+"""python -m bbresearch run --config configs/research.yaml --out reports/research"""
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+from pathlib import Path
+
+from .pipeline import load_config, render, run
+
+
+def main(argv: list[str] | None = None) -> None:
+    ap = argparse.ArgumentParser(prog="bbresearch")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("run", help="研究パイプラインを実行してレポートを書き出す")
+    r.add_argument("--config", default="configs/research.yaml")
+    r.add_argument("--out", default="reports/research")
+    r.add_argument("-v", "--verbose", action="store_true")
+    args = ap.parse_args(argv)
+    logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
+                        format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    rep = run(load_config(args.config), out)
+    (out / "report.json").write_text(json.dumps(rep, ensure_ascii=False, indent=2, default=str))
+    md = render(rep)
+    (out / "report.md").write_text(md)
+    print(md)
+
+
+if __name__ == "__main__":
+    main()
