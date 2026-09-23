@@ -1,0 +1,729 @@
+{
+  "run_at": "2026-09-23T21:10:43+00:00",
+  "sets": {
+    "initial": {
+      "combo": {
+        "signal.k_h": 2.0,
+        "label.k_up": 2.0,
+        "label.k_dn": 2.0,
+        "label.n_v": 8,
+        "label.delta": 0.0,
+        "label.t_fill_min": 15
+      },
+      "horizons": [
+        1,
+        4,
+        16,
+        32,
+        96,
+        192,
+        384,
+        672
+      ],
+      "signals": {
+        "dip": {
+          "1": {
+            "event": {
+              "n": 23979,
+              "mean": 9.169660993907169e-05,
+              "t": 2.4452922253471403,
+              "win": 0.5448100421201885
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 23979,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 23979,
+              "mean": -0.0029955052443805257,
+              "t": -1.0695628201770606e+18,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "4": {
+            "event": {
+              "n": 23979,
+              "mean": 0.0003477204717800432,
+              "t": 5.357363521539524,
+              "win": 0.5561950039617999
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 20063,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 23979,
+              "mean": -0.0029955052443805257,
+              "t": -1.0695628201770606e+18,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "16": {
+            "event": {
+              "n": 23979,
+              "mean": 0.0005880418581740332,
+              "t": 5.372978383333216,
+              "win": 0.5524000166812628
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 11480,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 23979,
+              "mean": -0.0029955052443805257,
+              "t": -1.0695628201770606e+18,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "32": {
+            "event": {
+              "n": 23978,
+              "mean": 0.0007168828836057172,
+              "t": 4.953613990279584,
+              "win": 0.5500875802819251
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 7294,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 23978,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "96": {
+            "event": {
+              "n": 23973,
+              "mean": 0.0008829329758803609,
+              "t": 3.543398598785514,
+              "win": 0.5341842906603262
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 2960,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 23973,
+              "mean": -0.0029955052443805257,
+              "t": -1.0694289937856735e+18,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "192": {
+            "event": {
+              "n": 23967,
+              "mean": 0.001878577895514968,
+              "t": 5.563876674901348,
+              "win": 0.5422038636458464
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 1565,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 23967,
+              "mean": -0.0029955052443805257,
+              "t": -1.0692951506454e+18,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "384": {
+            "event": {
+              "n": 23954,
+              "mean": 0.004198751715069898,
+              "t": 8.779496295850178,
+              "win": 0.5391583869082408
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 806,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 23954,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "672": {
+            "event": {
+              "n": 23934,
+              "mean": 0.0071249400219521326,
+              "t": 11.08450651253526,
+              "win": 0.5415726581432272
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 466,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 23934,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          }
+        },
+        "breakout": {
+          "1": {
+            "event": {
+              "n": 25239,
+              "mean": -5.352306144645445e-06,
+              "t": -0.15659475618710805,
+              "win": 0.4574269979000753
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 25239,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 25239,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "4": {
+            "event": {
+              "n": 25239,
+              "mean": -8.993274255210886e-05,
+              "t": -1.5418459567484286,
+              "win": 0.46459843892388764
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 21557,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 25239,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "16": {
+            "event": {
+              "n": 25237,
+              "mean": 8.12831967002795e-05,
+              "t": 0.8084158554289105,
+              "win": 0.4883702500297183
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 12060,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 25237,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "32": {
+            "event": {
+              "n": 25235,
+              "mean": 0.00040081334106978144,
+              "t": 2.9892016821320944,
+              "win": 0.4980780661779275
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 7523,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 25235,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "96": {
+            "event": {
+              "n": 25228,
+              "mean": 0.002088783108719029,
+              "t": 8.92201029307594,
+              "win": 0.5187490090375773
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 2998,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 25228,
+              "mean": -0.002995505244380525,
+              "t": -1.0970656656783117e+18,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "192": {
+            "event": {
+              "n": 25221,
+              "mean": 0.0033908723873568216,
+              "t": 10.47179664334715,
+              "win": 0.5375282502676341
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 1575,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 25221,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "384": {
+            "event": {
+              "n": 25207,
+              "mean": 0.006324797638246334,
+              "t": 13.840659251778137,
+              "win": 0.5433014638790812
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 810,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 25207,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "672": {
+            "event": {
+              "n": 25184,
+              "mean": 0.010597782359469341,
+              "t": 17.2046778649796,
+              "win": 0.5441550190597204
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 468,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 25184,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          }
+        }
+      }
+    },
+    "selected": {
+      "combo": {
+        "signal.k_h": 4.0,
+        "label.k_up": 3.0,
+        "label.k_dn": 4.0,
+        "label.n_v": 16,
+        "label.delta": 0.001,
+        "label.t_fill_min": 15
+      },
+      "horizons": [
+        1,
+        4,
+        16,
+        32,
+        96,
+        192,
+        384,
+        672
+      ],
+      "signals": {
+        "dip": {
+          "1": {
+            "event": {
+              "n": 9200,
+              "mean": 0.00010738907713310227,
+              "t": 1.5262129720046989,
+              "win": 0.5521739130434783
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 9200,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 9200,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "4": {
+            "event": {
+              "n": 9200,
+              "mean": 0.0004898710531164652,
+              "t": 4.373661776730842,
+              "win": 0.5664130434782608
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 8682,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 9200,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "16": {
+            "event": {
+              "n": 9200,
+              "mean": 0.0005710589981524863,
+              "t": 3.0550142899732577,
+              "win": 0.5577173913043478
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 6611,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 9200,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "32": {
+            "event": {
+              "n": 9199,
+              "mean": 0.0007858727087007689,
+              "t": 3.2288069740970315,
+              "win": 0.5547342102402435
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 5029,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 9199,
+              "mean": -0.002995505244380525,
+              "t": -6.624399601779287e+17,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "96": {
+            "event": {
+              "n": 9198,
+              "mean": 0.0003909265413727398,
+              "t": 0.9408526131154498,
+              "win": 0.538160469667319
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 2505,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 9198,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "192": {
+            "event": {
+              "n": 9196,
+              "mean": 0.001361097656328099,
+              "t": 2.4546469162727274,
+              "win": 0.5405611135276207
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 1428,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 9196,
+              "mean": -0.002995505244380525,
+              "t": -6.623319213677545e+17,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "384": {
+            "event": {
+              "n": 9190,
+              "mean": 0.0035549886843195422,
+              "t": 4.537862785925225,
+              "win": 0.5377584330794342
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 766,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 9190,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "672": {
+            "event": {
+              "n": 9180,
+              "mean": 0.006142139587906512,
+              "t": 5.879341691125052,
+              "win": 0.5465141612200436
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 454,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 9180,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          }
+        },
+        "breakout": {
+          "1": {
+            "event": {
+              "n": 9899,
+              "mean": -1.6343225644057156e-05,
+              "t": -0.2721387530015785,
+              "win": 0.4514597434084251
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 9899,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 9899,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "4": {
+            "event": {
+              "n": 9899,
+              "mean": 4.684790469737884e-05,
+              "t": 0.4677379708321622,
+              "win": 0.4590362662895242
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 9371,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 9899,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "16": {
+            "event": {
+              "n": 9898,
+              "mean": 9.106347785578156e-05,
+              "t": 0.5479086138946158,
+              "win": 0.4792887452010507
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 7296,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 9898,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "32": {
+            "event": {
+              "n": 9898,
+              "mean": 0.00048404179801059206,
+              "t": 2.2096601175657233,
+              "win": 0.489290765811275
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 5447,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 9898,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "96": {
+            "event": {
+              "n": 9896,
+              "mean": 0.00283456391307759,
+              "t": 7.588002914798015,
+              "win": 0.5184923201293452
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 2592,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 9896,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "192": {
+            "event": {
+              "n": 9893,
+              "mean": 0.004615919051959611,
+              "t": 8.856324991406558,
+              "win": 0.5402810067724654
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 1458,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 9893,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "384": {
+            "event": {
+              "n": 9887,
+              "mean": 0.008204158700825656,
+              "t": 11.328900047936523,
+              "win": 0.5495094568625468
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 778,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 9887,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          },
+          "672": {
+            "event": {
+              "n": 9880,
+              "mean": 0.01274262118983846,
+              "t": 13.003151854206044,
+              "win": 0.5498987854251012
+            },
+            "baseline_mean": NaN,
+            "excess_mean": NaN,
+            "n_nonoverlap": 458,
+            "t_nonoverlap": null,
+            "market_rt": {
+              "n": 9880,
+              "mean": -0.0029955052443805252,
+              "t": null,
+              "win": 0.0
+            },
+            "maker_in": {
+              "n": 0
+            }
+          }
+        }
+      }
+    }
+  }
+}
