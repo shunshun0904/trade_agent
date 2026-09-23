@@ -63,3 +63,25 @@ def test_random_events_cover_the_whole_period():
     # 期間の前半だけに偏らない
     mid = start + (end - start) / 2
     assert 0.35 < (rev["t0"] < mid).mean() < 0.65
+
+
+def test_legacy_log_rows_with_same_config_are_not_extra_trials(tmp_path):
+    import json
+
+    write_trades(tmp_path / "data", "btc_jpy", synth_trades("2026-01-01", 20, seed=5, per_min=3, vol=0.0015))
+    cfg = yaml.safe_load(CFG.read_text())
+    cfg["data"].update(root=str(tmp_path / "data"), start="2026-01-02", end="2026-01-20")
+    cfg["split"]["holdout_days"] = 5
+    cfg["signal"]["k_h"] = 1.0
+    cfg["model"].update(min_train=30, n_splits=3)
+    cfg["backtest"]["n_random"] = 1
+    log = tmp_path / "experiments.jsonl"
+    cfg["experiment_log"] = str(log)
+    cfg["pair_spec"] = {"name": "btc_jpy", "price_digits": 0, "amount_digits": 4, "unit_amount": "0.0001",
+                        "status_min_amount": "0.0001", "maker_fee_rate_quote": "0", "taker_fee_rate_quote": "0.001"}
+    first = run(cfg, tmp_path / "out")
+    # trial_hash を持たない古い形式の行（同じ config_hash）と、別設定の古い行を足す
+    log.write_text(json.dumps({"config_hash": first["config_hash"], "key": "dip/primary", "daily_sr": 0.1}) + "\n"
+                   + json.dumps({"config_hash": "other", "key": "dip/primary", "daily_sr": 0.2}) + "\n")
+    again = run(cfg, tmp_path / "out")
+    assert again["n_trials_total"] == first["n_trials_total"] + 1

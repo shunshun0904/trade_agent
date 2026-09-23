@@ -214,9 +214,14 @@ def run(cfg: dict, out_dir: Path) -> dict:
             if not line.strip():
                 continue
             p = json.loads(line)
-            th = p.get("trial_hash", p.get("config_hash"))
-            if th != trial_hash:  # 今回と同じ設定の試行は今回の結果で数える
-                past[(th, p.get("key"))] = p.get("daily_sr")
+            th = p.get("trial_hash")
+            if th is None:  # trial_hash を記録する前の行は config_hash で同じ設定かを判断する
+                if p.get("config_hash") == report["config_hash"]:
+                    continue
+                th = "config:" + str(p.get("config_hash"))
+            if th == trial_hash:  # 今回と同じ設定の試行は今回の結果で数える
+                continue
+            past[(th, p.get("key"))] = p.get("daily_sr")
     sr_d = lambda t: t["sharpe"] / np.sqrt(365) if t.get("sharpe") is not None else None  # noqa: E731
     all_sr = [x for x in [sr_d(t) for t in trials] + list(past.values()) if x is not None]
     report["n_trials_total"] = len(all_sr)
