@@ -85,6 +85,9 @@ jobs:
           for attempt in 1 2 3; do
             git fetch -q origin "${GITHUB_REF_NAME}"
             git reset -q --hard
+            # チェックアウトした時点のブランチにレポートがなかった場合、生成物は未追跡ファイルとして
+            # 残り、checkout を妨げる。内容は $tmp に退避済みなので消す
+            rm -f reports/research/report.md reports/research/report.json reports/experiments.jsonl
             git checkout -q -B report-update "origin/${GITHUB_REF_NAME}"
             mkdir -p reports/research
             cp "$tmp/report.md" "$tmp/report.json" reports/research/
