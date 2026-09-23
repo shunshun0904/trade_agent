@@ -479,7 +479,7 @@ Phase 6 の結果をオーナーが確認してから着手する。
 
 API キーとシークレットは環境変数またはシークレット管理サービスから読み込む。ログには出力しない。リポジトリにはコミットしない。API キーには出金権限を付けない。
 
-現状（2026-09-23 決定）: キーは既存システムと同じ AWS SSM Parameter Store（`/trade-agent/bitbank/api-key`、`/trade-agent/bitbank/api-secret`、ap-northeast-1）に置き、GitHub Actions からは OIDC で IAM ロール `trade-agent-bitbank-gha` を引き受けて読む（`scripts/setup_github_oidc.sh`、`.github/workflows/auth-check.yml`）。ロールの信頼ポリシーはこのリポジトリの指定ブランチへの push に限定し、権限は `/trade-agent/bitbank/*` の読み取りだけにする。リポジトリは公開なので、ワークフローのログに残高・注文の内容を出さない。
+現状（2026-09-23）: GitHub Actions ではリポジトリの Secrets `bitbank_API`（API キー）と `bitbank_secret`（API シークレット）を環境変数 `BITBANK_API_KEY` / `BITBANK_API_SECRET` として渡す（`.github/workflows/auth-check.yml`）。既存システムは同じ口座のキーを AWS SSM Parameter Store（`/trade-agent/bitbank/*`）に置いている。リポジトリは公開なので、ワークフローのログやコミットするレポートに残高・注文の内容を出さない。Secrets を使うワークフローは `push`（このリポジトリへの書き込み権限が必要）と `workflow_dispatch` だけで起動し、フォークからのプルリクエストでは起動しない。
 
 既存システムと同じキー・同じ口座を使う。2026-09-23 時点で既存システムはペーパートレード（`paper_trading: true`、発注 API に到達しない設定）で、最後の tick は 2026-09-03 と稼働していないため、オーナーの判断でキーはそのまま使ってよい。既存システムを実取引で動かす場合は、同じ口座で2つのシステムが発注しないよう統合の設計（U7）で排他を決める。
 

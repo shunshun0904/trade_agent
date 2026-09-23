@@ -1,6 +1,7 @@
 # bitbank の認証付き API の疎通確認（参照系のみ、発注しない）。
-# キーは AWS SSM Parameter Store から、GitHub OIDC で引き受けた IAM ロールで読む。
-# ロールは scripts/setup_github_oidc.sh で作り、その ARN をリポジトリ変数 AWS_ROLE_ARN に登録する。
+# キーはリポジトリの Secrets（bitbank_API / bitbank_secret）から読む。
+# Secrets の値は GitHub がログ上でマスクする。リポジトリは公開なので、
+# スクリプトも残高の数値や注文の内容は出力しない。
 # workflow_dispatch は既定ブランチにこのファイルがないと使えないため、
 # scripts/auth_check.py かこのファイルを変更して push したときにも実行する。
 name: auth-check
@@ -10,19 +11,14 @@ on:
     branches: [claude/bitbank-trade-agent-7ers55]
     paths:
       - scripts/auth_check.py
+      - bblive/private_client.py
       - .github/workflows/auth-check.yml
 permissions:
-  id-token: write
   contents: read
 jobs:
   check:
-    # ロール ARN が未登録の間は実行しない
-    if: vars.AWS_ROLE_ARN != ''
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
-      AWS_REGION: ${{ vars.AWS_REGION || 'ap-northeast-1' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,21 +26,9 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          role-to-assume: ${{ env.AWS_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Read bitbank key from SSM
-        run: |
-          key="$(aws ssm get-parameter --with-decryption --name /trade-agent/bitbank/api-key --query Parameter.Value --output text)"
-          secret="$(aws ssm get-parameter --with-decryption --name /trade-agent/bitbank/api-secret --query Parameter.Value --output text)"
-          echo "::add-mask::$key"
-          echo "::add-mask::$secret"
-          {
-            echo "BITBANK_API_KEY=$key"
-            echo "BITBANK_API_SECRET=$secret"
-          } >> "$GITHUB_ENV"
       - name: Auth check (read-only)
         env:
           PYTHONPATH: .
+          BITBANK_API_KEY: ${{ secrets.bitbank_API }}
+          BITBANK_API_SECRET: ${{ secrets.bitbank_secret }}
         run: python scripts/auth_check.py
