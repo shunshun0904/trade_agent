@@ -38,6 +38,22 @@ class MakerExitParams:
     taker_fee: float = 0.001
 
 
+def maker_time_exit(tape: TradeTape, t_v: int, l: float, grace_ms: int, s_slip: float,
+                    tick: float) -> tuple[str, int, float] | None:
+    """時間切れの決済: t_v 直前の約定価格 + 1 呼値に post_only 売り指値を出す。
+
+    [t_v, t_v + grace) にその価格を上回る買いの約定があれば約定（time_maker）。その前に L 以下の約定があれば
+    成行の損切り（sl）。どちらもなければ t_v + grace で成行（time_taker）。データが足りなければ None。
+    """
+    last = int(np.searchsorted(tape.ts, t_v, side="left")) - 1
+    x = float(tape.price[last]) + tick
+    ex = first_exit(tape, last, t_v - 1, x, l, t_v + grace_ms, s_slip)
+    if ex is None:
+        return None
+    e, t_x, p_x = ex
+    return {"tp": "time_maker", "sl": "sl", "time": "time_taker"}[e], t_x, p_x
+
+
 def label_event_maker(tape: TradeTape, t0_ms: int, close_t0: float, sigma0: float, prm: MakerExitParams,
                       tick: float) -> dict:
     p_e = floor_price(close_t0 * (1.0 - prm.delta_sigma * sigma0), tick)
@@ -54,15 +70,10 @@ def label_event_maker(tape: TradeTape, t0_ms: int, close_t0: float, sigma0: floa
         return out
     exit_type, t_x, p_x = ex
     if exit_type == "time":
-        # t_v 直前の約定価格 + 1 呼値に post_only 売り指値。t_v 以降の約定で判定する
-        last = int(np.searchsorted(tape.ts, t_v, side="left")) - 1
-        x = float(tape.price[last]) + tick
-        t_end = t_v + prm.grace_min * 60_000
-        ex2 = first_exit(tape, last, t_v - 1, x, l, t_end, prm.s_slip)
+        ex2 = maker_time_exit(tape, t_v, l, prm.grace_min * 60_000, prm.s_slip, tick)
         if ex2 is None:
             return out
-        e2, t_x, p_x = ex2
-        exit_type = {"tp": "time_maker", "sl": "sl", "time": "time_taker"}[e2]
+        exit_type, t_x, p_x = ex2
     f_x = prm.maker_fee if exit_type in ("tp", "time_maker") else prm.taker_fee
     r = net_return(p_e, p_x, prm.maker_fee, f_x)
     out.update(exit_type=exit_type, t_x=t_x, P_x=p_x, f_e=prm.maker_fee, f_x=f_x, ret_net=r, y=int(r > 0))

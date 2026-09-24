@@ -1,0 +1,51 @@
+# ルール A（VAL での反発）を検証前に固定した数値で全期間1回評価する。公開 API のみ、認証不要。
+# 実行方法: API の workflow_dispatch（ref にこのブランチを指定）か、configs/val_rule.yaml を変更して push する。
+name: val-rule
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - configs/val_rule.yaml
+permissions:
+  contents: write
+concurrency:
+  group: research-${{ github.ref }}
+jobs:
+  val-rule:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Read period from config
+        id: cfg
+        run: |
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import yaml
+          d = yaml.safe_load(open("configs/research.yaml"))["data"]
+          print(f"pair={d['pair']}")
+          print(f"start={d['start']}")
+          print(f"end={d['end']}")
+          PY
+      - uses: actions/cache/restore@v4
+        with:
+          path: data/raw
+          key: bbdata-raw-${{ steps.cfg.outputs.pair }}-${{ github.run_id }}
+          restore-keys: bbdata-raw-${{ steps.cfg.outputs.pair }}-
+      - name: Download transactions
+        timeout-minutes: 60
+        run: python -m bbdata download --pairs ${{ steps.cfg.outputs.pair }} --start ${{ steps.cfg.outputs.start }} --end ${{ steps.cfg.outputs.end }}
+      - name: Count experiment log lines
+        id: pre
+        run: echo "n=$( [ -f reports/experiments.jsonl ] && wc -l < reports/experiments.jsonl || echo 0 )" >> "$GITHUB_OUTPUT"
+      - name: Run rule A
+        run: python -m bbresearch val-rule --config configs/research.yaml --rule configs/val_rule.yaml --out reports/val_rule
+      - run: cat reports/val_rule/report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Commit report
+        run: >-
+          scripts/commit_report.sh "${{ steps.pre.outputs.n }}" "Rule A report from run ${{ github.run_id }}"
+          reports/val_rule/report.md reports/val_rule/report.json

@@ -34,11 +34,21 @@ def main(argv: list[str] | None = None) -> None:
     ms.add_argument("--out", default="reports/maker_search")
     ms.add_argument("--workers", type=int, default=None)
     ms.add_argument("-v", "--verbose", action="store_true")
+    vr = sub.add_parser("val-rule", help="ルール A（VAL での反発）を検証前に固定した数値で1回評価する")
+    vr.add_argument("--config", default="configs/research.yaml")
+    vr.add_argument("--rule", default="configs/val_rule.yaml")
+    vr.add_argument("--out", default="reports/val_rule")
+    vr.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    if args.cmd == "val-rule":
+        from .val_rule import main as val_main
+
+        val_main(args)
+        return
     if args.cmd == "maker-search":
         from .maker_search import main as maker_main
 
