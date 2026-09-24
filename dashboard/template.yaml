@@ -1,0 +1,92 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >-
+  BTC/JPY volume profile and TPO dashboard (bitbank public data only, no API keys).
+  API Gateway accepts requests only from AllowedCidr. The Lambda computes the
+  profile on each request and keeps recent trades in a private S3 bucket.
+
+Parameters:
+  AllowedCidr:
+    Type: String
+    Description: The only source address range allowed to open the dashboard, e.g. 203.0.113.10/32
+    AllowedPattern: '^([0-9]{1,3}\.){3}[0-9]{1,3}/([0-9]|[12][0-9]|3[0-2])$'
+  Pair:
+    Type: String
+    Default: btc_jpy
+  RefreshSeconds:
+    Type: Number
+    Default: 10
+    MinValue: 5
+    Description: Page refresh interval. Each refresh is one API Gateway + Lambda request.
+
+Resources:
+  CacheBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+
+  DashboardApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      EndpointConfiguration:
+        Type: REGIONAL
+      Auth:
+        ResourcePolicy:
+          IpRangeWhitelist:
+            - !Ref AllowedCidr
+      MethodSettings:
+        - ResourcePath: '/*'
+          HttpMethod: '*'
+          ThrottlingRateLimit: 2
+          ThrottlingBurstLimit: 5
+
+  DashboardFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: app/
+      Handler: app.handler
+      Runtime: python3.12
+      Architectures: [arm64]
+      MemorySize: 512
+      Timeout: 29
+      Environment:
+        Variables:
+          CACHE_BUCKET: !Ref CacheBucket
+          PAIR: !Ref Pair
+          REFRESH_SECONDS: !Ref RefreshSeconds
+      Policies:
+        - S3CrudPolicy:
+            BucketName: !Ref CacheBucket
+      Events:
+        Page:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DashboardApi
+            Path: /
+            Method: GET
+        Profile:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DashboardApi
+            Path: /api/profile
+            Method: GET
+
+  DashboardLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${DashboardFunction}
+      RetentionInDays: 14
+
+Outputs:
+  DashboardUrl:
+    Description: Open this from the allowed address
+    Value: !Sub https://${DashboardApi}.execute-api.${AWS::Region}.amazonaws.com/prod/

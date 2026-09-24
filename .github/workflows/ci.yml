@@ -13,3 +13,5 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - run: python -m pytest -q
+      - name: Lint the dashboard template
+        run: pip install cfn-lint && cfn-lint dashboard/template.yaml

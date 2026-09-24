@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>BTC/JPY プロファイル</title>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.35.2/plotly.min.js"></script>
+<style>
+  :root { --bg: #ffffff; --fg: #1f2328; --muted: #656d76; --line: #d0d7de; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #0d1117; --fg: #e6edf3; --muted: #8d96a0; --line: #30363d; } }
+  body { margin: 0; padding: 12px 16px; background: var(--bg); color: var(--fg);
+         font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Sans", sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; }
+  h1 { font-size: 18px; margin: 0; }
+  .stat { font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); font-size: 13px; }
+  #err { color: #cf222e; font-size: 13px; }
+  #chart { width: 100%; height: calc(100vh - 110px); min-height: 480px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>BTC/JPY 価格帯別出来高・TPO（直近 24 時間）</h1>
+  <span class="stat" id="price"></span>
+  <span class="stat" id="levels"></span>
+  <span class="muted" id="updated"></span>
+</header>
+<div id="err"></div>
+<div id="chart"></div>
+<script>
+const REFRESH_MS = __REFRESH_SECONDS__ * 1000;
+const base = location.href.split("?")[0].replace(/\/?$/, "/");
+const fmt = (x) => Math.round(x).toLocaleString("ja-JP");
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+function levelLines(lv, x0, x1, dash) {
+  const out = [];
+  for (const [name, color] of [["poc", "#d4a72c"], ["vah", "#2da44e"], ["val", "#cf222e"]]) {
+    if (lv[name] === undefined) continue;
+    out.push({ type: "line", xref: "x", yref: "y", x0, x1, y0: lv[name], y1: lv[name],
+               line: { color, width: 1.5, dash } });
+  }
+  return out;
+}
+
+async function load() {
+  try {
+    const r = await fetch(base + "api/profile", { cache: "no-store" });
+    const d = await r.json();
+    if (!r.ok || d.error) throw new Error(d.error || r.status);
+    document.getElementById("err").textContent = "";
+    const vl = d.vp_levels, tl = d.tpo_levels;
+    document.getElementById("price").textContent = `現在値 ${fmt(d.price)} 円`;
+    document.getElementById("levels").textContent =
+      `出来高 POC ${fmt(vl.poc)} / VAH ${fmt(vl.vah)} / VAL ${fmt(vl.val)}　TPO POC ${fmt(tl.poc)}`;
+    document.getElementById("updated").textContent =
+      `更新 ${new Date(d.now_ms).toLocaleTimeString("ja-JP")}（${REFRESH_MS / 1000} 秒ごと）・刻み ${fmt(d.bin_width)} 円（0.25σ）・約定 ${d.n_trades_window.toLocaleString("ja-JP")} 件`;
+    const t = d.candles.map((c) => new Date(c[0]));
+    const mid = (r) => (r.lo + r.hi) / 2;
+    const fg = css("--fg"), grid = css("--line");
+    const traces = [
+      { type: "candlestick", x: t, open: d.candles.map((c) => c[1]), high: d.candles.map((c) => c[2]),
+        low: d.candles.map((c) => c[3]), close: d.candles.map((c) => c[4]), name: "15分足",
+        xaxis: "x", yaxis: "y", showlegend: false },
+      { type: "bar", orientation: "h", y: d.vp.map(mid), x: d.vp.map((r) => r.v), width: d.bin_width * 0.9,
+        marker: { color: d.vp.map((r) => (mid(r) >= vl.val && mid(r) <= vl.vah) ? "#0969da" : "#8c959f") },
+        name: "出来高 (BTC)", xaxis: "x2", yaxis: "y", showlegend: false },
+      { type: "bar", orientation: "h", y: d.tpo.map(mid), x: d.tpo.map((r) => r.n), width: d.bin_width * 0.9,
+        marker: { color: d.tpo.map((r) => (mid(r) >= tl.val && mid(r) <= tl.vah) ? "#8250df" : "#8c959f") },
+        name: "TPO (30分区間の数)", xaxis: "x3", yaxis: "y", showlegend: false },
+    ];
+    const x0 = t[0], x1 = t[t.length - 1];
+    const layout = {
+      paper_bgcolor: css("--bg"), plot_bgcolor: css("--bg"), font: { color: fg, size: 12 },
+      margin: { l: 70, r: 10, t: 30, b: 40 },
+      grid: { rows: 1, columns: 3 },
+      xaxis: { domain: [0, 0.6], rangeslider: { visible: false }, gridcolor: grid, title: "時刻" },
+      xaxis2: { domain: [0.62, 0.81], gridcolor: grid, title: "出来高（BTC）" },
+      xaxis3: { domain: [0.83, 1], gridcolor: grid, title: "TPO" },
+      yaxis: { gridcolor: grid, tickformat: ",d", title: "価格（円）" },
+      shapes: [...levelLines(vl, x0, x1, "solid"), ...levelLines(tl, x0, x1, "dot"),
+               { type: "line", xref: "paper", yref: "y", x0: 0, x1: 1, y0: d.price, y1: d.price,
+                 line: { color: fg, width: 1, dash: "dash" } }],
+      annotations: [
+        { text: "価格帯別出来高（青: バリューエリア）", xref: "paper", yref: "paper", x: 0.715, y: 1.04, showarrow: false },
+        { text: "TPO（紫: バリューエリア）", xref: "paper", yref: "paper", x: 0.915, y: 1.04, showarrow: false },
+        { text: "実線: 出来高の POC 黄・VAH 緑・VAL 赤 / 点線: TPO", xref: "paper", yref: "paper", x: 0.3, y: 1.04, showarrow: false },
+      ],
+    };
+    Plotly.react("chart", traces, layout, { responsive: true, displaylogo: false });
+  } catch (e) {
+    document.getElementById("err").textContent = `取得に失敗しました: ${e.message}（${REFRESH_MS / 1000} 秒後に再試行）`;
+  }
+}
+// タブが裏にある間は更新しない（呼び出し回数＝費用を増やさないため）。表に戻ったらすぐ更新する
+let timer = null;
+function start() { if (!timer) { load(); timer = setInterval(load, REFRESH_MS); } }
+function stop() { if (timer) { clearInterval(timer); timer = null; } }
+document.addEventListener("visibilitychange", () => (document.hidden ? stop() : start()));
+if (!document.hidden) start();
+</script>
+</body>
+</html>
