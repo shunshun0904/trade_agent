@@ -39,11 +39,22 @@ def main(argv: list[str] | None = None) -> None:
     vr.add_argument("--rule", default="configs/val_rule.yaml")
     vr.add_argument("--out", default="reports/val_rule")
     vr.add_argument("-v", "--verbose", action="store_true")
+    dr = sub.add_parser("direction", help="15 分後の上げ下げを予測する二段構えのモデル（A: 15 分ごと、B: 1 分ごと）")
+    dr.add_argument("--config", default="configs/research.yaml")
+    dr.add_argument("--spec", default="configs/direction.yaml")
+    dr.add_argument("--out", default="reports/direction")
+    dr.add_argument("--workers", type=int, default=None)
+    dr.add_argument("-v", "--verbose", action="store_true")
     args = ap.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
+    if args.cmd == "direction":
+        from .direction import main as direction_main
+
+        direction_main(args)
+        return
     if args.cmd == "val-rule":
         from .val_rule import main as val_main
 

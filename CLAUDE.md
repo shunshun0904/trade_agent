@@ -12,6 +12,8 @@
   - `search.yml`: `configs/search.yaml` の変更を push すると（`run_on_actions: true` のとき）パラメータ探索を実行し、`reports/search/` をコミットする（開発期間のみ。ホールドアウトは評価しない）
   - `diagnose.yml`: 損失の要因分解・ホライズン・エントリー方法の比較（`configs/diagnose.yaml`）
   - `maker_search.yml`: 深い指値・短い保有・売りも指値の決済条件の探索と確認期間での評価（`configs/maker_search.yaml`）
+  - `val_rule.yml`: ルール A（VAL での反発）を固定した数値で全期間1回評価（`configs/val_rule.yaml`）
+  - `direction.yml`: 15 分後の上げ下げを予測する二段構えのモデル（A: 15 分ごと、B: 1 分ごと）を 2024 年より前で学習し、2024 年以降で1回評価（`configs/direction.yaml`）
   - `recorder.yml`: 板・約定の記録。約 5 時間 45 分ごとに次のジョブを自分で起動して連続させ、成果物（90 日）に保存する。止めるには `configs/recorder.yaml` の `enabled: false`
   - `auth-check.yml`: 認証付き API の疎通確認（参照系のみ）。キーは Secrets `bitbank_API` / `bitbank_secret` から読む
 - `dashboard/`: TPO・価格帯別出来高のダッシュボード（AWS: API Gateway + Lambda + S3、SAM）。`dashboard/deploy.sh` を AWS CloudShell で実行してデプロイする。Lambda は標準ライブラリだけで書き、計算が `bbresearch/profile.py` と一致することを `tests/test_dashboard.py` で照合している
@@ -28,6 +30,7 @@ python -m bbdata build-bars --pairs btc_jpy --start 2026-09-15 --end 2026-09-22 
 python -m bbdata validate   --pair  btc_jpy --start 2026-09-15 --end 2026-09-22
 python -m bbresearch run --config configs/research.yaml --out reports/research
 python -m bbresearch search --config configs/research.yaml --grid configs/search.yaml --out reports/search
+python -m bbresearch direction --config configs/research.yaml --spec configs/direction.yaml --out reports/direction
 ```
 
 ## 作業ルール

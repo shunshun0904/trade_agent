@@ -25,6 +25,17 @@ python -m bbresearch search --config configs/research.yaml --grid configs/search
 `configs/search.yaml` を変更して push すると GitHub Actions（`search.yml`）で実行し、`reports/search/`
 （`report.md`、`screen.csv`、`selected.yaml`）をコミットする。
 
+### 15 分後の上げ下げの予測（二段構え）
+
+```bash
+python -m bbresearch direction --config configs/research.yaml --spec configs/direction.yaml --out reports/direction
+```
+
+モデル B が 1 分ごとに、モデル A が 15 分ごとに「15 分後の価格が今より高いか」を予測する。A には直近 15 分の
+B の予測を特徴量として加える（A+B）。特徴量は 1 分足の流れ・15 分足・価格帯別出来高と TPO・時刻。
+2024 年より前で学習し、2024 年以降で1回だけ評価して A 単独と A+B を比べる。`configs/direction.yaml` を変更して
+push すると GitHub Actions（`direction.yml`）で実行し、`reports/direction/` をコミットする。
+
 # bbdata — bitbank 過去データ取得と足・約定集計
 
 bitbank の公開API（認証不要）から約定履歴を日付単位で取得して Parquet に保存し、
