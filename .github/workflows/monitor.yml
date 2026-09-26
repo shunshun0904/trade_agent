@@ -27,6 +27,9 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
+      - name: Fetch the latest records
+        # 同時に動いた別の実行が push した記録を取り込んでから追記・描画する（古い記録で画面を上書きしない）
+        run: git fetch -q origin "$GITHUB_REF_NAME" && (git checkout "origin/$GITHUB_REF_NAME" -- docs/monitor || true)
       - name: Snapshot
         env:
           PYTHONPATH: .
