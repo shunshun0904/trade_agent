@@ -51,9 +51,14 @@ export default function App() {
       </header>
       {err && <div className="err">取得に失敗しました: {err}（{REFRESH_MS / 1000} 秒後に再試行）</div>}
       {!err && !profile && <div className="note">読み込み中です。初回は約定の取得と集計に 5〜15 秒ほどかかります。</div>}
-      {profile && profile.first_trade_ms != null && profile.first_trade_ms > profile.now_ms - profile.window_h * 3_600_000 && (
+      {profile && profile.approx_until_ms != null && (
+        <div className="note">{hms(profile.approx_until_ms)} より前は公式の 1 分足で補っています（価格帯別出来高は足の安値〜高値に均等配分した近似）。
+          約定がそろうにつれて置き換わります。</div>
+      )}
+      {profile && profile.approx_until_ms == null && profile.first_trade_ms != null
+        && profile.first_trade_ms > profile.now_ms - profile.window_h * 3_600_000 && (
         <div className="err">保持している約定は {hms(profile.first_trade_ms)} からです。それより前の時間帯は集計に入っていません
-          {profile.warnings ? `（取得できなかった日付: ${profile.warnings.join("、")}）` : ""}。</div>
+          {profile.warnings ? `（取得できなかったもの: ${profile.warnings.join("、")}）` : ""}。</div>
       )}
       <div className="main">
         <section className="panel">

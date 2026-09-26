@@ -30,6 +30,7 @@ cd dashboard/web && npm run build:preview    # dist-preview/index.html にダミ
 
 - API の形は `web/src/api.js` の冒頭に書いた。
 - モデルの予測は載せない（2026-09-26 オーナー決定。方向の予測は費用を超えなかった。`docs/SPEC.md` §1.3）。
+- 当日分の約定は日付指定で取れない（HTTP 404）ので、約定がそろっていない時間帯は公式 1 分足で補う（画面に注記が出る）。約定は最新 60 件を更新のたびに足して貯める
 - 更新間隔は Lambda の `REFRESH_SECONDS`（既定 30 秒）。画面は 1 回の更新で `/api/profile` と `/api/signals` を 1 回ずつ呼ぶ。
 
 ## 削除

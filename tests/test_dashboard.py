@@ -157,8 +157,7 @@ def test_refresh_skips_days_without_data_and_reports_them():
         return {"transactions": [tx(int(path[-2:]) * 10, now - 3 * H)]}
 
     c = dash.refresh(None, now, get)
-    assert len(c["skipped"]) == 1 and "20260103" in c["skipped"][0]
-    assert len(c["rows"]) == 61  # 前日分 1 件 + 最新 60 件
+    assert "20260103" in c["skipped"][0] and len(c["rows"]) == 61  # 前日分 1 件 + 最新 60 件
     # HTTP 404 以外の失敗は上に伝える
     def boom(path):
         raise urllib.error.HTTPError(path, 500, "server error", {}, None)
@@ -302,3 +301,59 @@ def test_handler_signals_route():
     body = json.loads(out["body"])
     assert out["statusCode"] == 200, body
     assert len(body["minutes"]) == 60 and set(body["keys"]) <= set(body["minutes"][-1])
+
+
+def _candle_rows(t0, n, px=10_000_000.0, step=60_000):
+    """[t, o, h, l, c, v] を n 分。価格は少しずつ上がる"""
+    out = []
+    for i in range(n):
+        p = px * (1 + 0.0002 * i)
+        out.append([t0 + i * step, p, p * 1.0003, p * 0.9997, p * 1.0001, 0.5])
+    return out
+
+
+def test_refresh_falls_back_to_candles_when_today_is_missing():
+    now = 1_767_225_600_000 + 50 * H  # 2026-01-03 02:00 UTC（4 時間前は前日）
+    calls = []
+
+    def get(path):
+        calls.append(path)
+        if path.endswith("/transactions"):
+            return {"transactions": [tx(1000 + k, now - 1000 * k) for k in range(60)]}
+        if "/candlestick/1min/" in path:
+            day = path[-8:]
+            t0 = 1_767_225_600_000 + (48 if day == "20260103" else 24) * H
+            return {"candlestick": [{"type": "1min", "ohlcv": [[o, h, l, c, v, t] for t, o, h, l, c, v in _candle_rows(t0, 1440)]}]}
+        if path.endswith("20260103"):
+            raise dash.NoData(f"{path}: HTTP 404")
+        return {"transactions": [tx(5, now - 3 * H)]}
+
+    c = dash.refresh(None, now, get)
+    assert c["trade_from_ms"] == now - 59_000  # 最新 60 件の最初から先はそろっている
+    assert any("/candlestick/1min/20260102" in p for p in calls) and any("/candlestick/1min/20260103" in p for p in calls)
+    assert c["candles"][0][0] >= now - dash.KEEP_MS and c["candles"][-1][0] < now
+    # 次の更新: 最新 60 件に保存済みの最新が入っていれば trade_from は変わらず、1 分足は取り直す
+    calls.clear()
+    c2 = dash.refresh(c, now + 60_000, get)
+    assert c2["trade_from_ms"] == c["trade_from_ms"] and any("/candlestick/" in p for p in calls)
+    # 集計: 約定は 1 分しかないが、1 分足で σ と価格帯別出来高がそろう
+    trades = [(r[1], r[2], r[3]) for r in c2["rows"]]
+    res = core.compute(trades, now + 60_000, candles=c2["candles"], trade_from_ms=c2["trade_from_ms"])
+    assert "error" not in res, res
+    assert res["approx_until_ms"] == (now - 59_000) // 60_000 * 60_000
+    assert 180 <= len(res["candles"]) <= 181 and res["n_trades_window"] == 60
+    # 補った時間帯の出来高は 1 分足の出来高の合計と一致する（3 時間 = 180 本 × 0.5、ただし約定のある分は除く）
+    cut = res["approx_until_ms"]
+    approx_v = sum(v for t, o, h, l, cl, v in c2["candles"] if now + 60_000 - 3 * H <= t < cut)
+    trade_v = sum(a for t, p, a in trades if t >= cut)
+    assert sum(r["v"] for r in res["vp"]) == pytest.approx(approx_v + trade_v)
+    sig = core.signals(trades, now + 60_000, n_min=5, candles=c2["candles"], trade_from_ms=c2["trade_from_ms"])
+    assert len(sig["minutes"]) == 5
+
+
+def test_refresh_without_gap_keeps_no_candles():
+    now = 1_767_225_600_000 + 60 * H
+    rows = [[i, now - 1000 * (100 - i), 1.0, 0.1] for i in range(100)]
+    cache = {"rows": rows, "from_ms": now - dash.KEEP_MS, "fetched_ms": now - 60_000}
+    c = dash.refresh(cache, now, lambda path: {"transactions": [tx(i, now - 1000 * (100 - i)) for i in range(90, 105)]})
+    assert c["trade_from_ms"] is None and c["candles"] == []

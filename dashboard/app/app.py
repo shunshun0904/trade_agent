@@ -12,6 +12,8 @@
 - 公開 API への負荷を抑えるため、前回の取得から MIN_FETCH_INTERVAL 秒以内なら取りに行かない
 - 保存データは Lambda の実行環境の中にも持ち、S3 への書き込みは SAVE_INTERVAL 秒に 1 回までにする
   （呼び出しごとの S3 の読み書きを減らして費用を抑える）
+- 当日分の日付指定は HTTP 404 になることがある（2026-09-26 に実機で確認）。約定がそろっているのは trade_from_ms 以降
+  だけなので、それより前は公式 1 分足（/candlestick/1min/{日付}）で補う。価格帯別出来高は足の安値〜高値に均等に配る近似
 """
 from __future__ import annotations
 
@@ -66,6 +68,31 @@ def _day(ms: int) -> str:
     return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y%m%d")
 
 
+def _days_between(a_ms: int, b_ms: int) -> list[str]:
+    d = datetime.fromtimestamp(a_ms / 1000, tz=timezone.utc).date()
+    out = []
+    while d <= datetime.fromtimestamp(b_ms / 1000, tz=timezone.utc).date():
+        out.append(d.strftime("%Y%m%d"))
+        d += timedelta(days=1)
+    return out
+
+
+def _candles(get, days: list[str], from_ms: int, to_ms: int, skipped: list[str]) -> list[list]:
+    """公式 1 分足 [t, o, h, l, c, v]（[from_ms, to_ms)）。取れない日は skipped に記す。"""
+    out = []
+    for day in days:
+        try:
+            blocks = get(f"/{PAIR}/candlestick/1min/{day}").get("candlestick") or []
+        except NoData as exc:
+            skipped.append(f"candlestick {day}: {exc}")
+            continue
+        for o, h, l, c, v, t in (blocks[0]["ohlcv"] if blocks else []):
+            if from_ms <= int(t) < to_ms:
+                out.append([int(t), float(o), float(h), float(l), float(c), float(v)])
+    out.sort()
+    return out
+
+
 class Store:
     """S3 に置く保存データ（テストでは差し替える）。"""
 
@@ -93,34 +120,46 @@ def refresh(cache: dict | None, now_ms: int, get=http_get_json) -> dict:
         return cache
     rows: dict[int, list] = {r[0]: r for r in (cache or {}).get("rows", [])}
     covered_from = (cache or {}).get("from_ms")
+    trade_from = (cache or {}).get("trade_from_ms")  # ここから先は約定がそろっている（None なら from_ms から）
     need_days: set[str] = set()
-    if not cache or covered_from is None or covered_from > now_ms - KEEP_MS:
-        d = datetime.fromtimestamp((now_ms - KEEP_MS) / 1000, tz=timezone.utc).date()
-        while d <= datetime.fromtimestamp(now_ms / 1000, tz=timezone.utc).date():
-            need_days.add(d.strftime("%Y%m%d"))
-            d += timedelta(days=1)
+    skipped: list[str] = []
+    full = not cache or covered_from is None or covered_from > now_ms - KEEP_MS
+    if full:
+        need_days.update(_days_between(now_ms - KEEP_MS, now_ms))
         covered_from = now_ms - KEEP_MS
+        trade_from = None
     else:
         latest = _rows(get(f"/{PAIR}/transactions")["transactions"])
         last_id = max(rows) if rows else -1
         for r in latest:
             rows[r[0]] = r
-        if latest and min(r[0] for r in latest) > last_id:  # 保存済みの最新が 60 件に入っていない
+        if latest and min(r[0] for r in latest) > last_id:  # 保存済みの最新が 60 件に入っていない → 取りこぼし
             last_ts = max(r[1] for r in rows.values() if r[0] <= last_id) if last_id >= 0 else now_ms - KEEP_MS
             need_days.update({_day(last_ts), _day(now_ms)})
-    skipped = []
+            trade_from = min(r[1] for r in latest)  # 日付指定で埋まらなければ、ここから先だけがそろっている
     for day in sorted(need_days):
         try:
             for r in _rows(get(f"/{PAIR}/transactions/{day}")["transactions"]):
                 rows[r[0]] = r
+            if trade_from is not None and day == _day(now_ms):
+                trade_from = None  # 当日分が取れたので取りこぼしは埋まった
         except NoData as exc:  # その日のデータがない（当日分がまだない、など）。飛ばして続ける
             skipped.append(f"{day}: {exc}")
     if need_days:  # 日付指定で取ったときも最新 60 件を足す（当日分の日付指定が使えない場合の備え）
-        for r in _rows(get(f"/{PAIR}/transactions")["transactions"]):
+        latest = _rows(get(f"/{PAIR}/transactions")["transactions"])
+        for r in latest:
             rows[r[0]] = r
+        if full and skipped and latest:
+            trade_from = min(r[1] for r in latest)
     keep = [r for r in rows.values() if r[1] >= now_ms - KEEP_MS]
     keep.sort(key=lambda r: (r[1], r[0]))
-    return {"rows": keep, "from_ms": max(covered_from, now_ms - KEEP_MS), "fetched_ms": now_ms, "skipped": skipped}
+    if trade_from is not None and trade_from <= now_ms - KEEP_MS:
+        trade_from = None
+    # 約定がそろっていない時間帯は公式 1 分足で補う（その間だけ毎回取り直す。1 日分で約 50KB）
+    candles = ([] if trade_from is None
+               else _candles(get, _days_between(now_ms - KEEP_MS, trade_from), now_ms - KEEP_MS, now_ms, skipped))
+    return {"rows": keep, "from_ms": max(covered_from, now_ms - KEEP_MS), "fetched_ms": now_ms, "skipped": skipped,
+            "trade_from_ms": trade_from, "candles": candles}
 
 
 def _resp(status: int, body: str, ctype: str) -> dict:
@@ -143,17 +182,21 @@ def handler(event, context, store=None, get=http_get_json, now_ms: int | None = 
             store.save(cache)
             mem["saved_ms"] = now_ms
         trades = [(r[1], r[2], r[3]) for r in cache["rows"]]
+        extra = {"candles": cache.get("candles") or None, "trade_from_ms": cache.get("trade_from_ms")}
         if which == "signals":
-            res = signals(trades, now_ms, known=mem.setdefault("signals", {}))
+            if "signals" not in mem or mem.get("signals_key") != extra["trade_from_ms"]:  # 補い方が変わったら分ごとの結果を捨てる
+                mem["signals"], mem["signals_key"] = {}, extra["trade_from_ms"]
+            res = signals(trades, now_ms, known=mem["signals"], **extra)
             if not res["minutes"]:
-                res["error"] = "σ を計算するデータが足りない"
+                res["error"] = "σ を計算するデータが足りない（約定か 1 分足が 3 時間分そろうまで待つ）"
         else:
-            res = compute(trades, now_ms)
+            res = compute(trades, now_ms, **extra)
         if "error" in res:
             return _resp(502, json.dumps(res), "application/json")
         res["pair"] = PAIR
         res["data_fetched_ms"] = cache["fetched_ms"]
         res["first_trade_ms"] = cache["rows"][0][1] if cache["rows"] else None
+        res["trade_from_ms"] = cache.get("trade_from_ms")
         if cache.get("skipped"):
             res["warnings"] = cache["skipped"]
         return _resp(200, json.dumps(res), "application/json")

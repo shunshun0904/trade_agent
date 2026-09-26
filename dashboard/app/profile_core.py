@@ -32,12 +32,18 @@ def value_area(counts: list[float], share: float = 0.70) -> tuple[int, int, int]
     return poc, lo, hi
 
 
-def bars_at(trades: list[tuple[int, float, float]], start_ms: int, end_ms: int, step_ms: int) -> list[dict]:
-    """[start, end) の step_ms ごとの足（約定なしの足は直前の close で埋める）。trades は (ts, price, amount) の時刻順。"""
+def bars_at(trades: list[tuple[int, float, float]], start_ms: int, end_ms: int, step_ms: int,
+            candles: list[list] | None = None, trade_from_ms: int | None = None) -> list[dict]:
+    """[start, end) の step_ms ごとの足（約定なしの足は直前の close で埋める）。trades は (ts, price, amount) の時刻順。
+
+    candles（公式 1 分足 [t, o, h, l, c, v]）を渡すと、trade_from_ms より前の分はそれで作る（約定がそろっていない
+    時間帯の補い。step_ms が 1 分のときだけ）。
+    """
     n = (end_ms - start_ms) // step_ms
     out = [{"t": start_ms + i * step_ms, "o": None, "h": None, "l": None, "c": None, "v": 0.0} for i in range(n)]
+    cut = _approx_until(trade_from_ms, step_ms) if candles else None
     for ts, px, amt in trades:
-        if not (start_ms <= ts < start_ms + n * step_ms):
+        if not (start_ms <= ts < start_ms + n * step_ms) or (cut is not None and ts < cut):
             continue
         b = out[(ts - start_ms) // step_ms]
         if b["o"] is None:
@@ -46,6 +52,10 @@ def bars_at(trades: list[tuple[int, float, float]], start_ms: int, end_ms: int, 
         b["l"] = min(b["l"], px)
         b["c"] = px
         b["v"] += amt
+    if cut is not None and step_ms == CANDLE_MS:
+        for t, o, h, l, c, v in candles:
+            if start_ms <= t < min(cut, start_ms + n * step_ms) and (t - start_ms) % step_ms == 0:
+                out[(t - start_ms) // step_ms].update(o=o, h=h, l=l, c=c, v=v)
     last = None
     for b in out:
         if b["c"] is None:
@@ -75,12 +85,28 @@ def _levels(counts: list[float], first: int, ref: float, w: float) -> dict:
     return {"poc": ref + (poc + first + 0.5) * w, "val": ref + (lo + first) * w, "vah": ref + (hi + first + 1) * w}
 
 
-def volume_profile(trades, now_ms: int, ref: float, w: float, window_ms: int) -> tuple[dict, list[dict]]:
+def _approx_until(trade_from_ms: int | None, step_ms: int) -> int | None:
+    """約定がそろっているのは trade_from_ms 以降。その分の開始時刻より前を公式 1 分足で補う。"""
+    if trade_from_ms is None:
+        return None
+    return trade_from_ms // step_ms * step_ms
+
+
+def volume_profile(trades, now_ms: int, ref: float, w: float, window_ms: int, candles: list[list] | None = None,
+                   trade_from_ms: int | None = None) -> tuple[dict, list[dict]]:
+    """価格帯別出来高。candles を渡すと、trade_from_ms の分より前は公式 1 分足の出来高を安値〜高値の価格帯に均等に配る。"""
     acc: dict[int, float] = {}
+    cut = _approx_until(trade_from_ms, CANDLE_MS) if candles else None
     for ts, px, amt in trades:
-        if now_ms - window_ms <= ts < now_ms:
+        if now_ms - window_ms <= ts < now_ms and (cut is None or ts >= cut):
             k = math.floor(round((px - ref) / w, 9))
             acc[k] = acc.get(k, 0.0) + amt
+    if cut is not None:
+        for t, o, h, l, c, v in candles:
+            if now_ms - window_ms <= t < min(cut, now_ms) and v > 0:
+                k0, k1 = math.floor(round((l - ref) / w, 9)), math.floor(round((h - ref) / w, 9))
+                for k in range(k0, k1 + 1):
+                    acc[k] = acc.get(k, 0.0) + v / (k1 - k0 + 1)
     if not acc:
         return {}, []
     first, last = min(acc), max(acc)
@@ -117,10 +143,11 @@ SIGMA_N = 180         # σ は直近 180 本の 1 分足のリターンの標準
 
 def compute(trades: list[tuple[int, float, float]], now_ms: int, window_h: float = WINDOW_H,
             bin_sigma: float = 0.25, candle_ms: int = CANDLE_MS, tpo_block: int = TPO_BLOCK,
-            sigma_n: int = SIGMA_N) -> dict:
+            sigma_n: int = SIGMA_N, candles: list[list] | None = None, trade_from_ms: int | None = None) -> dict:
     """ダッシュボードに渡す一式。trades は (ts, price, amount) の時刻順で、σ の計算に十分前から含むこと。
 
     σ は candle_ms の足の対数リターン直近 sigma_n 本の標準偏差。価格帯の刻みは bin_sigma × σ × 基準価格。
+    candles と trade_from_ms を渡すと、約定がそろっていない時間帯（trade_from_ms より前）を公式 1 分足で補う。
     """
     window_ms = int(window_h * 3_600_000)
     past = [t for t in trades if t[0] < now_ms]
@@ -129,16 +156,18 @@ def compute(trades: list[tuple[int, float, float]], now_ms: int, window_h: float
     ref = past[-1][1]
     end = now_ms // candle_ms * candle_ms + candle_ms  # 形成中の足まで（表示用）
     back = max(window_ms + candle_ms * tpo_block, candle_ms * (sigma_n + 2))
-    bars = bars_at(past, end - back, end, candle_ms)
+    bars = bars_at(past, end - back, end, candle_ms, candles, trade_from_ms)
     sigma = sigma_from_bars([b for b in bars if b["t"] + candle_ms <= now_ms], sigma_n)
     if sigma is None:
-        return {"error": "σ を計算するデータが足りない"}
+        return {"error": "σ を計算するデータが足りない（約定か 1 分足が 3 時間分そろうまで待つ）"}
     w = bin_sigma * sigma * ref
-    vp_lv, vp = volume_profile(past, now_ms, ref, w, window_ms)
+    vp_lv, vp = volume_profile(past, now_ms, ref, w, window_ms, candles, trade_from_ms)
     tpo_lv, tpo = tpo_profile(bars, now_ms, ref, w, window_ms, candle_ms, tpo_block)
     shown = [b for b in bars if b["t"] >= now_ms - window_ms and b["c"] is not None]
+    cut = _approx_until(trade_from_ms, candle_ms) if candles else None
     return {"now_ms": now_ms, "price": ref, "sigma": sigma, "sigma_n": sigma_n, "bin_width": w, "window_h": window_h,
             "candle_ms": candle_ms, "tpo_block_min": candle_ms * tpo_block // 60_000,
+            "approx_until_ms": cut if cut is not None and cut > now_ms - window_ms else None,
             "vp_levels": vp_lv, "vp": vp, "tpo_levels": tpo_lv, "tpo": tpo,
             "candles": [[b["t"], b["o"], b["h"], b["l"], b["c"]] for b in shown],
             "n_trades_window": sum(1 for t in past if t[0] >= now_ms - window_ms)}
@@ -174,7 +203,8 @@ def level_features(levels: dict, rows: list[dict], key: str, ref: float, sigma: 
 
 
 def signal_at(trades: list[tuple[int, float, float]], bars1: list[dict], t_ms: int,
-              window_h: float = WINDOW_H, bin_sigma: float = 0.25) -> dict | None:
+              window_h: float = WINDOW_H, bin_sigma: float = 0.25, candles: list[list] | None = None,
+              trade_from_ms: int | None = None) -> dict | None:
     """時刻 t の水準（t より前の約定と、t 以前に確定した足だけを使う。compute と同じ定義）。
 
     bars1 は σ と TPO に使う 1 分足。t を含む十分な範囲（t − 3 時間 − 5 分より前から）。
@@ -190,7 +220,7 @@ def signal_at(trades: list[tuple[int, float, float]], bars1: list[dict], t_ms: i
     if sigma is None:
         return None
     w = bin_sigma * sigma * ref
-    vp_lv, vp = volume_profile(trades[lo:hi], t_ms, ref, w, window_ms)
+    vp_lv, vp = volume_profile(trades[lo:hi], t_ms, ref, w, window_ms, candles, trade_from_ms)
     tpo_lv, tpo = tpo_profile(bars1, t_ms, ref, w, window_ms, CANDLE_MS, TPO_BLOCK)
     row = {"t": t_ms, "price": ref, "sigma": sigma}
     row.update(level_features(vp_lv, vp, "v", ref, sigma, w, "vp"))
@@ -211,18 +241,18 @@ def _bisect_ts(trades, t_ms: int) -> int:
 
 
 def signals(trades: list[tuple[int, float, float]], now_ms: int, n_min: int = 60, known: dict | None = None,
-            window_h: float = WINDOW_H) -> dict:
+            window_h: float = WINDOW_H, candles: list[list] | None = None, trade_from_ms: int | None = None) -> dict:
     """直近 n_min 分（分の開始時刻ごと）の水準。known に計算済みの {t: row} を渡すと、その分は計算しない。"""
     t_last = now_ms // MIN_MS * MIN_MS
     ts = [t_last - k * MIN_MS for k in range(n_min - 1, -1, -1)]
     window_ms = int(window_h * 3_600_000)
     back = max(window_ms + CANDLE_MS * TPO_BLOCK, CANDLE_MS * (SIGMA_N + 2))
-    bars1 = bars_at(trades, ts[0] - back, t_last + CANDLE_MS, CANDLE_MS)
+    bars1 = bars_at(trades, ts[0] - back, t_last + CANDLE_MS, CANDLE_MS, candles, trade_from_ms)
     known = known if known is not None else {}
     out = []
     for t in ts:
         if t not in known:
-            known[t] = signal_at(trades, bars1, t, window_h)
+            known[t] = signal_at(trades, bars1, t, window_h, candles=candles, trade_from_ms=trade_from_ms)
         if known[t] is not None:
             out.append(known[t])
     for t in [k for k in known if k < ts[0]]:  # 窓の外は捨てる
