@@ -105,7 +105,7 @@ def test_refresh_fetches_days_first_then_latest_only():
 
 def test_refresh_incremental_without_gap():
     now = 1_767_225_600_000 + 60 * H
-    rows = [[i, now - 1000 * (100 - i), 1.0, 0.1] for i in range(100)]
+    rows = [[i, now - 1000 * (100 - i), 1.0, 0.1, True] for i in range(100)]
     cache = {"rows": rows, "from_ms": now - dash.KEEP_MS, "fetched_ms": now - 60_000}
     calls = []
 
@@ -133,7 +133,7 @@ def test_handler_routes_and_errors():
 def test_handler_profile_end_to_end():
     ts, px, amt = synth(n=8000, seed=3)
     now = int(ts[-1]) + 1
-    rows = [[i, int(t), float(p), float(a)] for i, (t, p, a) in enumerate(zip(ts, px, amt))]
+    rows = [[i, int(t), float(p), float(a), i % 2 == 0] for i, (t, p, a) in enumerate(zip(ts, px, amt))]
     store = FakeStore({"rows": rows, "from_ms": now - dash.KEEP_MS, "fetched_ms": now})
     out = dash.handler({"path": "/api/profile"}, None, store=store, now_ms=now)
     body = json.loads(out["body"])
@@ -153,7 +153,7 @@ def test_page_gets_refresh_interval_and_pauses_when_hidden():
 def test_memory_cache_limits_s3_writes(monkeypatch):
     ts, px, amt = synth(n=6000, seed=4)
     now = int(ts[-1]) + 1
-    rows = [[i, int(t), float(p), float(a)] for i, (t, p, a) in enumerate(zip(ts, px, amt))]
+    rows = [[i, int(t), float(p), float(a), i % 2 == 0] for i, (t, p, a) in enumerate(zip(ts, px, amt))]
     saves = []
 
     class CountingStore(FakeStore):
@@ -215,7 +215,7 @@ def test_signals_use_only_past_data_and_cache_by_minute():
 def test_handler_signals_route():
     ts, px, amt = synth(n=8000, seed=8)
     now = int(ts[-1]) + 1
-    rows = [[i, int(t), float(p), float(a)] for i, (t, p, a) in enumerate(zip(ts, px, amt))]
+    rows = [[i, int(t), float(p), float(a), i % 2 == 0] for i, (t, p, a) in enumerate(zip(ts, px, amt))]
     store = FakeStore({"rows": rows, "from_ms": now - dash.KEEP_MS, "fetched_ms": now})
     out = dash.handler({"path": "/api/signals"}, None, store=store, now_ms=now)
     body = json.loads(out["body"])

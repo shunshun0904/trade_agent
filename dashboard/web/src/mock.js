@@ -70,15 +70,17 @@ export function mockProfile(now) {
 export function mockSignals(now) {
   const r = rng(777);
   const t0 = Math.floor(now / MIN) * MIN - 59 * MIN;
-  let poc = 0.9, tpoc = 0.4, pos = 0.35, tpos = 0.5, thick = 1.1, single = 0.25, price = 16_400_000;
+  let poc = 0.9, tpoc = 0.4, pos = 0.35, tpos = 0.5, thick = 1.1, single = 0.25, price = 15_700_000, pb = 0.16;
   const minutes = [];
   for (let i = 0; i < 60; i++) {
+    pb = Math.min(0.8, Math.max(0.03, pb + 0.004 * (i - 25) / 35 + gauss(r) * 0.02));
     poc += gauss(r) * 0.06 - 0.008; tpoc += gauss(r) * 0.05; pos += gauss(r) * 0.03; tpos += gauss(r) * 0.03;
     thick = Math.max(0.2, thick + gauss(r) * 0.08); single = Math.min(1, Math.max(0, single + gauss(r) * 0.05));
     price *= Math.exp(gauss(r) * 0.0006);
     minutes.push({ t: t0 + i * MIN, price: Math.round(price), sigma: 0.0042, vp_poc_dist: +poc.toFixed(3),
       vp_va_pos: +pos.toFixed(3), vp_at_price: +thick.toFixed(3), tpo_poc_dist: +tpoc.toFixed(3),
-      tpo_va_pos: +tpos.toFixed(3), tpo_single_up: +single.toFixed(3) });
+      tpo_va_pos: +tpos.toFixed(3), tpo_single_up: +single.toFixed(3), p_big_1h: +pb.toFixed(3) });
   }
-  return { now_ms: now, window_min: 60, keys: ["vp_poc_dist", "vp_va_pos", "vp_at_price", "tpo_poc_dist", "tpo_va_pos", "tpo_single_up"], minutes };
+  return { now_ms: now, window_min: 60, keys: ["vp_poc_dist", "vp_va_pos", "vp_at_price", "tpo_poc_dist", "tpo_va_pos", "tpo_single_up"], minutes,
+    model: { horizon_min: 60, target_min_return: 0.003, train_end: "2024-01-01", test_auc: 0.670, base_rate_test: 0.189 } };
 }
