@@ -1,0 +1,39 @@
+# 1 日 1 回、残高・評価額・目標の重みを記録し、モニター画面（docs/monitor/index.html）を作り直してコミットする。
+# 毎日 00:20 UTC（09:20 JST）と手動、scripts/snapshot.py の変更を push したとき。schedule は既定ブランチでしか動かない。
+# 残高はキー（Secrets bitbank_API / bitbank_secret）で読む（参照系のみ、発注しない）。オーナー決定: 金額は伏せない。
+name: monitor
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "20 0 * * *"
+  push:
+    branches: [claude/bitbank-trade-agent-7ers55]
+    paths:
+      - scripts/snapshot.py
+      - bbresearch/monitor.py
+      - .github/workflows/monitor.yml
+permissions:
+  contents: write
+concurrency:
+  group: research-${{ github.ref }}
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Snapshot
+        env:
+          PYTHONPATH: .
+          BITBANK_API_KEY: ${{ secrets.bitbank_API }}
+          BITBANK_API_SECRET: ${{ secrets.bitbank_secret }}
+        run: python scripts/snapshot.py --config configs/rebalance.yaml | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Commit
+        run: >-
+          scripts/commit_report.sh "$( [ -f reports/experiments.jsonl ] && wc -l < reports/experiments.jsonl || echo 0 )"
+          "Monitor snapshot $(date -u +%Y-%m-%d)" docs/monitor/daily.jsonl docs/monitor/index.html

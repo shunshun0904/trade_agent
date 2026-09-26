@@ -13,7 +13,7 @@ on:
       - configs/rebalance.yaml
       - .github/workflows/rebalance.yml
 permissions:
-  contents: read
+  contents: write
 jobs:
   plan:
     runs-on: ubuntu-latest
@@ -31,3 +31,11 @@ jobs:
           BITBANK_API_KEY: ${{ secrets.bitbank_API }}
           BITBANK_API_SECRET: ${{ secrets.bitbank_secret }}
         run: python scripts/rebalance.py --config configs/rebalance.yaml | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Rebuild the monitor page
+        env:
+          PYTHONPATH: .
+        run: python scripts/snapshot.py --page-only
+      - name: Commit the plan
+        run: >-
+          scripts/commit_report.sh "$( [ -f reports/experiments.jsonl ] && wc -l < reports/experiments.jsonl || echo 0 )"
+          "Rebalance plan $(date -u +%Y-%m-%d)" docs/monitor/rebalances.jsonl docs/monitor/index.html

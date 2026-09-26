@@ -20,6 +20,7 @@ import pandas as pd
 import yaml
 
 from bbdata.client import BitbankAPIError, PublicClient
+from bbresearch.monitor import append_jsonl
 from bbresearch.portfolio import current_weights
 from bbresearch.rebalance import PairSpec, describe, plan_orders, portfolio_value
 
@@ -42,6 +43,7 @@ def fetch_daily(api: PublicClient, pair: str, years: range) -> pd.Series:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/rebalance.yaml")
+    ap.add_argument("--history", default="docs/monitor/rebalances.jsonl", help="計画を追記する記録（空なら記録しない）")
     args = ap.parse_args(argv)
     cfg = yaml.safe_load(Path(args.config).read_text())
     pool: list[str] = cfg["pool"]
@@ -80,6 +82,12 @@ def main(argv: list[str] | None = None) -> int:
                          cfg.get("min_trade_frac", 0.01), cfg.get("buy_buffer", 0.003))
     print("計画（ドライラン、発注しない）:")
     print(describe(orders, tw["cash"]))
+    if args.history:
+        append_jsonl(Path(args.history), {
+            "date": datetime.now(timezone.utc).strftime("%Y-%m-%d"), "as_of": tw["as_of"],
+            "target_weights": {p: round(w, 4) for p, w in tw["weights"].items()}, "target_cash": round(tw["cash"], 4),
+            "est_vol": round(tw["est_vol"], 4), "current": {p: round(w, 4) for p, w in current.items() if w > 0},
+            "orders": [{"pair": o.pair, "side": o.side, "frac": round(o.frac, 4)} for o in orders], "dry_run": True})
     return 0
 
 

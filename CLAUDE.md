@@ -19,9 +19,10 @@
   - `activity.yml`: 全ペアの前日の約定数・出来高（`reports/activity/`）。`weekend_range.yml`: 曜日 × 時間帯の値幅（`reports/weekend_range/`）。`portfolio.yml`: 最小分散ポートフォリオの前向き検証（`scripts/portfolio.py`、`reports/portfolio/`）
   - `rebalance.yml`: 月初のリバランス計画（ドライラン、発注しない。`scripts/rebalance.py`、`configs/rebalance.yaml`）。schedule は既定ブランチでしか動かないので、当面は手動実行。ログは割合だけ
   - `recorder.yml`: 板・約定の記録。約 5 時間 45 分ごとに次のジョブを自分で起動して連続させ、成果物（90 日）に保存する。止めるには `configs/recorder.yaml` の `enabled: false`
+  - `monitor.yml`: 毎日 00:20 UTC に残高・評価額・目標の重みを `docs/monitor/daily.jsonl` に記録し、`docs/monitor/index.html`（モニター画面）を作り直してコミットする（`scripts/snapshot.py`、`bbresearch/monitor.py`）。`rebalance.yml` は計画を `docs/monitor/rebalances.jsonl` に追記する
   - `auth-check.yml`: 認証付き API の疎通確認（参照系のみ）。キーは Secrets `bitbank_API` / `bitbank_secret` から読む
 - `dashboard/`: TPO・価格帯別出来高のダッシュボード（AWS: API Gateway + Lambda + S3、SAM）。`dashboard/deploy.sh` を AWS CloudShell で実行してデプロイする。Lambda は標準ライブラリだけで書き、計算が `bbresearch/profile.py` と一致することを `tests/test_dashboard.py` で照合している。画面は `dashboard/web/`（React、Vite）で書き、`dashboard/web/build.sh` でビルドして `dashboard/app/page.html`（生成物、コミットする）に置く。左に直近 24 時間・15 分足の TPO・価格帯別出来高（ダーク配色、5 分ごとに更新）、右に 1 分ごとの水準の 60 分の推移（`/api/signals`）。モデルの予測は載せない
-- リポジトリは公開。ログやコミットするレポートに残高・注文の内容・キーを出さない。
+- リポジトリは 2026-09-27 に非公開へ切り替えた。それでもログやレポートに残高・注文の内容・キーを出さない（例外: `docs/monitor/` の記録は金額を残す。オーナー決定）。
 - 上げ下げの予測モデル（`direction*.yml`）は 2026-09-26 に研究を区切った（目的変数 3 通り・ホライズン 2 通りとも費用を超えない。SPEC §1.3）。自動売買には使わない。
 - 次の作業: オーナーが `dashboard/deploy.sh` でデプロイし、React 版の画面と `/api/signals` を実機で確認する。Phase 7 は保留。
 
