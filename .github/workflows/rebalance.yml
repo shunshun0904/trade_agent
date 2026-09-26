@@ -6,6 +6,12 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "10 0 1 * *"
+  push:
+    branches: [claude/bitbank-trade-agent-7ers55]
+    paths:
+      - scripts/rebalance.py
+      - configs/rebalance.yaml
+      - .github/workflows/rebalance.yml
 permissions:
   contents: read
 jobs:
