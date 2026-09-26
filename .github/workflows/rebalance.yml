@@ -1,0 +1,27 @@
+# 月初のリバランス計画（ドライラン。発注しない）。毎月 1 日 00:10 UTC（09:10 JST）と手動で実行する。
+# schedule は既定ブランチでしか動かない（GitHub の仕様）。このブランチが既定でない間は手動（workflow_dispatch）で実行する。
+# 残高はキー（Secrets bitbank_API / bitbank_secret）で読むが、ログには割合（%）だけを出す（公開リポジトリ）。
+name: rebalance
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "10 0 1 * *"
+permissions:
+  contents: read
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Plan (dry run)
+        env:
+          PYTHONPATH: .
+          BITBANK_API_KEY: ${{ secrets.bitbank_API }}
+          BITBANK_API_SECRET: ${{ secrets.bitbank_secret }}
+        run: python scripts/rebalance.py --config configs/rebalance.yaml | tee -a "$GITHUB_STEP_SUMMARY"

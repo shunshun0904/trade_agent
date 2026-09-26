@@ -205,3 +205,23 @@ def summary(r: pd.Series) -> dict:
             "ann_vol": float(r.std(ddof=1) * np.sqrt(DAYS_PER_YEAR)),
             "sharpe": float(r.mean() / r.std(ddof=1) * np.sqrt(DAYS_PER_YEAR)) if r.std(ddof=1) > 0 else None,
             "max_drawdown": float(dd), "worst_day": float(r.min()), "total": float(np.exp(r.sum()) - 1)}
+
+
+def current_weights(close: pd.DataFrame, k_max: int = 5, w_max: float = 0.4, caps: dict[str, float] | None = None,
+                    target_vol: float | None = 0.30, est_days: int = 365) -> dict:
+    """直近 est_days 日で推定した今の重み（ペア → 割合）と JPY の割合、推定ボラ。scripts/rebalance.py が使う。"""
+    ret = np.log(close).diff()
+    est = ret[ret.index >= close.index[-1] - pd.Timedelta(days=est_days)]
+    avail = [c for c in close.columns if est[c].notna().sum() >= est_days * 0.9]
+    if len(avail) < 3:
+        raise ValueError("候補が 3 銘柄に満たない")
+    R = est[avail].dropna().to_numpy()
+    cov, mu = shrunk_cov(R), shrunk_mean(R)
+    best = best_combination(cov, mu, avail, k_max, None, w_max, caps)
+    if best is None:
+        raise ValueError("実行可能な組み合わせがない")
+    wv = pd.Series(best["weights"], index=best["names"]).reindex(avail).fillna(0.0).to_numpy()
+    vol = float(np.sqrt(wv @ cov @ wv * DAYS_PER_YEAR))
+    scale = 1.0 if target_vol is None or vol <= target_vol else target_vol / vol
+    return {"weights": {n: float(w) * scale for n, w in zip(best["names"], best["weights"])},
+            "cash": 1.0 - scale, "est_vol": vol * scale, "est_vol_full": vol, "as_of": str(close.index[-1].date())}
