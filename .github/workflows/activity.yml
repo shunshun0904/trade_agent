@@ -1,0 +1,38 @@
+# bitbank の全ペアの前日の約定数・出来高を数える（公開 API のみ、認証不要。ペアごとに 1 リクエスト）。
+# 実行方法: API の workflow_dispatch（ref にこのブランチを指定）か、scripts/activity.py を変更して push する。
+name: activity
+on:
+  workflow_dispatch:
+    inputs:
+      day:
+        description: "YYYYMMDD (UTC)。省略時は前日"
+        required: false
+        default: ""
+  push:
+    branches: [claude/bitbank-trade-agent-7ers55]
+    paths:
+      - scripts/activity.py
+permissions:
+  contents: write
+concurrency:
+  group: research-${{ github.ref }}
+jobs:
+  activity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Count trades per pair
+        env:
+          PYTHONPATH: .
+        run: python scripts/activity.py ${{ github.event.inputs.day }}
+      - run: cat reports/activity/report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Commit report
+        run: >-
+          scripts/commit_report.sh "$( [ -f reports/experiments.jsonl ] && wc -l < reports/experiments.jsonl || echo 0 )"
+          "Activity report from run ${{ github.run_id }}" reports/activity/report.md
