@@ -1,0 +1,33 @@
+# bitbank の信用取引の対応ペアと条件を /spot/pairs から一覧にする（公開 API のみ、認証不要、1 リクエスト）。
+# 実行方法: API の workflow_dispatch（ref にこのブランチを指定）か、scripts/margin_pairs.py を変更して push する。
+name: margin
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/bitbank-trade-agent-7ers55]
+    paths:
+      - scripts/margin_pairs.py
+permissions:
+  contents: write
+concurrency:
+  group: research-${{ github.ref }}
+jobs:
+  margin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: List margin pairs
+        env:
+          PYTHONPATH: .
+        run: python scripts/margin_pairs.py
+      - run: cat reports/margin/report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Commit report
+        run: >-
+          scripts/commit_report.sh "$( [ -f reports/experiments.jsonl ] && wc -l < reports/experiments.jsonl || echo 0 )"
+          "Margin pairs report from run ${{ github.run_id }}" reports/margin/report.md
