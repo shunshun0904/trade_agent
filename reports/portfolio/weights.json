@@ -1350,6 +1350,681 @@
     "cash": 0.0791
    }
   ],
+  "minvar_vt30_w90": [
+   {
+    "date": "2021-01-01",
+    "weights": {
+     "btc_jpy": 0.2296,
+     "xrp_jpy": 0.1059,
+     "bcc_jpy": 0.0472
+    },
+    "cash": 0.6173
+   },
+   {
+    "date": "2021-02-01",
+    "weights": {
+     "btc_jpy": 0.1856,
+     "xrp_jpy": 0.0747,
+     "bcc_jpy": 0.049
+    },
+    "cash": 0.6906
+   },
+   {
+    "date": "2021-03-01",
+    "weights": {
+     "btc_jpy": 0.1801,
+     "xrp_jpy": 0.0693,
+     "bcc_jpy": 0.0507
+    },
+    "cash": 0.6998
+   },
+   {
+    "date": "2021-04-01",
+    "weights": {
+     "btc_jpy": 0.2019,
+     "xrp_jpy": 0.0488,
+     "bcc_jpy": 0.0858
+    },
+    "cash": 0.6635
+   },
+   {
+    "date": "2021-05-01",
+    "weights": {
+     "btc_jpy": 0.2334,
+     "xrp_jpy": 0.021,
+     "eth_jpy": 0.0973,
+     "bcc_jpy": 0.0364,
+     "ltc_jpy": 0.001
+    },
+    "cash": 0.6109
+   },
+   {
+    "date": "2021-06-01",
+    "weights": {
+     "btc_jpy": 0.178,
+     "xrp_jpy": 0.0215,
+     "eth_jpy": 0.0971,
+     "ltc_jpy": 0.0001
+    },
+    "cash": 0.7033
+   },
+   {
+    "date": "2021-07-01",
+    "weights": {
+     "btc_jpy": 0.1654,
+     "xrp_jpy": 0.0168,
+     "eth_jpy": 0.0935
+    },
+    "cash": 0.7244
+   },
+   {
+    "date": "2021-08-01",
+    "weights": {
+     "btc_jpy": 0.1703,
+     "xrp_jpy": 0.018,
+     "eth_jpy": 0.0955
+    },
+    "cash": 0.7161
+   },
+   {
+    "date": "2021-09-01",
+    "weights": {
+     "btc_jpy": 0.2383,
+     "xrp_jpy": 0.0139,
+     "eth_jpy": 0.1326,
+     "xlm_jpy": 0.0123
+    },
+    "cash": 0.6029
+   },
+   {
+    "date": "2021-10-01",
+    "weights": {
+     "btc_jpy": 0.2535,
+     "xrp_jpy": 0.0138,
+     "eth_jpy": 0.1441,
+     "xlm_jpy": 0.011
+    },
+    "cash": 0.5775
+   },
+   {
+    "date": "2021-11-01",
+    "weights": {
+     "btc_jpy": 0.2505,
+     "xrp_jpy": 0.0149,
+     "eth_jpy": 0.1434,
+     "xlm_jpy": 0.0087
+    },
+    "cash": 0.5825
+   },
+   {
+    "date": "2021-12-01",
+    "weights": {
+     "btc_jpy": 0.2523,
+     "xrp_jpy": 0.0173,
+     "eth_jpy": 0.134,
+     "xlm_jpy": 0.0168
+    },
+    "cash": 0.5795
+   },
+   {
+    "date": "2022-01-01",
+    "weights": {
+     "btc_jpy": 0.2901,
+     "xrp_jpy": 0.0311,
+     "eth_jpy": 0.1434,
+     "xlm_jpy": 0.0189
+    },
+    "cash": 0.5164
+   },
+   {
+    "date": "2022-02-01",
+    "weights": {
+     "btc_jpy": 0.2867,
+     "eth_jpy": 0.138,
+     "xlm_jpy": 0.0532
+    },
+    "cash": 0.5221
+   },
+   {
+    "date": "2022-03-01",
+    "weights": {
+     "btc_jpy": 0.2588,
+     "eth_jpy": 0.123,
+     "xlm_jpy": 0.0495
+    },
+    "cash": 0.5686
+   },
+   {
+    "date": "2022-04-01",
+    "weights": {
+     "btc_jpy": 0.2589,
+     "eth_jpy": 0.1332,
+     "xlm_jpy": 0.0394
+    },
+    "cash": 0.5685
+   },
+   {
+    "date": "2022-05-01",
+    "weights": {
+     "btc_jpy": 0.2703,
+     "xrp_jpy": 0.0116,
+     "eth_jpy": 0.1109,
+     "xlm_jpy": 0.0577
+    },
+    "cash": 0.5494
+   },
+   {
+    "date": "2022-06-01",
+    "weights": {
+     "btc_jpy": 0.25,
+     "eth_jpy": 0.088,
+     "xlm_jpy": 0.0006,
+     "bcc_jpy": 0.078
+    },
+    "cash": 0.5833
+   },
+   {
+    "date": "2022-07-01",
+    "weights": {
+     "btc_jpy": 0.2232,
+     "xrp_jpy": 0.0355,
+     "eth_jpy": 0.0254,
+     "xlm_jpy": 0.0293,
+     "bcc_jpy": 0.0587
+    },
+    "cash": 0.6279
+   },
+   {
+    "date": "2022-08-01",
+    "weights": {
+     "btc_jpy": 0.2162,
+     "xrp_jpy": 0.0547,
+     "eth_jpy": 0.0134,
+     "xlm_jpy": 0.0374,
+     "bcc_jpy": 0.0387
+    },
+    "cash": 0.6396
+   },
+   {
+    "date": "2022-09-01",
+    "weights": {
+     "btc_jpy": 0.2734,
+     "xrp_jpy": 0.1252,
+     "xlm_jpy": 0.0477,
+     "bcc_jpy": 0.0094
+    },
+    "cash": 0.5443
+   },
+   {
+    "date": "2022-10-01",
+    "weights": {
+     "btc_jpy": 0.3212,
+     "xrp_jpy": 0.1246,
+     "xlm_jpy": 0.0835,
+     "bcc_jpy": 0.006
+    },
+    "cash": 0.4647
+   },
+   {
+    "date": "2022-11-01",
+    "weights": {
+     "btc_jpy": 0.3837,
+     "xrp_jpy": 0.1322,
+     "xlm_jpy": 0.1125,
+     "bcc_jpy": 0.0111
+    },
+    "cash": 0.3605
+   },
+   {
+    "date": "2022-12-01",
+    "weights": {
+     "btc_jpy": 0.2986,
+     "xrp_jpy": 0.0536,
+     "xlm_jpy": 0.1228,
+     "bcc_jpy": 0.0227
+    },
+    "cash": 0.5024
+   },
+   {
+    "date": "2023-01-01",
+    "weights": {
+     "btc_jpy": 0.3437,
+     "xrp_jpy": 0.0369,
+     "xlm_jpy": 0.1828,
+     "bcc_jpy": 0.0094
+    },
+    "cash": 0.4272
+   },
+   {
+    "date": "2023-02-01",
+    "weights": {
+     "btc_jpy": 0.3205,
+     "xrp_jpy": 0.0233,
+     "xlm_jpy": 0.1892,
+     "bcc_jpy": 0.0012
+    },
+    "cash": 0.4658
+   },
+   {
+    "date": "2023-03-01",
+    "weights": {
+     "btc_jpy": 0.4615,
+     "xrp_jpy": 0.098,
+     "xlm_jpy": 0.2097
+    },
+    "cash": 0.2308
+   },
+   {
+    "date": "2023-04-01",
+    "weights": {
+     "btc_jpy": 0.3711,
+     "xrp_jpy": 0.0437,
+     "xlm_jpy": 0.2014,
+     "ltc_jpy": 0.0023
+    },
+    "cash": 0.3815
+   },
+   {
+    "date": "2023-05-01",
+    "weights": {
+     "btc_jpy": 0.3744,
+     "xrp_jpy": 0.0225,
+     "xlm_jpy": 0.2271
+    },
+    "cash": 0.376
+   },
+   {
+    "date": "2023-06-01",
+    "weights": {
+     "btc_jpy": 0.4162,
+     "xlm_jpy": 0.2766,
+     "ltc_jpy": 0.0009
+    },
+    "cash": 0.3063
+   },
+   {
+    "date": "2023-07-01",
+    "weights": {
+     "btc_jpy": 0.4663,
+     "xrp_jpy": 0.0091,
+     "xlm_jpy": 0.2883,
+     "ltc_jpy": 0.0135
+    },
+    "cash": 0.2228
+   },
+   {
+    "date": "2023-08-01",
+    "weights": {
+     "btc_jpy": 0.3914,
+     "eth_jpy": 0.0578,
+     "xlm_jpy": 0.0867,
+     "bcc_jpy": 0.0464,
+     "dot_jpy": 0.0701
+    },
+    "cash": 0.3476
+   },
+   {
+    "date": "2023-09-01",
+    "weights": {
+     "btc_jpy": 0.3968,
+     "eth_jpy": 0.1133,
+     "xlm_jpy": 0.0511,
+     "bcc_jpy": 0.0215,
+     "dot_jpy": 0.0787
+    },
+    "cash": 0.3386
+   },
+   {
+    "date": "2023-10-01",
+    "weights": {
+     "btc_jpy": 0.4587,
+     "eth_jpy": 0.1317,
+     "xlm_jpy": 0.0635,
+     "bcc_jpy": 0.0195,
+     "dot_jpy": 0.0911
+    },
+    "cash": 0.2355
+   },
+   {
+    "date": "2023-11-01",
+    "weights": {
+     "btc_jpy": 0.5272,
+     "eth_jpy": 0.2547,
+     "doge_jpy": 0.0106,
+     "xlm_jpy": 0.0535,
+     "dot_jpy": 0.0327
+    },
+    "cash": 0.1213
+   },
+   {
+    "date": "2023-12-01",
+    "weights": {
+     "btc_jpy": 0.4861,
+     "eth_jpy": 0.221,
+     "doge_jpy": 0.0616,
+     "xlm_jpy": 0.063,
+     "bcc_jpy": 0.0028
+    },
+    "cash": 0.1656
+   },
+   {
+    "date": "2024-01-01",
+    "weights": {
+     "btc_jpy": 0.3931,
+     "eth_jpy": 0.2298,
+     "doge_jpy": 0.0696,
+     "xlm_jpy": 0.0617
+    },
+    "cash": 0.2458
+   },
+   {
+    "date": "2024-02-01",
+    "weights": {
+     "btc_jpy": 0.3491,
+     "eth_jpy": 0.2138,
+     "doge_jpy": 0.0526,
+     "xlm_jpy": 0.0596
+    },
+    "cash": 0.3249
+   },
+   {
+    "date": "2024-03-01",
+    "weights": {
+     "btc_jpy": 0.3424,
+     "eth_jpy": 0.2374,
+     "doge_jpy": 0.035,
+     "xlm_jpy": 0.0738,
+     "ltc_jpy": 0.0182
+    },
+    "cash": 0.2931
+   },
+   {
+    "date": "2024-04-01",
+    "weights": {
+     "btc_jpy": 0.2885,
+     "eth_jpy": 0.1837,
+     "xlm_jpy": 0.0481,
+     "ltc_jpy": 0.0357,
+     "dot_jpy": 0.0069
+    },
+    "cash": 0.4371
+   },
+   {
+    "date": "2024-05-01",
+    "weights": {
+     "btc_jpy": 0.3018,
+     "xrp_jpy": 0.0118,
+     "eth_jpy": 0.16,
+     "xlm_jpy": 0.0313,
+     "ltc_jpy": 0.0472
+    },
+    "cash": 0.4478
+   },
+   {
+    "date": "2024-06-01",
+    "weights": {
+     "btc_jpy": 0.3069,
+     "xrp_jpy": 0.0263,
+     "eth_jpy": 0.1221,
+     "xlm_jpy": 0.0227,
+     "ltc_jpy": 0.06
+    },
+    "cash": 0.4619
+   },
+   {
+    "date": "2024-07-01",
+    "weights": {
+     "btc_jpy": 0.3852,
+     "xrp_jpy": 0.0184,
+     "eth_jpy": 0.1528,
+     "xlm_jpy": 0.034,
+     "ltc_jpy": 0.1205
+    },
+    "cash": 0.289
+   },
+   {
+    "date": "2024-08-01",
+    "weights": {
+     "btc_jpy": 0.3761,
+     "xrp_jpy": 0.0885,
+     "eth_jpy": 0.0953,
+     "xlm_jpy": 0.1468,
+     "ltc_jpy": 0.0389
+    },
+    "cash": 0.2544
+   },
+   {
+    "date": "2024-09-01",
+    "weights": {
+     "btc_jpy": 0.311,
+     "xrp_jpy": 0.0378,
+     "eth_jpy": 0.0164,
+     "xlm_jpy": 0.209,
+     "ltc_jpy": 0.0563
+    },
+    "cash": 0.3695
+   },
+   {
+    "date": "2024-10-01",
+    "weights": {
+     "btc_jpy": 0.2095,
+     "xrp_jpy": 0.012,
+     "xlm_jpy": 0.2107,
+     "ltc_jpy": 0.0396,
+     "bnb_jpy": 0.1399
+    },
+    "cash": 0.3882
+   },
+   {
+    "date": "2024-11-01",
+    "weights": {
+     "btc_jpy": 0.2446,
+     "xrp_jpy": 0.0255,
+     "xlm_jpy": 0.2526,
+     "ltc_jpy": 0.0406,
+     "bnb_jpy": 0.1693
+    },
+    "cash": 0.2674
+   },
+   {
+    "date": "2024-12-01",
+    "weights": {
+     "btc_jpy": 0.2854,
+     "xrp_jpy": 0.1117,
+     "ltc_jpy": 0.0728,
+     "bnb_jpy": 0.2161
+    },
+    "cash": 0.314
+   },
+   {
+    "date": "2025-01-01",
+    "weights": {
+     "btc_jpy": 0.3154,
+     "xrp_jpy": 0.0838,
+     "xlm_jpy": 0.0063,
+     "ltc_jpy": 0.0338,
+     "bnb_jpy": 0.1963
+    },
+    "cash": 0.3645
+   },
+   {
+    "date": "2025-02-01",
+    "weights": {
+     "btc_jpy": 0.3291,
+     "xrp_jpy": 0.0819,
+     "ltc_jpy": 0.0126,
+     "bnb_jpy": 0.1958
+    },
+    "cash": 0.3806
+   },
+   {
+    "date": "2025-03-01",
+    "weights": {
+     "btc_jpy": 0.4054,
+     "xrp_jpy": 0.0625,
+     "ltc_jpy": 0.013,
+     "bnb_jpy": 0.1947
+    },
+    "cash": 0.3244
+   },
+   {
+    "date": "2025-04-01",
+    "weights": {
+     "btc_jpy": 0.3159,
+     "xlm_jpy": 0.0073,
+     "ltc_jpy": 0.0263,
+     "bnb_jpy": 0.2254
+    },
+    "cash": 0.4251
+   },
+   {
+    "date": "2025-05-01",
+    "weights": {
+     "btc_jpy": 0.2983,
+     "xlm_jpy": 0.0068,
+     "ltc_jpy": 0.0094,
+     "bnb_jpy": 0.2097
+    },
+    "cash": 0.4759
+   },
+   {
+    "date": "2025-06-01",
+    "weights": {
+     "btc_jpy": 0.3403,
+     "bnb_jpy": 0.2269
+    },
+    "cash": 0.4328
+   },
+   {
+    "date": "2025-07-01",
+    "weights": {
+     "btc_jpy": 0.4155,
+     "bnb_jpy": 0.277
+    },
+    "cash": 0.3075
+   },
+   {
+    "date": "2025-08-01",
+    "weights": {
+     "btc_jpy": 0.5641,
+     "bnb_jpy": 0.3761
+    },
+    "cash": 0.0599
+   },
+   {
+    "date": "2025-09-01",
+    "weights": {
+     "btc_jpy": 0.5818,
+     "bnb_jpy": 0.3879
+    },
+    "cash": 0.0303
+   },
+   {
+    "date": "2025-10-01",
+    "weights": {
+     "btc_jpy": 0.5753,
+     "bnb_jpy": 0.3835
+    },
+    "cash": 0.0412
+   },
+   {
+    "date": "2025-11-01",
+    "weights": {
+     "btc_jpy": 0.407,
+     "bnb_jpy": 0.2713
+    },
+    "cash": 0.3217
+   },
+   {
+    "date": "2025-12-01",
+    "weights": {
+     "btc_jpy": 0.3722,
+     "bnb_jpy": 0.2482
+    },
+    "cash": 0.3796
+   },
+   {
+    "date": "2026-01-01",
+    "weights": {
+     "btc_jpy": 0.4173,
+     "trx_jpy": 0.3369,
+     "bnb_jpy": 0.088
+    },
+    "cash": 0.1578
+   },
+   {
+    "date": "2026-02-01",
+    "weights": {
+     "btc_jpy": 0.4414,
+     "trx_jpy": 0.3527,
+     "bnb_jpy": 0.0876
+    },
+    "cash": 0.1183
+   },
+   {
+    "date": "2026-03-01",
+    "weights": {
+     "btc_jpy": 0.3303,
+     "trx_jpy": 0.2876,
+     "bnb_jpy": 0.1011
+    },
+    "cash": 0.2809
+   },
+   {
+    "date": "2026-04-01",
+    "weights": {
+     "btc_jpy": 0.3371,
+     "trx_jpy": 0.2846,
+     "bnb_jpy": 0.0897
+    },
+    "cash": 0.2886
+   },
+   {
+    "date": "2026-05-01",
+    "weights": {
+     "btc_jpy": 0.3863,
+     "trx_jpy": 0.2964,
+     "bnb_jpy": 0.0583
+    },
+    "cash": 0.259
+   },
+   {
+    "date": "2026-06-01",
+    "weights": {
+     "btc_jpy": 0.5272,
+     "trx_jpy": 0.4,
+     "bnb_jpy": 0.0728
+    },
+    "cash": 0.0
+   },
+   {
+    "date": "2026-07-01",
+    "weights": {
+     "btc_jpy": 0.537,
+     "trx_jpy": 0.4,
+     "bnb_jpy": 0.063
+    },
+    "cash": 0.0
+   },
+   {
+    "date": "2026-08-01",
+    "weights": {
+     "btc_jpy": 0.5224,
+     "trx_jpy": 0.4,
+     "bnb_jpy": 0.0776
+    },
+    "cash": 0.0
+   },
+   {
+    "date": "2026-09-01",
+    "weights": {
+     "btc_jpy": 0.4795,
+     "trx_jpy": 0.4,
+     "bnb_jpy": 0.1205
+    },
+    "cash": 0.0
+   }
+  ],
   "minvar_vt20": [
    {
     "date": "2021-01-01",
@@ -2023,6 +2698,681 @@
      "bnb_jpy": 0.074
     },
     "cash": 0.3861
+   }
+  ],
+  "minvar_vt20_w90": [
+   {
+    "date": "2021-01-01",
+    "weights": {
+     "btc_jpy": 0.1531,
+     "xrp_jpy": 0.0706,
+     "bcc_jpy": 0.0315
+    },
+    "cash": 0.7448
+   },
+   {
+    "date": "2021-02-01",
+    "weights": {
+     "btc_jpy": 0.1238,
+     "xrp_jpy": 0.0498,
+     "bcc_jpy": 0.0327
+    },
+    "cash": 0.7937
+   },
+   {
+    "date": "2021-03-01",
+    "weights": {
+     "btc_jpy": 0.1201,
+     "xrp_jpy": 0.0462,
+     "bcc_jpy": 0.0338
+    },
+    "cash": 0.7999
+   },
+   {
+    "date": "2021-04-01",
+    "weights": {
+     "btc_jpy": 0.1346,
+     "xrp_jpy": 0.0326,
+     "bcc_jpy": 0.0572
+    },
+    "cash": 0.7757
+   },
+   {
+    "date": "2021-05-01",
+    "weights": {
+     "btc_jpy": 0.1556,
+     "xrp_jpy": 0.014,
+     "eth_jpy": 0.0649,
+     "bcc_jpy": 0.0242,
+     "ltc_jpy": 0.0007
+    },
+    "cash": 0.7406
+   },
+   {
+    "date": "2021-06-01",
+    "weights": {
+     "btc_jpy": 0.1187,
+     "xrp_jpy": 0.0143,
+     "eth_jpy": 0.0647,
+     "ltc_jpy": 0.0001
+    },
+    "cash": 0.8022
+   },
+   {
+    "date": "2021-07-01",
+    "weights": {
+     "btc_jpy": 0.1102,
+     "xrp_jpy": 0.0112,
+     "eth_jpy": 0.0623
+    },
+    "cash": 0.8163
+   },
+   {
+    "date": "2021-08-01",
+    "weights": {
+     "btc_jpy": 0.1136,
+     "xrp_jpy": 0.012,
+     "eth_jpy": 0.0637
+    },
+    "cash": 0.8107
+   },
+   {
+    "date": "2021-09-01",
+    "weights": {
+     "btc_jpy": 0.1588,
+     "xrp_jpy": 0.0093,
+     "eth_jpy": 0.0884,
+     "xlm_jpy": 0.0082
+    },
+    "cash": 0.7353
+   },
+   {
+    "date": "2021-10-01",
+    "weights": {
+     "btc_jpy": 0.169,
+     "xrp_jpy": 0.0092,
+     "eth_jpy": 0.0961,
+     "xlm_jpy": 0.0074
+    },
+    "cash": 0.7183
+   },
+   {
+    "date": "2021-11-01",
+    "weights": {
+     "btc_jpy": 0.167,
+     "xrp_jpy": 0.0099,
+     "eth_jpy": 0.0956,
+     "xlm_jpy": 0.0058
+    },
+    "cash": 0.7217
+   },
+   {
+    "date": "2021-12-01",
+    "weights": {
+     "btc_jpy": 0.1682,
+     "xrp_jpy": 0.0116,
+     "eth_jpy": 0.0893,
+     "xlm_jpy": 0.0112
+    },
+    "cash": 0.7197
+   },
+   {
+    "date": "2022-01-01",
+    "weights": {
+     "btc_jpy": 0.1934,
+     "xrp_jpy": 0.0207,
+     "eth_jpy": 0.0956,
+     "xlm_jpy": 0.0126
+    },
+    "cash": 0.6776
+   },
+   {
+    "date": "2022-02-01",
+    "weights": {
+     "btc_jpy": 0.1912,
+     "eth_jpy": 0.092,
+     "xlm_jpy": 0.0354
+    },
+    "cash": 0.6814
+   },
+   {
+    "date": "2022-03-01",
+    "weights": {
+     "btc_jpy": 0.1725,
+     "eth_jpy": 0.082,
+     "xlm_jpy": 0.033
+    },
+    "cash": 0.7124
+   },
+   {
+    "date": "2022-04-01",
+    "weights": {
+     "btc_jpy": 0.1726,
+     "eth_jpy": 0.0888,
+     "xlm_jpy": 0.0263
+    },
+    "cash": 0.7123
+   },
+   {
+    "date": "2022-05-01",
+    "weights": {
+     "btc_jpy": 0.1802,
+     "xrp_jpy": 0.0077,
+     "eth_jpy": 0.0739,
+     "xlm_jpy": 0.0385
+    },
+    "cash": 0.6996
+   },
+   {
+    "date": "2022-06-01",
+    "weights": {
+     "btc_jpy": 0.1667,
+     "eth_jpy": 0.0587,
+     "xlm_jpy": 0.0004,
+     "bcc_jpy": 0.052
+    },
+    "cash": 0.7222
+   },
+   {
+    "date": "2022-07-01",
+    "weights": {
+     "btc_jpy": 0.1488,
+     "xrp_jpy": 0.0236,
+     "eth_jpy": 0.0169,
+     "xlm_jpy": 0.0195,
+     "bcc_jpy": 0.0391
+    },
+    "cash": 0.752
+   },
+   {
+    "date": "2022-08-01",
+    "weights": {
+     "btc_jpy": 0.1442,
+     "xrp_jpy": 0.0364,
+     "eth_jpy": 0.009,
+     "xlm_jpy": 0.0249,
+     "bcc_jpy": 0.0258
+    },
+    "cash": 0.7597
+   },
+   {
+    "date": "2022-09-01",
+    "weights": {
+     "btc_jpy": 0.1823,
+     "xrp_jpy": 0.0834,
+     "xlm_jpy": 0.0318,
+     "bcc_jpy": 0.0063
+    },
+    "cash": 0.6962
+   },
+   {
+    "date": "2022-10-01",
+    "weights": {
+     "btc_jpy": 0.2141,
+     "xrp_jpy": 0.0831,
+     "xlm_jpy": 0.0557,
+     "bcc_jpy": 0.004
+    },
+    "cash": 0.6432
+   },
+   {
+    "date": "2022-11-01",
+    "weights": {
+     "btc_jpy": 0.2558,
+     "xrp_jpy": 0.0881,
+     "xlm_jpy": 0.075,
+     "bcc_jpy": 0.0074
+    },
+    "cash": 0.5737
+   },
+   {
+    "date": "2022-12-01",
+    "weights": {
+     "btc_jpy": 0.1991,
+     "xrp_jpy": 0.0357,
+     "xlm_jpy": 0.0818,
+     "bcc_jpy": 0.0151
+    },
+    "cash": 0.6682
+   },
+   {
+    "date": "2023-01-01",
+    "weights": {
+     "btc_jpy": 0.2291,
+     "xrp_jpy": 0.0246,
+     "xlm_jpy": 0.1219,
+     "bcc_jpy": 0.0063
+    },
+    "cash": 0.6181
+   },
+   {
+    "date": "2023-02-01",
+    "weights": {
+     "btc_jpy": 0.2137,
+     "xrp_jpy": 0.0155,
+     "xlm_jpy": 0.1261,
+     "bcc_jpy": 0.0008
+    },
+    "cash": 0.6439
+   },
+   {
+    "date": "2023-03-01",
+    "weights": {
+     "btc_jpy": 0.3077,
+     "xrp_jpy": 0.0653,
+     "xlm_jpy": 0.1398
+    },
+    "cash": 0.4872
+   },
+   {
+    "date": "2023-04-01",
+    "weights": {
+     "btc_jpy": 0.2474,
+     "xrp_jpy": 0.0291,
+     "xlm_jpy": 0.1343,
+     "ltc_jpy": 0.0016
+    },
+    "cash": 0.5876
+   },
+   {
+    "date": "2023-05-01",
+    "weights": {
+     "btc_jpy": 0.2496,
+     "xrp_jpy": 0.015,
+     "xlm_jpy": 0.1514
+    },
+    "cash": 0.584
+   },
+   {
+    "date": "2023-06-01",
+    "weights": {
+     "btc_jpy": 0.2775,
+     "xlm_jpy": 0.1844,
+     "ltc_jpy": 0.0006
+    },
+    "cash": 0.5375
+   },
+   {
+    "date": "2023-07-01",
+    "weights": {
+     "btc_jpy": 0.3109,
+     "xrp_jpy": 0.006,
+     "xlm_jpy": 0.1922,
+     "ltc_jpy": 0.009
+    },
+    "cash": 0.4818
+   },
+   {
+    "date": "2023-08-01",
+    "weights": {
+     "btc_jpy": 0.261,
+     "eth_jpy": 0.0385,
+     "xlm_jpy": 0.0578,
+     "bcc_jpy": 0.0309,
+     "dot_jpy": 0.0467
+    },
+    "cash": 0.5651
+   },
+   {
+    "date": "2023-09-01",
+    "weights": {
+     "btc_jpy": 0.2646,
+     "eth_jpy": 0.0755,
+     "xlm_jpy": 0.034,
+     "bcc_jpy": 0.0143,
+     "dot_jpy": 0.0525
+    },
+    "cash": 0.5591
+   },
+   {
+    "date": "2023-10-01",
+    "weights": {
+     "btc_jpy": 0.3058,
+     "eth_jpy": 0.0878,
+     "xlm_jpy": 0.0423,
+     "bcc_jpy": 0.013,
+     "dot_jpy": 0.0607
+    },
+    "cash": 0.4903
+   },
+   {
+    "date": "2023-11-01",
+    "weights": {
+     "btc_jpy": 0.3515,
+     "eth_jpy": 0.1698,
+     "doge_jpy": 0.0071,
+     "xlm_jpy": 0.0356,
+     "dot_jpy": 0.0218
+    },
+    "cash": 0.4142
+   },
+   {
+    "date": "2023-12-01",
+    "weights": {
+     "btc_jpy": 0.3241,
+     "eth_jpy": 0.1473,
+     "doge_jpy": 0.041,
+     "xlm_jpy": 0.042,
+     "bcc_jpy": 0.0019
+    },
+    "cash": 0.4437
+   },
+   {
+    "date": "2024-01-01",
+    "weights": {
+     "btc_jpy": 0.2621,
+     "eth_jpy": 0.1532,
+     "doge_jpy": 0.0464,
+     "xlm_jpy": 0.0411
+    },
+    "cash": 0.4972
+   },
+   {
+    "date": "2024-02-01",
+    "weights": {
+     "btc_jpy": 0.2327,
+     "eth_jpy": 0.1426,
+     "doge_jpy": 0.0351,
+     "xlm_jpy": 0.0397
+    },
+    "cash": 0.5499
+   },
+   {
+    "date": "2024-03-01",
+    "weights": {
+     "btc_jpy": 0.2283,
+     "eth_jpy": 0.1583,
+     "doge_jpy": 0.0233,
+     "xlm_jpy": 0.0492,
+     "ltc_jpy": 0.0122
+    },
+    "cash": 0.5288
+   },
+   {
+    "date": "2024-04-01",
+    "weights": {
+     "btc_jpy": 0.1923,
+     "eth_jpy": 0.1225,
+     "xlm_jpy": 0.0321,
+     "ltc_jpy": 0.0238,
+     "dot_jpy": 0.0046
+    },
+    "cash": 0.6247
+   },
+   {
+    "date": "2024-05-01",
+    "weights": {
+     "btc_jpy": 0.2012,
+     "xrp_jpy": 0.0079,
+     "eth_jpy": 0.1067,
+     "xlm_jpy": 0.0209,
+     "ltc_jpy": 0.0315
+    },
+    "cash": 0.6319
+   },
+   {
+    "date": "2024-06-01",
+    "weights": {
+     "btc_jpy": 0.2046,
+     "xrp_jpy": 0.0175,
+     "eth_jpy": 0.0814,
+     "xlm_jpy": 0.0151,
+     "ltc_jpy": 0.04
+    },
+    "cash": 0.6413
+   },
+   {
+    "date": "2024-07-01",
+    "weights": {
+     "btc_jpy": 0.2568,
+     "xrp_jpy": 0.0122,
+     "eth_jpy": 0.1019,
+     "xlm_jpy": 0.0227,
+     "ltc_jpy": 0.0803
+    },
+    "cash": 0.526
+   },
+   {
+    "date": "2024-08-01",
+    "weights": {
+     "btc_jpy": 0.2507,
+     "xrp_jpy": 0.059,
+     "eth_jpy": 0.0636,
+     "xlm_jpy": 0.0978,
+     "ltc_jpy": 0.026
+    },
+    "cash": 0.5029
+   },
+   {
+    "date": "2024-09-01",
+    "weights": {
+     "btc_jpy": 0.2074,
+     "xrp_jpy": 0.0252,
+     "eth_jpy": 0.0109,
+     "xlm_jpy": 0.1393,
+     "ltc_jpy": 0.0375
+    },
+    "cash": 0.5797
+   },
+   {
+    "date": "2024-10-01",
+    "weights": {
+     "btc_jpy": 0.1397,
+     "xrp_jpy": 0.008,
+     "xlm_jpy": 0.1405,
+     "ltc_jpy": 0.0264,
+     "bnb_jpy": 0.0933
+    },
+    "cash": 0.5921
+   },
+   {
+    "date": "2024-11-01",
+    "weights": {
+     "btc_jpy": 0.1631,
+     "xrp_jpy": 0.017,
+     "xlm_jpy": 0.1684,
+     "ltc_jpy": 0.0271,
+     "bnb_jpy": 0.1128
+    },
+    "cash": 0.5116
+   },
+   {
+    "date": "2024-12-01",
+    "weights": {
+     "btc_jpy": 0.1903,
+     "xrp_jpy": 0.0745,
+     "ltc_jpy": 0.0485,
+     "bnb_jpy": 0.1441
+    },
+    "cash": 0.5427
+   },
+   {
+    "date": "2025-01-01",
+    "weights": {
+     "btc_jpy": 0.2103,
+     "xrp_jpy": 0.0559,
+     "xlm_jpy": 0.0042,
+     "ltc_jpy": 0.0225,
+     "bnb_jpy": 0.1308
+    },
+    "cash": 0.5763
+   },
+   {
+    "date": "2025-02-01",
+    "weights": {
+     "btc_jpy": 0.2194,
+     "xrp_jpy": 0.0546,
+     "ltc_jpy": 0.0084,
+     "bnb_jpy": 0.1305
+    },
+    "cash": 0.5871
+   },
+   {
+    "date": "2025-03-01",
+    "weights": {
+     "btc_jpy": 0.2702,
+     "xrp_jpy": 0.0417,
+     "ltc_jpy": 0.0087,
+     "bnb_jpy": 0.1298
+    },
+    "cash": 0.5496
+   },
+   {
+    "date": "2025-04-01",
+    "weights": {
+     "btc_jpy": 0.2106,
+     "xlm_jpy": 0.0049,
+     "ltc_jpy": 0.0175,
+     "bnb_jpy": 0.1503
+    },
+    "cash": 0.6167
+   },
+   {
+    "date": "2025-05-01",
+    "weights": {
+     "btc_jpy": 0.1989,
+     "xlm_jpy": 0.0045,
+     "ltc_jpy": 0.0063,
+     "bnb_jpy": 0.1398
+    },
+    "cash": 0.6506
+   },
+   {
+    "date": "2025-06-01",
+    "weights": {
+     "btc_jpy": 0.2269,
+     "bnb_jpy": 0.1513
+    },
+    "cash": 0.6219
+   },
+   {
+    "date": "2025-07-01",
+    "weights": {
+     "btc_jpy": 0.277,
+     "bnb_jpy": 0.1847
+    },
+    "cash": 0.5383
+   },
+   {
+    "date": "2025-08-01",
+    "weights": {
+     "btc_jpy": 0.3761,
+     "bnb_jpy": 0.2507
+    },
+    "cash": 0.3732
+   },
+   {
+    "date": "2025-09-01",
+    "weights": {
+     "btc_jpy": 0.3879,
+     "bnb_jpy": 0.2586
+    },
+    "cash": 0.3535
+   },
+   {
+    "date": "2025-10-01",
+    "weights": {
+     "btc_jpy": 0.3835,
+     "bnb_jpy": 0.2557
+    },
+    "cash": 0.3608
+   },
+   {
+    "date": "2025-11-01",
+    "weights": {
+     "btc_jpy": 0.2713,
+     "bnb_jpy": 0.1809
+    },
+    "cash": 0.5478
+   },
+   {
+    "date": "2025-12-01",
+    "weights": {
+     "btc_jpy": 0.2482,
+     "bnb_jpy": 0.1654
+    },
+    "cash": 0.5864
+   },
+   {
+    "date": "2026-01-01",
+    "weights": {
+     "btc_jpy": 0.2782,
+     "trx_jpy": 0.2246,
+     "bnb_jpy": 0.0587
+    },
+    "cash": 0.4385
+   },
+   {
+    "date": "2026-02-01",
+    "weights": {
+     "btc_jpy": 0.2943,
+     "trx_jpy": 0.2351,
+     "bnb_jpy": 0.0584
+    },
+    "cash": 0.4122
+   },
+   {
+    "date": "2026-03-01",
+    "weights": {
+     "btc_jpy": 0.2202,
+     "trx_jpy": 0.1918,
+     "bnb_jpy": 0.0674
+    },
+    "cash": 0.5206
+   },
+   {
+    "date": "2026-04-01",
+    "weights": {
+     "btc_jpy": 0.2247,
+     "trx_jpy": 0.1897,
+     "bnb_jpy": 0.0598
+    },
+    "cash": 0.5257
+   },
+   {
+    "date": "2026-05-01",
+    "weights": {
+     "btc_jpy": 0.2575,
+     "trx_jpy": 0.1976,
+     "bnb_jpy": 0.0389
+    },
+    "cash": 0.506
+   },
+   {
+    "date": "2026-06-01",
+    "weights": {
+     "btc_jpy": 0.444,
+     "trx_jpy": 0.3369,
+     "bnb_jpy": 0.0613
+    },
+    "cash": 0.1579
+   },
+   {
+    "date": "2026-07-01",
+    "weights": {
+     "btc_jpy": 0.4043,
+     "trx_jpy": 0.3012,
+     "bnb_jpy": 0.0474
+    },
+    "cash": 0.2471
+   },
+   {
+    "date": "2026-08-01",
+    "weights": {
+     "btc_jpy": 0.3854,
+     "trx_jpy": 0.2951,
+     "bnb_jpy": 0.0572
+    },
+    "cash": 0.2624
+   },
+   {
+    "date": "2026-09-01",
+    "weights": {
+     "btc_jpy": 0.3522,
+     "trx_jpy": 0.2938,
+     "bnb_jpy": 0.0885
+    },
+    "cash": 0.2654
    }
   ],
   "minvar_x1.0": [
@@ -3383,6 +4733,685 @@
     "cash": 0.0791
    }
   ],
+  "minvar_x1.0_vt30_w90": [
+   {
+    "date": "2021-01-01",
+    "weights": {
+     "btc_jpy": 0.2296,
+     "xrp_jpy": 0.1059,
+     "bcc_jpy": 0.0472
+    },
+    "cash": 0.6173
+   },
+   {
+    "date": "2021-02-01",
+    "weights": {
+     "btc_jpy": 0.1856,
+     "xrp_jpy": 0.0747,
+     "bcc_jpy": 0.049
+    },
+    "cash": 0.6906
+   },
+   {
+    "date": "2021-03-01",
+    "weights": {
+     "btc_jpy": 0.1801,
+     "xrp_jpy": 0.0693,
+     "bcc_jpy": 0.0507
+    },
+    "cash": 0.6998
+   },
+   {
+    "date": "2021-04-01",
+    "weights": {
+     "btc_jpy": 0.2019,
+     "xrp_jpy": 0.0488,
+     "bcc_jpy": 0.0858
+    },
+    "cash": 0.6635
+   },
+   {
+    "date": "2021-05-01",
+    "weights": {
+     "btc_jpy": 0.2334,
+     "xrp_jpy": 0.021,
+     "eth_jpy": 0.0973,
+     "bcc_jpy": 0.0364,
+     "ltc_jpy": 0.001
+    },
+    "cash": 0.6109
+   },
+   {
+    "date": "2021-06-01",
+    "weights": {
+     "btc_jpy": 0.178,
+     "xrp_jpy": 0.0215,
+     "eth_jpy": 0.0971,
+     "ltc_jpy": 0.0001
+    },
+    "cash": 0.7033
+   },
+   {
+    "date": "2021-07-01",
+    "weights": {
+     "btc_jpy": 0.1654,
+     "xrp_jpy": 0.0168,
+     "eth_jpy": 0.0935
+    },
+    "cash": 0.7244
+   },
+   {
+    "date": "2021-08-01",
+    "weights": {
+     "btc_jpy": 0.1703,
+     "xrp_jpy": 0.018,
+     "eth_jpy": 0.0955
+    },
+    "cash": 0.7161
+   },
+   {
+    "date": "2021-09-01",
+    "weights": {
+     "btc_jpy": 0.2383,
+     "xrp_jpy": 0.0139,
+     "eth_jpy": 0.1326,
+     "xlm_jpy": 0.0123
+    },
+    "cash": 0.6029
+   },
+   {
+    "date": "2021-10-01",
+    "weights": {
+     "btc_jpy": 0.2535,
+     "xrp_jpy": 0.0138,
+     "eth_jpy": 0.1441,
+     "xlm_jpy": 0.011
+    },
+    "cash": 0.5775
+   },
+   {
+    "date": "2021-11-01",
+    "weights": {
+     "btc_jpy": 0.2505,
+     "xrp_jpy": 0.0149,
+     "eth_jpy": 0.1434,
+     "xlm_jpy": 0.0087
+    },
+    "cash": 0.5825
+   },
+   {
+    "date": "2021-12-01",
+    "weights": {
+     "btc_jpy": 0.2523,
+     "xrp_jpy": 0.0173,
+     "eth_jpy": 0.134,
+     "xlm_jpy": 0.0168
+    },
+    "cash": 0.5795
+   },
+   {
+    "date": "2022-01-01",
+    "weights": {
+     "btc_jpy": 0.2901,
+     "xrp_jpy": 0.0311,
+     "eth_jpy": 0.1434,
+     "xlm_jpy": 0.0189
+    },
+    "cash": 0.5164
+   },
+   {
+    "date": "2022-02-01",
+    "weights": {
+     "btc_jpy": 0.2867,
+     "eth_jpy": 0.138,
+     "xlm_jpy": 0.0532
+    },
+    "cash": 0.5221
+   },
+   {
+    "date": "2022-03-01",
+    "weights": {
+     "btc_jpy": 0.2588,
+     "eth_jpy": 0.123,
+     "xlm_jpy": 0.0495
+    },
+    "cash": 0.5686
+   },
+   {
+    "date": "2022-04-01",
+    "weights": {
+     "btc_jpy": 0.2589,
+     "eth_jpy": 0.1332,
+     "xlm_jpy": 0.0394
+    },
+    "cash": 0.5685
+   },
+   {
+    "date": "2022-05-01",
+    "weights": {
+     "btc_jpy": 0.2703,
+     "xrp_jpy": 0.0116,
+     "eth_jpy": 0.1109,
+     "xlm_jpy": 0.0577
+    },
+    "cash": 0.5494
+   },
+   {
+    "date": "2022-06-01",
+    "weights": {
+     "btc_jpy": 0.25,
+     "eth_jpy": 0.088,
+     "xlm_jpy": 0.0006,
+     "bcc_jpy": 0.078
+    },
+    "cash": 0.5833
+   },
+   {
+    "date": "2022-07-01",
+    "weights": {
+     "btc_jpy": 0.2232,
+     "xrp_jpy": 0.0355,
+     "eth_jpy": 0.0254,
+     "xlm_jpy": 0.0293,
+     "bcc_jpy": 0.0587
+    },
+    "cash": 0.6279
+   },
+   {
+    "date": "2022-08-01",
+    "weights": {
+     "btc_jpy": 0.2162,
+     "xrp_jpy": 0.0547,
+     "eth_jpy": 0.0134,
+     "xlm_jpy": 0.0374,
+     "bcc_jpy": 0.0387
+    },
+    "cash": 0.6396
+   },
+   {
+    "date": "2022-09-01",
+    "weights": {
+     "btc_jpy": 0.2734,
+     "xrp_jpy": 0.1252,
+     "xlm_jpy": 0.0477,
+     "bcc_jpy": 0.0094
+    },
+    "cash": 0.5443
+   },
+   {
+    "date": "2022-10-01",
+    "weights": {
+     "btc_jpy": 0.3212,
+     "xrp_jpy": 0.1246,
+     "xlm_jpy": 0.0835,
+     "bcc_jpy": 0.006
+    },
+    "cash": 0.4647
+   },
+   {
+    "date": "2022-11-01",
+    "weights": {
+     "btc_jpy": 0.3837,
+     "xrp_jpy": 0.1322,
+     "xlm_jpy": 0.1125,
+     "bcc_jpy": 0.0111
+    },
+    "cash": 0.3605
+   },
+   {
+    "date": "2022-12-01",
+    "weights": {
+     "btc_jpy": 0.296,
+     "xrp_jpy": 0.0692,
+     "xlm_jpy": 0.1119,
+     "bcc_jpy": 0.0119,
+     "ltc_jpy": 0.0043
+    },
+    "cash": 0.5066
+   },
+   {
+    "date": "2023-01-01",
+    "weights": {
+     "btc_jpy": 0.3437,
+     "xrp_jpy": 0.0369,
+     "xlm_jpy": 0.1828,
+     "bcc_jpy": 0.0094
+    },
+    "cash": 0.4272
+   },
+   {
+    "date": "2023-02-01",
+    "weights": {
+     "btc_jpy": 0.3203,
+     "xrp_jpy": 0.0338,
+     "xlm_jpy": 0.166,
+     "ltc_jpy": 0.0138
+    },
+    "cash": 0.4661
+   },
+   {
+    "date": "2023-03-01",
+    "weights": {
+     "btc_jpy": 0.462,
+     "xrp_jpy": 0.0969,
+     "xlm_jpy": 0.1791,
+     "ltc_jpy": 0.032
+    },
+    "cash": 0.23
+   },
+   {
+    "date": "2023-04-01",
+    "weights": {
+     "btc_jpy": 0.3711,
+     "xrp_jpy": 0.0437,
+     "xlm_jpy": 0.2014,
+     "ltc_jpy": 0.0023
+    },
+    "cash": 0.3815
+   },
+   {
+    "date": "2023-05-01",
+    "weights": {
+     "btc_jpy": 0.3744,
+     "xrp_jpy": 0.0225,
+     "xlm_jpy": 0.2271
+    },
+    "cash": 0.376
+   },
+   {
+    "date": "2023-06-01",
+    "weights": {
+     "btc_jpy": 0.4048,
+     "xrp_jpy": 0.0913,
+     "xlm_jpy": 0.1262,
+     "ltc_jpy": 0.0524
+    },
+    "cash": 0.3253
+   },
+   {
+    "date": "2023-07-01",
+    "weights": {
+     "btc_jpy": 0.4663,
+     "xrp_jpy": 0.0091,
+     "xlm_jpy": 0.2883,
+     "ltc_jpy": 0.0135
+    },
+    "cash": 0.2228
+   },
+   {
+    "date": "2023-08-01",
+    "weights": {
+     "btc_jpy": 0.3875,
+     "eth_jpy": 0.0695,
+     "xlm_jpy": 0.093,
+     "bcc_jpy": 0.0608,
+     "dot_jpy": 0.035
+    },
+    "cash": 0.3542
+   },
+   {
+    "date": "2023-09-01",
+    "weights": {
+     "btc_jpy": 0.3968,
+     "eth_jpy": 0.1133,
+     "xlm_jpy": 0.0511,
+     "bcc_jpy": 0.0215,
+     "dot_jpy": 0.0787
+    },
+    "cash": 0.3386
+   },
+   {
+    "date": "2023-10-01",
+    "weights": {
+     "btc_jpy": 0.4587,
+     "eth_jpy": 0.1317,
+     "xlm_jpy": 0.0635,
+     "bcc_jpy": 0.0195,
+     "dot_jpy": 0.0911
+    },
+    "cash": 0.2355
+   },
+   {
+    "date": "2023-11-01",
+    "weights": {
+     "btc_jpy": 0.5272,
+     "eth_jpy": 0.2547,
+     "doge_jpy": 0.0106,
+     "xlm_jpy": 0.0535,
+     "dot_jpy": 0.0327
+    },
+    "cash": 0.1213
+   },
+   {
+    "date": "2023-12-01",
+    "weights": {
+     "btc_jpy": 0.4861,
+     "eth_jpy": 0.221,
+     "doge_jpy": 0.0616,
+     "xlm_jpy": 0.063,
+     "bcc_jpy": 0.0028
+    },
+    "cash": 0.1656
+   },
+   {
+    "date": "2024-01-01",
+    "weights": {
+     "btc_jpy": 0.3931,
+     "eth_jpy": 0.2298,
+     "doge_jpy": 0.0696,
+     "xlm_jpy": 0.0617
+    },
+    "cash": 0.2458
+   },
+   {
+    "date": "2024-02-01",
+    "weights": {
+     "btc_jpy": 0.3491,
+     "eth_jpy": 0.2138,
+     "doge_jpy": 0.0526,
+     "xlm_jpy": 0.0596
+    },
+    "cash": 0.3249
+   },
+   {
+    "date": "2024-03-01",
+    "weights": {
+     "btc_jpy": 0.3424,
+     "eth_jpy": 0.2374,
+     "doge_jpy": 0.035,
+     "xlm_jpy": 0.0738,
+     "ltc_jpy": 0.0182
+    },
+    "cash": 0.2931
+   },
+   {
+    "date": "2024-04-01",
+    "weights": {
+     "btc_jpy": 0.2885,
+     "eth_jpy": 0.1837,
+     "xlm_jpy": 0.0481,
+     "ltc_jpy": 0.0357,
+     "dot_jpy": 0.0069
+    },
+    "cash": 0.4371
+   },
+   {
+    "date": "2024-05-01",
+    "weights": {
+     "btc_jpy": 0.3017,
+     "xrp_jpy": 0.0124,
+     "eth_jpy": 0.1601,
+     "xlm_jpy": 0.0307,
+     "ltc_jpy": 0.0473
+    },
+    "cash": 0.4478
+   },
+   {
+    "date": "2024-06-01",
+    "weights": {
+     "btc_jpy": 0.3069,
+     "xrp_jpy": 0.0264,
+     "eth_jpy": 0.1221,
+     "xlm_jpy": 0.0226,
+     "ltc_jpy": 0.06
+    },
+    "cash": 0.4619
+   },
+   {
+    "date": "2024-07-01",
+    "weights": {
+     "btc_jpy": 0.3852,
+     "xrp_jpy": 0.0182,
+     "eth_jpy": 0.1528,
+     "xlm_jpy": 0.0342,
+     "ltc_jpy": 0.1205
+    },
+    "cash": 0.289
+   },
+   {
+    "date": "2024-08-01",
+    "weights": {
+     "btc_jpy": 0.3758,
+     "xrp_jpy": 0.0876,
+     "eth_jpy": 0.0955,
+     "xlm_jpy": 0.1479,
+     "ltc_jpy": 0.0388
+    },
+    "cash": 0.2544
+   },
+   {
+    "date": "2024-09-01",
+    "weights": {
+     "btc_jpy": 0.311,
+     "xrp_jpy": 0.0378,
+     "eth_jpy": 0.0164,
+     "xlm_jpy": 0.209,
+     "ltc_jpy": 0.0563
+    },
+    "cash": 0.3695
+   },
+   {
+    "date": "2024-10-01",
+    "weights": {
+     "btc_jpy": 0.2095,
+     "xrp_jpy": 0.012,
+     "xlm_jpy": 0.2107,
+     "ltc_jpy": 0.0396,
+     "bnb_jpy": 0.1399
+    },
+    "cash": 0.3882
+   },
+   {
+    "date": "2024-11-01",
+    "weights": {
+     "btc_jpy": 0.2446,
+     "xrp_jpy": 0.0255,
+     "xlm_jpy": 0.2526,
+     "ltc_jpy": 0.0406,
+     "bnb_jpy": 0.1693
+    },
+    "cash": 0.2674
+   },
+   {
+    "date": "2024-12-01",
+    "weights": {
+     "btc_jpy": 0.2854,
+     "xrp_jpy": 0.1117,
+     "ltc_jpy": 0.0728,
+     "bnb_jpy": 0.2161
+    },
+    "cash": 0.314
+   },
+   {
+    "date": "2025-01-01",
+    "weights": {
+     "btc_jpy": 0.3154,
+     "xrp_jpy": 0.0838,
+     "xlm_jpy": 0.0063,
+     "ltc_jpy": 0.0338,
+     "bnb_jpy": 0.1963
+    },
+    "cash": 0.3645
+   },
+   {
+    "date": "2025-02-01",
+    "weights": {
+     "btc_jpy": 0.3291,
+     "xrp_jpy": 0.0819,
+     "ltc_jpy": 0.0126,
+     "bnb_jpy": 0.1958
+    },
+    "cash": 0.3806
+   },
+   {
+    "date": "2025-03-01",
+    "weights": {
+     "btc_jpy": 0.4054,
+     "xrp_jpy": 0.0625,
+     "ltc_jpy": 0.013,
+     "bnb_jpy": 0.1947
+    },
+    "cash": 0.3244
+   },
+   {
+    "date": "2025-04-01",
+    "weights": {
+     "btc_jpy": 0.3159,
+     "xlm_jpy": 0.0073,
+     "ltc_jpy": 0.0263,
+     "bnb_jpy": 0.2254
+    },
+    "cash": 0.4251
+   },
+   {
+    "date": "2025-05-01",
+    "weights": {
+     "btc_jpy": 0.2983,
+     "xlm_jpy": 0.0068,
+     "ltc_jpy": 0.0094,
+     "bnb_jpy": 0.2097
+    },
+    "cash": 0.4759
+   },
+   {
+    "date": "2025-06-01",
+    "weights": {
+     "btc_jpy": 0.3403,
+     "bnb_jpy": 0.2269
+    },
+    "cash": 0.4328
+   },
+   {
+    "date": "2025-07-01",
+    "weights": {
+     "btc_jpy": 0.4155,
+     "bnb_jpy": 0.277
+    },
+    "cash": 0.3075
+   },
+   {
+    "date": "2025-08-01",
+    "weights": {
+     "btc_jpy": 0.5641,
+     "bnb_jpy": 0.3761
+    },
+    "cash": 0.0599
+   },
+   {
+    "date": "2025-09-01",
+    "weights": {
+     "btc_jpy": 0.5575,
+     "xrp_jpy": 0.0179,
+     "bnb_jpy": 0.3836
+    },
+    "cash": 0.0409
+   },
+   {
+    "date": "2025-10-01",
+    "weights": {
+     "btc_jpy": 0.5753,
+     "bnb_jpy": 0.3835
+    },
+    "cash": 0.0412
+   },
+   {
+    "date": "2025-11-01",
+    "weights": {
+     "btc_jpy": 0.407,
+     "bnb_jpy": 0.2713
+    },
+    "cash": 0.3217
+   },
+   {
+    "date": "2025-12-01",
+    "weights": {
+     "btc_jpy": 0.3722,
+     "bnb_jpy": 0.2482
+    },
+    "cash": 0.3796
+   },
+   {
+    "date": "2026-01-01",
+    "weights": {
+     "btc_jpy": 0.4173,
+     "trx_jpy": 0.3369,
+     "bnb_jpy": 0.088
+    },
+    "cash": 0.1578
+   },
+   {
+    "date": "2026-02-01",
+    "weights": {
+     "btc_jpy": 0.4414,
+     "trx_jpy": 0.3527,
+     "bnb_jpy": 0.0876
+    },
+    "cash": 0.1183
+   },
+   {
+    "date": "2026-03-01",
+    "weights": {
+     "btc_jpy": 0.3303,
+     "trx_jpy": 0.2876,
+     "bnb_jpy": 0.1011
+    },
+    "cash": 0.2809
+   },
+   {
+    "date": "2026-04-01",
+    "weights": {
+     "btc_jpy": 0.3371,
+     "trx_jpy": 0.2846,
+     "bnb_jpy": 0.0897
+    },
+    "cash": 0.2886
+   },
+   {
+    "date": "2026-05-01",
+    "weights": {
+     "btc_jpy": 0.3863,
+     "trx_jpy": 0.2964,
+     "bnb_jpy": 0.0583
+    },
+    "cash": 0.259
+   },
+   {
+    "date": "2026-06-01",
+    "weights": {
+     "btc_jpy": 0.5272,
+     "trx_jpy": 0.4,
+     "bnb_jpy": 0.0728
+    },
+    "cash": 0.0
+   },
+   {
+    "date": "2026-07-01",
+    "weights": {
+     "btc_jpy": 0.537,
+     "trx_jpy": 0.4,
+     "bnb_jpy": 0.063
+    },
+    "cash": 0.0
+   },
+   {
+    "date": "2026-08-01",
+    "weights": {
+     "btc_jpy": 0.5224,
+     "trx_jpy": 0.4,
+     "bnb_jpy": 0.0776
+    },
+    "cash": 0.0
+   },
+   {
+    "date": "2026-09-01",
+    "weights": {
+     "btc_jpy": 0.4795,
+     "trx_jpy": 0.4,
+     "bnb_jpy": 0.1205
+    },
+    "cash": 0.0
+   }
+  ],
   "minvar_x1.0_vt20": [
    {
     "date": "2021-01-01",
@@ -4060,6 +6089,685 @@
      "bnb_jpy": 0.074
     },
     "cash": 0.3861
+   }
+  ],
+  "minvar_x1.0_vt20_w90": [
+   {
+    "date": "2021-01-01",
+    "weights": {
+     "btc_jpy": 0.1531,
+     "xrp_jpy": 0.0706,
+     "bcc_jpy": 0.0315
+    },
+    "cash": 0.7448
+   },
+   {
+    "date": "2021-02-01",
+    "weights": {
+     "btc_jpy": 0.1238,
+     "xrp_jpy": 0.0498,
+     "bcc_jpy": 0.0327
+    },
+    "cash": 0.7937
+   },
+   {
+    "date": "2021-03-01",
+    "weights": {
+     "btc_jpy": 0.1201,
+     "xrp_jpy": 0.0462,
+     "bcc_jpy": 0.0338
+    },
+    "cash": 0.7999
+   },
+   {
+    "date": "2021-04-01",
+    "weights": {
+     "btc_jpy": 0.1346,
+     "xrp_jpy": 0.0326,
+     "bcc_jpy": 0.0572
+    },
+    "cash": 0.7757
+   },
+   {
+    "date": "2021-05-01",
+    "weights": {
+     "btc_jpy": 0.1556,
+     "xrp_jpy": 0.014,
+     "eth_jpy": 0.0649,
+     "bcc_jpy": 0.0242,
+     "ltc_jpy": 0.0007
+    },
+    "cash": 0.7406
+   },
+   {
+    "date": "2021-06-01",
+    "weights": {
+     "btc_jpy": 0.1187,
+     "xrp_jpy": 0.0143,
+     "eth_jpy": 0.0647,
+     "ltc_jpy": 0.0001
+    },
+    "cash": 0.8022
+   },
+   {
+    "date": "2021-07-01",
+    "weights": {
+     "btc_jpy": 0.1102,
+     "xrp_jpy": 0.0112,
+     "eth_jpy": 0.0623
+    },
+    "cash": 0.8163
+   },
+   {
+    "date": "2021-08-01",
+    "weights": {
+     "btc_jpy": 0.1136,
+     "xrp_jpy": 0.012,
+     "eth_jpy": 0.0637
+    },
+    "cash": 0.8107
+   },
+   {
+    "date": "2021-09-01",
+    "weights": {
+     "btc_jpy": 0.1588,
+     "xrp_jpy": 0.0093,
+     "eth_jpy": 0.0884,
+     "xlm_jpy": 0.0082
+    },
+    "cash": 0.7353
+   },
+   {
+    "date": "2021-10-01",
+    "weights": {
+     "btc_jpy": 0.169,
+     "xrp_jpy": 0.0092,
+     "eth_jpy": 0.0961,
+     "xlm_jpy": 0.0074
+    },
+    "cash": 0.7183
+   },
+   {
+    "date": "2021-11-01",
+    "weights": {
+     "btc_jpy": 0.167,
+     "xrp_jpy": 0.0099,
+     "eth_jpy": 0.0956,
+     "xlm_jpy": 0.0058
+    },
+    "cash": 0.7217
+   },
+   {
+    "date": "2021-12-01",
+    "weights": {
+     "btc_jpy": 0.1682,
+     "xrp_jpy": 0.0116,
+     "eth_jpy": 0.0893,
+     "xlm_jpy": 0.0112
+    },
+    "cash": 0.7197
+   },
+   {
+    "date": "2022-01-01",
+    "weights": {
+     "btc_jpy": 0.1934,
+     "xrp_jpy": 0.0207,
+     "eth_jpy": 0.0956,
+     "xlm_jpy": 0.0126
+    },
+    "cash": 0.6776
+   },
+   {
+    "date": "2022-02-01",
+    "weights": {
+     "btc_jpy": 0.1912,
+     "eth_jpy": 0.092,
+     "xlm_jpy": 0.0354
+    },
+    "cash": 0.6814
+   },
+   {
+    "date": "2022-03-01",
+    "weights": {
+     "btc_jpy": 0.1725,
+     "eth_jpy": 0.082,
+     "xlm_jpy": 0.033
+    },
+    "cash": 0.7124
+   },
+   {
+    "date": "2022-04-01",
+    "weights": {
+     "btc_jpy": 0.1726,
+     "eth_jpy": 0.0888,
+     "xlm_jpy": 0.0263
+    },
+    "cash": 0.7123
+   },
+   {
+    "date": "2022-05-01",
+    "weights": {
+     "btc_jpy": 0.1802,
+     "xrp_jpy": 0.0077,
+     "eth_jpy": 0.0739,
+     "xlm_jpy": 0.0385
+    },
+    "cash": 0.6996
+   },
+   {
+    "date": "2022-06-01",
+    "weights": {
+     "btc_jpy": 0.1667,
+     "eth_jpy": 0.0587,
+     "xlm_jpy": 0.0004,
+     "bcc_jpy": 0.052
+    },
+    "cash": 0.7222
+   },
+   {
+    "date": "2022-07-01",
+    "weights": {
+     "btc_jpy": 0.1488,
+     "xrp_jpy": 0.0236,
+     "eth_jpy": 0.0169,
+     "xlm_jpy": 0.0195,
+     "bcc_jpy": 0.0391
+    },
+    "cash": 0.752
+   },
+   {
+    "date": "2022-08-01",
+    "weights": {
+     "btc_jpy": 0.1442,
+     "xrp_jpy": 0.0364,
+     "eth_jpy": 0.009,
+     "xlm_jpy": 0.0249,
+     "bcc_jpy": 0.0258
+    },
+    "cash": 0.7597
+   },
+   {
+    "date": "2022-09-01",
+    "weights": {
+     "btc_jpy": 0.1823,
+     "xrp_jpy": 0.0834,
+     "xlm_jpy": 0.0318,
+     "bcc_jpy": 0.0063
+    },
+    "cash": 0.6962
+   },
+   {
+    "date": "2022-10-01",
+    "weights": {
+     "btc_jpy": 0.2141,
+     "xrp_jpy": 0.0831,
+     "xlm_jpy": 0.0557,
+     "bcc_jpy": 0.004
+    },
+    "cash": 0.6432
+   },
+   {
+    "date": "2022-11-01",
+    "weights": {
+     "btc_jpy": 0.2558,
+     "xrp_jpy": 0.0881,
+     "xlm_jpy": 0.075,
+     "bcc_jpy": 0.0074
+    },
+    "cash": 0.5737
+   },
+   {
+    "date": "2022-12-01",
+    "weights": {
+     "btc_jpy": 0.1973,
+     "xrp_jpy": 0.0462,
+     "xlm_jpy": 0.0746,
+     "bcc_jpy": 0.008,
+     "ltc_jpy": 0.0029
+    },
+    "cash": 0.6711
+   },
+   {
+    "date": "2023-01-01",
+    "weights": {
+     "btc_jpy": 0.2291,
+     "xrp_jpy": 0.0246,
+     "xlm_jpy": 0.1219,
+     "bcc_jpy": 0.0063
+    },
+    "cash": 0.6181
+   },
+   {
+    "date": "2023-02-01",
+    "weights": {
+     "btc_jpy": 0.2135,
+     "xrp_jpy": 0.0225,
+     "xlm_jpy": 0.1106,
+     "ltc_jpy": 0.0092
+    },
+    "cash": 0.6441
+   },
+   {
+    "date": "2023-03-01",
+    "weights": {
+     "btc_jpy": 0.308,
+     "xrp_jpy": 0.0646,
+     "xlm_jpy": 0.1194,
+     "ltc_jpy": 0.0213
+    },
+    "cash": 0.4867
+   },
+   {
+    "date": "2023-04-01",
+    "weights": {
+     "btc_jpy": 0.2474,
+     "xrp_jpy": 0.0291,
+     "xlm_jpy": 0.1343,
+     "ltc_jpy": 0.0016
+    },
+    "cash": 0.5876
+   },
+   {
+    "date": "2023-05-01",
+    "weights": {
+     "btc_jpy": 0.2496,
+     "xrp_jpy": 0.015,
+     "xlm_jpy": 0.1514
+    },
+    "cash": 0.584
+   },
+   {
+    "date": "2023-06-01",
+    "weights": {
+     "btc_jpy": 0.2699,
+     "xrp_jpy": 0.0609,
+     "xlm_jpy": 0.0841,
+     "ltc_jpy": 0.0349
+    },
+    "cash": 0.5502
+   },
+   {
+    "date": "2023-07-01",
+    "weights": {
+     "btc_jpy": 0.3109,
+     "xrp_jpy": 0.006,
+     "xlm_jpy": 0.1922,
+     "ltc_jpy": 0.009
+    },
+    "cash": 0.4818
+   },
+   {
+    "date": "2023-08-01",
+    "weights": {
+     "btc_jpy": 0.2583,
+     "eth_jpy": 0.0464,
+     "xlm_jpy": 0.062,
+     "bcc_jpy": 0.0406,
+     "dot_jpy": 0.0233
+    },
+    "cash": 0.5695
+   },
+   {
+    "date": "2023-09-01",
+    "weights": {
+     "btc_jpy": 0.2646,
+     "eth_jpy": 0.0755,
+     "xlm_jpy": 0.034,
+     "bcc_jpy": 0.0143,
+     "dot_jpy": 0.0525
+    },
+    "cash": 0.5591
+   },
+   {
+    "date": "2023-10-01",
+    "weights": {
+     "btc_jpy": 0.3058,
+     "eth_jpy": 0.0878,
+     "xlm_jpy": 0.0423,
+     "bcc_jpy": 0.013,
+     "dot_jpy": 0.0607
+    },
+    "cash": 0.4903
+   },
+   {
+    "date": "2023-11-01",
+    "weights": {
+     "btc_jpy": 0.3515,
+     "eth_jpy": 0.1698,
+     "doge_jpy": 0.0071,
+     "xlm_jpy": 0.0356,
+     "dot_jpy": 0.0218
+    },
+    "cash": 0.4142
+   },
+   {
+    "date": "2023-12-01",
+    "weights": {
+     "btc_jpy": 0.3241,
+     "eth_jpy": 0.1473,
+     "doge_jpy": 0.041,
+     "xlm_jpy": 0.042,
+     "bcc_jpy": 0.0019
+    },
+    "cash": 0.4437
+   },
+   {
+    "date": "2024-01-01",
+    "weights": {
+     "btc_jpy": 0.2621,
+     "eth_jpy": 0.1532,
+     "doge_jpy": 0.0464,
+     "xlm_jpy": 0.0411
+    },
+    "cash": 0.4972
+   },
+   {
+    "date": "2024-02-01",
+    "weights": {
+     "btc_jpy": 0.2327,
+     "eth_jpy": 0.1426,
+     "doge_jpy": 0.0351,
+     "xlm_jpy": 0.0397
+    },
+    "cash": 0.5499
+   },
+   {
+    "date": "2024-03-01",
+    "weights": {
+     "btc_jpy": 0.2283,
+     "eth_jpy": 0.1583,
+     "doge_jpy": 0.0233,
+     "xlm_jpy": 0.0492,
+     "ltc_jpy": 0.0122
+    },
+    "cash": 0.5288
+   },
+   {
+    "date": "2024-04-01",
+    "weights": {
+     "btc_jpy": 0.1923,
+     "eth_jpy": 0.1225,
+     "xlm_jpy": 0.0321,
+     "ltc_jpy": 0.0238,
+     "dot_jpy": 0.0046
+    },
+    "cash": 0.6247
+   },
+   {
+    "date": "2024-05-01",
+    "weights": {
+     "btc_jpy": 0.2011,
+     "xrp_jpy": 0.0083,
+     "eth_jpy": 0.1068,
+     "xlm_jpy": 0.0205,
+     "ltc_jpy": 0.0315
+    },
+    "cash": 0.6319
+   },
+   {
+    "date": "2024-06-01",
+    "weights": {
+     "btc_jpy": 0.2046,
+     "xrp_jpy": 0.0176,
+     "eth_jpy": 0.0814,
+     "xlm_jpy": 0.0151,
+     "ltc_jpy": 0.04
+    },
+    "cash": 0.6413
+   },
+   {
+    "date": "2024-07-01",
+    "weights": {
+     "btc_jpy": 0.2568,
+     "xrp_jpy": 0.0122,
+     "eth_jpy": 0.1019,
+     "xlm_jpy": 0.0228,
+     "ltc_jpy": 0.0803
+    },
+    "cash": 0.526
+   },
+   {
+    "date": "2024-08-01",
+    "weights": {
+     "btc_jpy": 0.2505,
+     "xrp_jpy": 0.0584,
+     "eth_jpy": 0.0636,
+     "xlm_jpy": 0.0986,
+     "ltc_jpy": 0.0259
+    },
+    "cash": 0.503
+   },
+   {
+    "date": "2024-09-01",
+    "weights": {
+     "btc_jpy": 0.2074,
+     "xrp_jpy": 0.0252,
+     "eth_jpy": 0.0109,
+     "xlm_jpy": 0.1393,
+     "ltc_jpy": 0.0375
+    },
+    "cash": 0.5797
+   },
+   {
+    "date": "2024-10-01",
+    "weights": {
+     "btc_jpy": 0.1397,
+     "xrp_jpy": 0.008,
+     "xlm_jpy": 0.1405,
+     "ltc_jpy": 0.0264,
+     "bnb_jpy": 0.0933
+    },
+    "cash": 0.5921
+   },
+   {
+    "date": "2024-11-01",
+    "weights": {
+     "btc_jpy": 0.1631,
+     "xrp_jpy": 0.017,
+     "xlm_jpy": 0.1684,
+     "ltc_jpy": 0.0271,
+     "bnb_jpy": 0.1128
+    },
+    "cash": 0.5116
+   },
+   {
+    "date": "2024-12-01",
+    "weights": {
+     "btc_jpy": 0.1903,
+     "xrp_jpy": 0.0745,
+     "ltc_jpy": 0.0485,
+     "bnb_jpy": 0.1441
+    },
+    "cash": 0.5427
+   },
+   {
+    "date": "2025-01-01",
+    "weights": {
+     "btc_jpy": 0.2103,
+     "xrp_jpy": 0.0559,
+     "xlm_jpy": 0.0042,
+     "ltc_jpy": 0.0225,
+     "bnb_jpy": 0.1308
+    },
+    "cash": 0.5763
+   },
+   {
+    "date": "2025-02-01",
+    "weights": {
+     "btc_jpy": 0.2194,
+     "xrp_jpy": 0.0546,
+     "ltc_jpy": 0.0084,
+     "bnb_jpy": 0.1305
+    },
+    "cash": 0.5871
+   },
+   {
+    "date": "2025-03-01",
+    "weights": {
+     "btc_jpy": 0.2702,
+     "xrp_jpy": 0.0417,
+     "ltc_jpy": 0.0087,
+     "bnb_jpy": 0.1298
+    },
+    "cash": 0.5496
+   },
+   {
+    "date": "2025-04-01",
+    "weights": {
+     "btc_jpy": 0.2106,
+     "xlm_jpy": 0.0049,
+     "ltc_jpy": 0.0175,
+     "bnb_jpy": 0.1503
+    },
+    "cash": 0.6167
+   },
+   {
+    "date": "2025-05-01",
+    "weights": {
+     "btc_jpy": 0.1989,
+     "xlm_jpy": 0.0045,
+     "ltc_jpy": 0.0063,
+     "bnb_jpy": 0.1398
+    },
+    "cash": 0.6506
+   },
+   {
+    "date": "2025-06-01",
+    "weights": {
+     "btc_jpy": 0.2269,
+     "bnb_jpy": 0.1513
+    },
+    "cash": 0.6219
+   },
+   {
+    "date": "2025-07-01",
+    "weights": {
+     "btc_jpy": 0.277,
+     "bnb_jpy": 0.1847
+    },
+    "cash": 0.5383
+   },
+   {
+    "date": "2025-08-01",
+    "weights": {
+     "btc_jpy": 0.3761,
+     "bnb_jpy": 0.2507
+    },
+    "cash": 0.3732
+   },
+   {
+    "date": "2025-09-01",
+    "weights": {
+     "btc_jpy": 0.3717,
+     "xrp_jpy": 0.0119,
+     "bnb_jpy": 0.2558
+    },
+    "cash": 0.3606
+   },
+   {
+    "date": "2025-10-01",
+    "weights": {
+     "btc_jpy": 0.3835,
+     "bnb_jpy": 0.2557
+    },
+    "cash": 0.3608
+   },
+   {
+    "date": "2025-11-01",
+    "weights": {
+     "btc_jpy": 0.2713,
+     "bnb_jpy": 0.1809
+    },
+    "cash": 0.5478
+   },
+   {
+    "date": "2025-12-01",
+    "weights": {
+     "btc_jpy": 0.2482,
+     "bnb_jpy": 0.1654
+    },
+    "cash": 0.5864
+   },
+   {
+    "date": "2026-01-01",
+    "weights": {
+     "btc_jpy": 0.2782,
+     "trx_jpy": 0.2246,
+     "bnb_jpy": 0.0587
+    },
+    "cash": 0.4385
+   },
+   {
+    "date": "2026-02-01",
+    "weights": {
+     "btc_jpy": 0.2943,
+     "trx_jpy": 0.2351,
+     "bnb_jpy": 0.0584
+    },
+    "cash": 0.4122
+   },
+   {
+    "date": "2026-03-01",
+    "weights": {
+     "btc_jpy": 0.2202,
+     "trx_jpy": 0.1918,
+     "bnb_jpy": 0.0674
+    },
+    "cash": 0.5206
+   },
+   {
+    "date": "2026-04-01",
+    "weights": {
+     "btc_jpy": 0.2247,
+     "trx_jpy": 0.1897,
+     "bnb_jpy": 0.0598
+    },
+    "cash": 0.5257
+   },
+   {
+    "date": "2026-05-01",
+    "weights": {
+     "btc_jpy": 0.2575,
+     "trx_jpy": 0.1976,
+     "bnb_jpy": 0.0389
+    },
+    "cash": 0.506
+   },
+   {
+    "date": "2026-06-01",
+    "weights": {
+     "btc_jpy": 0.444,
+     "trx_jpy": 0.3369,
+     "bnb_jpy": 0.0613
+    },
+    "cash": 0.1579
+   },
+   {
+    "date": "2026-07-01",
+    "weights": {
+     "btc_jpy": 0.4043,
+     "trx_jpy": 0.3012,
+     "bnb_jpy": 0.0474
+    },
+    "cash": 0.2471
+   },
+   {
+    "date": "2026-08-01",
+    "weights": {
+     "btc_jpy": 0.3854,
+     "trx_jpy": 0.2951,
+     "bnb_jpy": 0.0572
+    },
+    "cash": 0.2624
+   },
+   {
+    "date": "2026-09-01",
+    "weights": {
+     "btc_jpy": 0.3522,
+     "trx_jpy": 0.2938,
+     "bnb_jpy": 0.0885
+    },
+    "cash": 0.2654
    }
   ],
   "equal": [
@@ -5636,6 +8344,15 @@
    "cash": 0.0839,
    "ann_vol": 0.3
   },
+  "minvar_vt30_w90": {
+   "weights": {
+    "btc_jpy": 0.4613,
+    "trx_jpy": 0.4,
+    "bnb_jpy": 0.1387
+   },
+   "cash": 0.0,
+   "ann_vol": 0.26674777604754296
+  },
   "minvar_vt20": {
    "weights": {
     "btc_jpy": 0.2818,
@@ -5644,6 +8361,15 @@
    },
    "cash": 0.3892,
    "ann_vol": 0.19999999999999998
+  },
+  "minvar_vt20_w90": {
+   "weights": {
+    "btc_jpy": 0.3459,
+    "trx_jpy": 0.2999,
+    "bnb_jpy": 0.104
+   },
+   "cash": 0.2502,
+   "ann_vol": 0.2
   },
   "minvar_x1.0": {
    "weights": {
@@ -5663,6 +8389,15 @@
    "cash": 0.0839,
    "ann_vol": 0.3
   },
+  "minvar_x1.0_vt30_w90": {
+   "weights": {
+    "btc_jpy": 0.4613,
+    "trx_jpy": 0.4,
+    "bnb_jpy": 0.1387
+   },
+   "cash": 0.0,
+   "ann_vol": 0.26674777604754296
+  },
   "minvar_x1.0_vt20": {
    "weights": {
     "btc_jpy": 0.2818,
@@ -5671,6 +8406,15 @@
    },
    "cash": 0.3892,
    "ann_vol": 0.19999999999999998
+  },
+  "minvar_x1.0_vt20_w90": {
+   "weights": {
+    "btc_jpy": 0.3459,
+    "trx_jpy": 0.2999,
+    "bnb_jpy": 0.104
+   },
+   "cash": 0.2502,
+   "ann_vol": 0.2
   }
  },
  "stats": {
@@ -5692,6 +8436,15 @@
    "worst_day": -0.1034469843476109,
    "total": 3.161363895241176
   },
+  "minvar_vt30_w90": {
+   "days": 2094,
+   "ann_return": 0.29744655814712995,
+   "ann_vol": 0.33344684293779475,
+   "sharpe": 0.7809285119916719,
+   "max_drawdown": -0.4655122572393161,
+   "worst_day": -0.10412911972443702,
+   "total": 3.4544366592221465
+  },
   "minvar_vt20": {
    "days": 2094,
    "ann_return": 0.18020731649677368,
@@ -5700,6 +8453,15 @@
    "max_drawdown": -0.2920589713676852,
    "worst_day": -0.06896465623174061,
    "total": 1.5871630295399632
+  },
+  "minvar_vt20_w90": {
+   "days": 2094,
+   "ann_return": 0.1867940262600971,
+   "ann_vol": 0.22391122911445388,
+   "sharpe": 0.7648369249467303,
+   "max_drawdown": -0.34139478271688883,
+   "worst_day": -0.06941941314962469,
+   "total": 1.6711013905618866
   },
   "minvar_x1.0": {
    "days": 2094,
@@ -5719,6 +8481,15 @@
    "worst_day": -0.1034469843476109,
    "total": 3.0478768113597416
   },
+  "minvar_x1.0_vt30_w90": {
+   "days": 2094,
+   "ann_return": 0.2890057998000688,
+   "ann_vol": 0.33328316453570095,
+   "sharpe": 0.7617283151928608,
+   "max_drawdown": -0.46490100374451493,
+   "worst_day": -0.10412911972443702,
+   "total": 3.290725062858681
+  },
   "minvar_x1.0_vt20": {
    "days": 2094,
    "ann_return": 0.17642126244639056,
@@ -5727,6 +8498,15 @@
    "max_drawdown": -0.29184019318028487,
    "worst_day": -0.06896465623174061,
    "total": 1.5399092017030842
+  },
+  "minvar_x1.0_vt20_w90": {
+   "days": 2094,
+   "ann_return": 0.1816411692942077,
+   "ann_vol": 0.2238027719152087,
+   "sharpe": 0.7457650867715968,
+   "max_drawdown": -0.34089274682330795,
+   "worst_day": -0.06941941314962469,
+   "total": 1.6052474109834045
   },
   "equal": {
    "days": 2094,
