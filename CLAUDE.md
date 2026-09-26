@@ -5,6 +5,7 @@
 ## 現在の状態
 
 - Phase 1（`bbdata/`）、Phase 0（`scripts/phase0.py`、結果は SPEC.md §9）、Phase 2〜6（`bbresearch/`）は実装済み。
+- このブランチは 2026-09-27 に既定ブランチになった（schedule 付きワークフローが自動で動く。60 日間 push がないと GitHub が schedule を止める）。
 - 実 API へのアクセスは GitHub Actions で行う。開発環境からは行わない。
   - どのワークフローも、API の workflow_dispatch でこのブランチを ref に指定して実行できる（既定ブランチになくてもよいことを 2026-09-23 に確認）
   - `phase0.yml`: `scripts/phase0.py` の変更を push すると実行し、`reports/phase0/` をコミットする
@@ -17,7 +18,7 @@
   - `direction_1h.yml`: 同じモデルの 1 時間版。毎正時に判断し、1 分ごとの TPO×価格帯別出来高のシグナルの直近 60 分の推移を加える（`configs/direction_1h.yaml`）
   - `direction_cost.yml`: 目的変数を「成行往復の費用（約 0.3%）を超えて上がるか」にし、下げ側も学習して差を信号にする版を 15 分と 1 時間で実行（`configs/direction_cost.yaml`、`direction_1h_cost.yaml`）
   - `activity.yml`: 全ペアの前日の約定数・出来高（`reports/activity/`）。`weekend_range.yml`: 曜日 × 時間帯の値幅（`reports/weekend_range/`）。`portfolio.yml`: 最小分散ポートフォリオの前向き検証（`scripts/portfolio.py`、`reports/portfolio/`）
-  - `rebalance.yml`: 月初のリバランス計画（ドライラン、発注しない。`scripts/rebalance.py`、`configs/rebalance.yaml`）。schedule は既定ブランチでしか動かないので、当面は手動実行。ログは割合だけ
+  - `rebalance.yml`: 月初のリバランス計画（ドライラン、発注しない。`scripts/rebalance.py`、`configs/rebalance.yaml`）。2026-09-27 にこのブランチを既定ブランチにしたので schedule（毎月 1 日 00:10 UTC）が動く。ログは割合だけ
   - `recorder.yml`: 板・約定の記録。約 5 時間 45 分ごとに次のジョブを自分で起動して連続させ、成果物（90 日）に保存する。止めるには `configs/recorder.yaml` の `enabled: false`
   - `monitor.yml`: 毎日 00:20 UTC に残高・評価額・目標の重みを `docs/monitor/daily.jsonl` に記録し、`docs/monitor/index.html`（モニター画面）を作り直してコミットする（`scripts/snapshot.py`、`bbresearch/monitor.py`）。`rebalance.yml` は計画を `docs/monitor/rebalances.jsonl` に追記する
   - `auth-check.yml`: 認証付き API の疎通確認（参照系のみ）。キーは Secrets `bitbank_API` / `bitbank_secret` から読む

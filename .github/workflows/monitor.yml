@@ -1,5 +1,5 @@
 # 1 日 1 回、残高・評価額・目標の重みを記録し、モニター画面（docs/monitor/index.html）を作り直してコミットする。
-# 毎日 00:20 UTC（09:20 JST）と手動、scripts/snapshot.py の変更を push したとき。schedule は既定ブランチでしか動かない。
+# 毎日 00:20 UTC（09:20 JST）と手動、scripts/snapshot.py の変更を push したとき。2026-09-27 からこのブランチが既定なので schedule が動く。
 # 残高はキー（Secrets bitbank_API / bitbank_secret）で読む（参照系のみ、発注しない）。オーナー決定: 金額は伏せない。
 name: monitor
 on:

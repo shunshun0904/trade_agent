@@ -1,5 +1,5 @@
 # 月初のリバランス計画（ドライラン。発注しない）。毎月 1 日 00:10 UTC（09:10 JST）と手動で実行する。
-# schedule は既定ブランチでしか動かない（GitHub の仕様）。このブランチが既定でない間は手動（workflow_dispatch）で実行する。
+# 2026-09-27 からこのブランチが既定ブランチなので schedule が動く（それまでは手動で実行していた）。
 # 残高はキー（Secrets bitbank_API / bitbank_secret）で読むが、ログには割合（%）だけを出す（公開リポジトリ）。
 name: rebalance
 on:
