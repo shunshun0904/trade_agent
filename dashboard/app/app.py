@@ -32,6 +32,7 @@ PAIR = os.environ.get("PAIR", "btc_jpy")
 BUCKET = os.environ.get("CACHE_BUCKET", "")
 CACHE_KEY = f"cache/{PAIR}.json.gz"
 PUBLIC = "https://public.bitbank.cc"
+CACHE_VERSION = 2  # 形式を変えたら上げる。古い保存データは捨てて取り直す
 KEEP_MS = 4 * 3_600_000  # 窓 3 時間 + σ の 180 分 + TPO の 5 分に足りる。日付指定の取得は多くても 2 日分
 REFRESH_SECONDS = int(os.environ.get("REFRESH_SECONDS", "30"))
 MIN_FETCH_INTERVAL = REFRESH_SECONDS
@@ -116,6 +117,8 @@ class Store:
 
 def refresh(cache: dict | None, now_ms: int, get=http_get_json) -> dict:
     """保存データを now 時点まで更新して返す。"""
+    if cache and cache.get("v") != CACHE_VERSION:
+        cache = None  # 古い形式の保存データ（約定がそろっている範囲が分からない）は捨てて取り直す
     if cache and now_ms - cache.get("fetched_ms", 0) < MIN_FETCH_INTERVAL * 1000:
         return cache
     rows: dict[int, list] = {r[0]: r for r in (cache or {}).get("rows", [])}
@@ -158,8 +161,8 @@ def refresh(cache: dict | None, now_ms: int, get=http_get_json) -> dict:
     # 約定がそろっていない時間帯は公式 1 分足で補う（その間だけ毎回取り直す。1 日分で約 50KB）
     candles = ([] if trade_from is None
                else _candles(get, _days_between(now_ms - KEEP_MS, trade_from), now_ms - KEEP_MS, now_ms, skipped))
-    return {"rows": keep, "from_ms": max(covered_from, now_ms - KEEP_MS), "fetched_ms": now_ms, "skipped": skipped,
-            "trade_from_ms": trade_from, "candles": candles}
+    return {"v": CACHE_VERSION, "rows": keep, "from_ms": max(covered_from, now_ms - KEEP_MS), "fetched_ms": now_ms,
+            "skipped": skipped, "trade_from_ms": trade_from, "candles": candles}
 
 
 def _resp(status: int, body: str, ctype: str) -> dict:
@@ -192,6 +195,10 @@ def handler(event, context, store=None, get=http_get_json, now_ms: int | None = 
         else:
             res = compute(trades, now_ms, **extra)
         if "error" in res:
+            res["detail"] = {"n_rows": len(cache["rows"]), "n_candles": len(cache.get("candles") or []),
+                             "trade_from_ms": cache.get("trade_from_ms"), "skipped": cache.get("skipped"),
+                             "first_trade_ms": cache["rows"][0][1] if cache["rows"] else None}
+            res["error"] += " " + json.dumps(res["detail"], ensure_ascii=False)
             return _resp(502, json.dumps(res), "application/json")
         res["pair"] = PAIR
         res["data_fetched_ms"] = cache["fetched_ms"]

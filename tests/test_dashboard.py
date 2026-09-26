@@ -186,7 +186,7 @@ def test_http_get_json_turns_404_into_nodata(monkeypatch):
 def test_refresh_incremental_without_gap():
     now = 1_767_225_600_000 + 60 * H
     rows = [[i, now - 1000 * (100 - i), 1.0, 0.1] for i in range(100)]
-    cache = {"rows": rows, "from_ms": now - dash.KEEP_MS, "fetched_ms": now - 60_000}
+    cache = {"v": dash.CACHE_VERSION, "rows": rows, "from_ms": now - dash.KEEP_MS, "fetched_ms": now - 60_000}
     calls = []
 
     def get(path):
@@ -214,7 +214,7 @@ def test_handler_profile_end_to_end():
     ts, px, amt = synth(n=8000, seed=3)
     now = int(ts[-1]) + 1
     rows = [[i, int(t), float(p), float(a)] for i, (t, p, a) in enumerate(zip(ts, px, amt))]
-    store = FakeStore({"rows": rows, "from_ms": now - dash.KEEP_MS, "fetched_ms": now})
+    store = FakeStore({"v": dash.CACHE_VERSION, "rows": rows, "from_ms": now - dash.KEEP_MS, "fetched_ms": now})
     out = dash.handler({"path": "/api/profile"}, None, store=store, now_ms=now)
     body = json.loads(out["body"])
     assert out["statusCode"] == 200, body
@@ -241,7 +241,7 @@ def test_memory_cache_limits_s3_writes(monkeypatch):
             saves.append(data["fetched_ms"])
             super().save(data)
 
-    store = CountingStore({"rows": rows, "from_ms": now - dash.KEEP_MS, "fetched_ms": now - 60_000})
+    store = CountingStore({"v": dash.CACHE_VERSION, "rows": rows, "from_ms": now - dash.KEEP_MS, "fetched_ms": now - 60_000})
     monkeypatch.setattr(dash, "_MEM", {})
     monkeypatch.setattr(dash, "Store", lambda bucket: store)
     latest = lambda path: {"transactions": [tx(len(rows) - 1, int(ts[-1]))]}  # noqa: E731
@@ -296,7 +296,7 @@ def test_handler_signals_route():
     ts, px, amt = synth(n=8000, seed=8)
     now = int(ts[-1]) + 1
     rows = [[i, int(t), float(p), float(a)] for i, (t, p, a) in enumerate(zip(ts, px, amt))]
-    store = FakeStore({"rows": rows, "from_ms": now - dash.KEEP_MS, "fetched_ms": now})
+    store = FakeStore({"v": dash.CACHE_VERSION, "rows": rows, "from_ms": now - dash.KEEP_MS, "fetched_ms": now})
     out = dash.handler({"path": "/api/signals"}, None, store=store, now_ms=now)
     body = json.loads(out["body"])
     assert out["statusCode"] == 200, body
@@ -354,6 +354,6 @@ def test_refresh_falls_back_to_candles_when_today_is_missing():
 def test_refresh_without_gap_keeps_no_candles():
     now = 1_767_225_600_000 + 60 * H
     rows = [[i, now - 1000 * (100 - i), 1.0, 0.1] for i in range(100)]
-    cache = {"rows": rows, "from_ms": now - dash.KEEP_MS, "fetched_ms": now - 60_000}
+    cache = {"v": dash.CACHE_VERSION, "rows": rows, "from_ms": now - dash.KEEP_MS, "fetched_ms": now - 60_000}
     c = dash.refresh(cache, now, lambda path: {"transactions": [tx(i, now - 1000 * (100 - i)) for i in range(90, 105)]})
     assert c["trade_from_ms"] is None and c["candles"] == []
