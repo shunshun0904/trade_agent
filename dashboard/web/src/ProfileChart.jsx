@@ -34,13 +34,16 @@ export default function ProfileChart({ d, height = 520 }) {
     const pLo = Math.min(...lows, ...d.vp.map((r) => r.lo)), pHi = Math.max(...highs, ...d.vp.map((r) => r.hi));
     const pad = (pHi - pLo) * 0.03;
     const y = lin(pLo - pad, pHi + pad, M.top + H, M.top);
-    const t0 = d.candles[0][0], t1 = d.candles[d.candles.length - 1][0] + 15 * 60_000;
+    const step = d.candle_ms || 15 * 60_000;
+    const t0 = d.candles[0][0], t1 = d.candles[d.candles.length - 1][0] + step;
     const x = lin(t0, t1, xC0, xC0 + wC);
     const cw = Math.max(1, (wC / d.candles.length) * 0.7);
     const vMax = Math.max(...d.vp.map((r) => r.v)), nMax = Math.max(...d.tpo.map((r) => r.n));
     const xv = lin(0, vMax, xV0, xV0 + wP), xt = lin(0, nMax, xT0, xT0 + wP);
-    const tickH = [3, 6, 12].find((h) => (wC / 24) * h >= 56) || 12;  // 目盛の間隔が 56px 以上になる時間数
-    return { inner, wC, wP, xC0, xV0, xT0, H, y, x, cw, xv, xt, t0, t1, pLo: pLo - pad, pHi: pHi + pad, vMax, nMax, tickH };
+    // 目盛の間隔が 56px 以上になる最小の分数
+    const spanMin = (t1 - t0) / 60_000;
+    const tickMin = [15, 30, 60, 180, 360, 720].find((m) => (wC / spanMin) * m >= 56) || 720;
+    return { inner, wC, wP, xC0, xV0, xT0, H, y, x, cw, xv, xt, t0, t1, step, pLo: pLo - pad, pHi: pHi + pad, vMax, nMax, tickMin };
   }, [W, d, height]);
 
   if (!d) return <div ref={ref} className="chart-wrap" style={{ height }} />;
@@ -52,7 +55,7 @@ export default function ProfileChart({ d, height = 520 }) {
     const price = g.y.inv(py);
     let t = null;
     if (px >= g.xC0 && px <= g.xC0 + g.wC) {
-      const tm = g.x.inv(px), i = Math.min(d.candles.length - 1, Math.max(0, Math.floor((tm - g.t0) / (15 * 60_000))));
+      const tm = g.x.inv(px), i = Math.min(d.candles.length - 1, Math.max(0, Math.floor((tm - g.t0) / g.step)));
       const c = d.candles[i];
       t = { px, py, rows: [["時刻", hm(c[0])], ["始値", yen(c[1])], ["高値", yen(c[2])], ["安値", yen(c[3])], ["終値", yen(c[4])]] };
     } else if (px >= g.xV0 && px <= g.xV0 + g.wP) {
@@ -86,11 +89,11 @@ export default function ProfileChart({ d, height = 520 }) {
           {/* 時刻の目盛（3 時間ごと） */}
           <g className="axis">
             <path d={`M${g.xC0},${M.top + g.H}H${g.xC0 + g.wC}`} />
-            {d.candles.filter((c) => c[0] % (g.tickH * 3_600_000) === 0).map((c) => (
+            {d.candles.filter((c) => c[0] % (g.tickMin * 60_000) === 0).map((c) => (
               <text key={c[0]} x={g.x(c[0])} y={height - 6} textAnchor="middle">{hm(c[0])}</text>
             ))}
             <text x={g.xV0} y={M.top - 8}>出来高（BTC）</text>
-            <text x={g.xT0} y={M.top - 8}>TPO（30 分区間）</text>
+            <text x={g.xT0} y={M.top - 8}>TPO（{d.tpo_block_min || 30} 分区間）</text>
           </g>
           {/* 価格帯別出来高 */}
           {d.vp.map((r) => (
@@ -104,7 +107,7 @@ export default function ProfileChart({ d, height = 520 }) {
           ))}
           {/* ローソク足 */}
           {d.candles.map((c) => {
-            const up = c[4] >= c[1], xc = g.x(c[0] + 7.5 * 60_000);
+            const up = c[4] >= c[1], xc = g.x(c[0] + g.step / 2);
             const col = up ? "var(--up)" : "var(--down)";
             return (
               <g key={c[0]}>

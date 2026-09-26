@@ -44,14 +44,14 @@ export default function App() {
           {err && <span className="pill err">取得に失敗</span>}
           {profile && <span>更新 <span className="num">{hms(profile.now_ms)}</span></span>}
           {profile && <span>刻み <span className="num">{yen(profile.bin_width)}</span> 円（0.25σ）</span>}
-          {profile && <span>約定 <span className="num">{profile.n_trades_window.toLocaleString("ja-JP")}</span> 件 / 24h</span>}
+          {profile && <span>約定 <span className="num">{profile.n_trades_window.toLocaleString("ja-JP")}</span> 件 / {profile.window_h}h</span>}
         </span>
       </header>
       {err && <div className="err">取得に失敗しました: {err}（{REFRESH_MS / 1000} 秒後に再試行）</div>}
       <div className="main">
         <section className="panel">
           <div className="panel-head">
-            <h2>直近 24 時間</h2>
+            <h2>直近 {profile ? profile.window_h : 3} 時間（{profile && profile.candle_ms ? profile.candle_ms / 60_000 : 1} 分足）</h2>
             <div className="legend">
               <span><i className="sw box" style={{ background: "var(--up)" }} />陽線</span>
               <span><i className="sw box" style={{ background: "var(--down)" }} />陰線</span>

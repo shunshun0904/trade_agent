@@ -41,7 +41,7 @@ def test_profile_matches_research_implementation():
     ts, px, amt = synth()
     now = int(ts[0] + 49 * H) // core.BAR_MS * core.BAR_MS  # 足の境界
     trades = list(zip(ts.tolist(), px.tolist(), amt.tolist()))
-    res = core.compute(trades, now)
+    res = core.compute(trades, now, window_h=24.0, candle_ms=core.BAR_MS, tpo_block=2)  # 研究用と同じ定義
     ref, sigma = res["price"], res["sigma"]
     # 研究用の実装に同じ σ と基準価格を渡して比べる（研究用は σ 単位の距離を返す）
     idx = pd.date_range(pd.Timestamp(ts[0] // core.BAR_MS * core.BAR_MS, unit="ms", tz="UTC"),
@@ -56,6 +56,34 @@ def test_profile_matches_research_implementation():
         assert f[f"{key}_vah_dist"] == pytest.approx((lv["vah"] - ref) / unit, abs=1e-6)
         assert f[f"{key}_val_dist"] == pytest.approx((lv["val"] - ref) / unit, abs=1e-6)
     assert res["vp_levels"]["val"] < res["vp_levels"]["poc"] < res["vp_levels"]["vah"]
+
+
+def test_compute_three_hours_matches_brute_force():
+    ts, px, amt = synth(seed=9)
+    now = int(ts[0] + 49 * H) + 37_000
+    trades = list(zip(ts.tolist(), px.tolist(), amt.tolist()))
+    res = core.compute(trades, now)
+    assert res["window_h"] == 3.0 and res["candle_ms"] == 60_000 and res["tpo_block_min"] == 5
+    assert 180 <= len(res["candles"]) <= 181 and res["candles"][0][0] >= now - 3 * H  # 3 時間 + 形成中の 1 分
+    w, ref = res["bin_width"], res["price"]
+    # 価格帯別出来高: 3 時間の約定を刻みで数え直す
+    acc = {}
+    for t, p, a in trades:
+        if now - 3 * H <= t < now:
+            k = int(np.floor(round((p - ref) / w, 9)))
+            acc[k] = acc.get(k, 0.0) + a
+    assert sum(r["v"] for r in res["vp"]) == pytest.approx(sum(acc.values()))
+    assert all(r["v"] == pytest.approx(acc.get(int(np.floor(round((r["lo"] - ref) / w, 9))), 0.0)) for r in res["vp"])
+    # TPO: 確定した 1 分足を now から過去へ 5 本ずつ（36 区間）
+    m1 = now // 60_000 * 60_000
+    blocks = 0
+    for k in range(36):
+        b_end = m1 - k * 5 * 60_000
+        sel = [(p) for t, p, a in trades if b_end - 5 * 60_000 <= t < b_end]
+        if sel:
+            blocks += 1
+    assert sum(r["n"] for r in res["tpo"]) >= blocks  # 各区間は少なくとも 1 価格帯に 1 を足す
+    assert res["vp_levels"]["val"] <= res["vp_levels"]["poc"] <= res["vp_levels"]["vah"]
 
 
 def test_compute_ignores_trades_at_or_after_now():
@@ -177,8 +205,9 @@ def test_signal_at_matches_profile_definitions():
     now = int(ts[-1]) + 1
     t = now // core.MIN_MS * core.MIN_MS - 7 * core.MIN_MS
     end = now // core.BAR_MS * core.BAR_MS + core.BAR_MS
-    bars = core.bars_15m(trades, end - 3 * 24 * H, end)
-    row = core.signal_at(trades, bars, t)
+    bars15 = core.bars_15m(trades, end - 3 * 24 * H, end)
+    bars1 = core.bars_at(trades, t - 4 * H, t + core.MIN_MS, core.CANDLE_MS)
+    row = core.signal_at(trades, bars15, bars1, t)
     # 同じ時刻の compute（画面の左の列）と同じ水準になる
     ref = core.compute(trades, t)
     assert row["price"] == ref["price"] and abs(row["sigma"] - ref["sigma"]) < 1e-12

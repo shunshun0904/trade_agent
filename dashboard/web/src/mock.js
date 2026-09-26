@@ -1,5 +1,5 @@
 /* プレビュー用のダミーデータ。形は api.js のとおり。乱数の種を固定し、時刻だけ現在に合わせる。 */
-const MIN = 60_000, BAR = 15 * MIN;
+const MIN = 60_000;
 
 function rng(seed) {
   let s = seed >>> 0;
@@ -22,12 +22,12 @@ function valueArea(counts, share = 0.7) {
 }
 
 function candlesFrom(now, r, p0) {
-  const end = Math.floor(now / BAR) * BAR + BAR;
+  const end = Math.floor(now / MIN) * MIN + MIN;
   const out = [];
   let p = p0;
-  for (let t = end - 96 * BAR; t < end; t += BAR) {
+  for (let t = end - 180 * MIN; t < end; t += MIN) {
     const o = p;
-    const steps = Array.from({ length: 15 }, () => gauss(r) * 0.0011);
+    const steps = Array.from({ length: 4 }, () => gauss(r) * 0.0004);
     const path = steps.map((s) => (p *= Math.exp(s)));
     out.push([t, o, Math.max(o, ...path), Math.min(o, ...path), p]);
   }
@@ -46,10 +46,11 @@ export function mockProfile(now) {
   const vol = new Array(n).fill(0), tpo = new Array(n).fill(0);
   candles.forEach((c, i) => {
     const a = Math.floor(c[3] / w) - k0, b = Math.floor(c[2] / w) - k0;
-    const v = (0.6 + 2.2 * r()) * (i % 7 === 0 ? 3 : 1);
+    const v = (0.05 + 0.3 * r()) * (i % 23 === 0 ? 4 : 1);
     for (let k = a; k <= b; k++) vol[k] += v / (b - a + 1);
-    if (i % 2 === 1) {
-      const a2 = Math.floor(Math.min(c[3], candles[i - 1][3]) / w) - k0, b2 = Math.floor(Math.max(c[2], candles[i - 1][2]) / w) - k0;
+    if (i % 5 === 4) {  // 5 分区間
+      const blk = candles.slice(i - 4, i + 1);
+      const a2 = Math.floor(Math.min(...blk.map((q) => q[3])) / w) - k0, b2 = Math.floor(Math.max(...blk.map((q) => q[2])) / w) - k0;
       for (let k = a2; k <= b2; k++) tpo[k] += 1;
     }
   });
@@ -62,7 +63,7 @@ export function mockProfile(now) {
   };
   const vp = mk(vol, "v"), tp = mk(tpo, "n");
   return {
-    now_ms: now, price, sigma, bin_width: w, window_h: 24, n_trades_window: 61_842, data_fetched_ms: now - 2_400,
+    now_ms: now, price, sigma, bin_width: w, window_h: 3, candle_ms: MIN, tpo_block_min: 5, n_trades_window: 7_842, data_fetched_ms: now - 2_400,
     vp_levels: vp.levels, vp: vp.rows, tpo_levels: tp.levels, tpo: tp.rows, candles,
   };
 }

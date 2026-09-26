@@ -1,7 +1,7 @@
 """TPO・価格帯別出来高ダッシュボードの Lambda（API Gateway の REST API から呼ばれる）。
 
 - GET /             画面（page.html）
-- GET /api/profile  直近 24 時間の価格帯別出来高・TPO・15 分足（JSON）
+- GET /api/profile  直近 3 時間の価格帯別出来高・TPO・1 分足（JSON）
 - GET /api/signals  直近 60 分の 1 分ごとの水準（POC までの距離など。JSON）。分ごとの結果は実行環境の中に残し、新しい分だけ計算する
 
 画面が REFRESH_SECONDS（既定 30 秒、2026-09-26 オーナー決定）ごとに /api/profile を呼ぶ。タブが裏にある間は呼ばない。約定は bitbank の公開 REST API（認証不要）から取り、S3 に保存して
