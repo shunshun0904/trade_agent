@@ -15,7 +15,7 @@ Parameters:
     Default: btc_jpy
   RefreshSeconds:
     Type: Number
-    Default: 10
+    Default: 30
     MinValue: 5
     Description: Page refresh interval. Each refresh is one API Gateway + Lambda request.
 

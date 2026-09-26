@@ -146,7 +146,7 @@ def test_page_gets_refresh_interval_and_pauses_when_hidden():
     import re
 
     # React 版（dashboard/web）が置き換え用に埋めた文字列 Number("__REFRESH_SECONDS__") || 10（縮小後は +"..."||10）
-    assert re.search(rf'"{dash.REFRESH_SECONDS}"\s*\)?\s*\|\|\s*10', dash.PAGE)
+    assert re.search(rf'"{dash.REFRESH_SECONDS}"\s*\)?\s*\|\|\s*30', dash.PAGE)
     assert "visibilitychange" in dash.PAGE and "api/signals" in dash.PAGE
 
 

@@ -1,6 +1,6 @@
 # TPO・価格帯別出来高ダッシュボード
 
-直近 24 時間の BTC/JPY の価格帯別出来高と TPO を、10 秒ごとに更新して表示する。bitbank の公開データだけを使い、API キーは使わない。
+直近 24 時間の BTC/JPY の価格帯別出来高と TPO を、30 秒ごとに更新して表示する。bitbank の公開データだけを使い、API キーは使わない。
 
 - 構成: API Gateway（REST API。許可した IP アドレスからだけ受け付ける）→ Lambda（呼ばれたときだけ計算）→ S3（約定の一時保存、非公開）
 - 画面（React、`web/`）: 左に 15 分足と POC・VAH・VAL の線、価格帯別出来高、TPO。右に直近 60 分の 1 分ごとの水準（POC までの距離、バリューエリア内の位置、価格帯の厚さ、シングルプリントの割合）の推移。タブが裏にある間は更新しない
@@ -15,7 +15,7 @@ curl -fsSL https://raw.githubusercontent.com/shunshun0904/trade_agent/claude/bit
 
 途中で自宅の IP アドレスを聞かれる（CloudShell の IP ではない）。最後に表示される URL を自宅のブラウザで開く。
 IP アドレスが変わったら、同じコマンドをもう一度実行する。更新間隔を変えるには `sam deploy` の
-`--parameter-overrides` に `RefreshSeconds=30` などを足す（最小 5 秒）。
+`--parameter-overrides` に `RefreshSeconds=10` などを足す（最小 5 秒）。
 
 ## 画面の変更（`web/`）
 
@@ -30,7 +30,7 @@ cd dashboard/web && npm run build:preview    # dist-preview/index.html にダミ
 
 - API の形は `web/src/api.js` の冒頭に書いた。
 - モデルの予測は載せない（2026-09-26 オーナー決定。方向の予測は費用を超えなかった。`docs/SPEC.md` §1.3）。
-- 更新間隔は Lambda の `REFRESH_SECONDS`（既定 10 秒）。画面は 1 回の更新で `/api/profile` と `/api/signals` を 1 回ずつ呼ぶ。
+- 更新間隔は Lambda の `REFRESH_SECONDS`（既定 30 秒）。画面は 1 回の更新で `/api/profile` と `/api/signals` を 1 回ずつ呼ぶ。
 
 ## 削除
 

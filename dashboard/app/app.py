@@ -4,7 +4,7 @@
 - GET /api/profile  直近 24 時間の価格帯別出来高・TPO・15 分足（JSON）
 - GET /api/signals  直近 60 分の 1 分ごとの水準（POC までの距離など。JSON）。分ごとの結果は実行環境の中に残し、新しい分だけ計算する
 
-画面が REFRESH_SECONDS（既定 10 秒）ごとに /api/profile を呼ぶ。タブが裏にある間は呼ばない。約定は bitbank の公開 REST API（認証不要）から取り、S3 に保存して
+画面が REFRESH_SECONDS（既定 30 秒、2026-09-26 オーナー決定）ごとに /api/profile を呼ぶ。タブが裏にある間は呼ばない。約定は bitbank の公開 REST API（認証不要）から取り、S3 に保存して
 次回は差分だけ取る。σ の計算に 24 時間より前の足も要るので、直近 49 時間分を保持する。
 - 保存がない・古いとき: 日付指定（UTC の日付、Phase 0 V5）で必要な日を取る
 - それ以外: 最新 60 件を取り、保存済みの最新より新しいものを足す。60 件の中に保存済みの最新が含まれなければ
@@ -30,7 +30,7 @@ BUCKET = os.environ.get("CACHE_BUCKET", "")
 CACHE_KEY = f"cache/{PAIR}.json.gz"
 PUBLIC = "https://public.bitbank.cc"
 KEEP_MS = 49 * 3_600_000
-REFRESH_SECONDS = int(os.environ.get("REFRESH_SECONDS", "10"))
+REFRESH_SECONDS = int(os.environ.get("REFRESH_SECONDS", "30"))
 MIN_FETCH_INTERVAL = REFRESH_SECONDS
 SAVE_INTERVAL = 60
 PAGE = (Path(__file__).parent / "page.html").read_text(encoding="utf-8").replace(
