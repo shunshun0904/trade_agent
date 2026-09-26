@@ -9,12 +9,11 @@ from __future__ import annotations
 import logging
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterator
+from typing import Iterator
 
 import pandas as pd
 
-if TYPE_CHECKING:  # 型注釈だけに使う。実行時は関数の中で読み込む（requests のない環境でも to_utc 等を使えるように）
-    from .client import BitbankAPIError, PublicClient
+from .client import BitbankAPIError, PublicClient
 
 log = logging.getLogger(__name__)
 
@@ -35,12 +34,6 @@ TRADE_DTYPES = {
     "amount": "float64",
     "executed_at": "int64",
 }
-
-
-def _api_error():
-    from .client import BitbankAPIError
-
-    return BitbankAPIError
 
 
 def daterange(start: date, end: date) -> Iterator[date]:
@@ -107,7 +100,7 @@ def download_transactions(
             continue
         try:
             rows = client.transactions(pair, f"{d:%Y%m%d}")
-        except _api_error() as exc:
+        except BitbankAPIError as exc:
             log.warning("%s %s をスキップ: %s", pair, d, exc)
             continue
         df = transactions_to_frame(rows)
@@ -184,7 +177,7 @@ def download_candles(
             continue
         try:
             rows = client.candlestick(pair, candle_type, period)
-        except _api_error() as exc:
+        except BitbankAPIError as exc:
             log.warning("%s %s %s をスキップ: %s", pair, candle_type, period, exc)
             continue
         df = pd.DataFrame(rows, columns=["open", "high", "low", "close", "volume", "ts_ms"])

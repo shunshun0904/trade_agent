@@ -8,11 +8,9 @@
 
 /api/signals（直近 60 分の 1 分ごとの水準。dashboard/app/profile_core.py の signals）
   { now_ms, window_min: 60, keys: [...],
-    minutes: [{ t, price, sigma, vp_poc_dist, vp_va_pos, vp_at_price, tpo_poc_dist, tpo_va_pos, tpo_single_up, p_big_1h }],
+    minutes: [{ t, price, sigma, vp_poc_dist, vp_va_pos, vp_at_price, tpo_poc_dist, tpo_va_pos, tpo_single_up }] }
       // t は分の開始（ms）。各行は t より前の約定と t 以前に確定した足だけから計算する。距離は σ 単位
-      // p_big_1h: 1 時間後に 0.3% を超えて上がる確率（ボラティリティの目安。方向の予測としては使えない。SPEC §1.3）。
-      //           モデル（reports/direction_deploy/model_B.json）がなければ null
-    model: { horizon_min, target_min_return, train_end, test_auc, base_rate_test } | 無し }
+  モデルの予測は載せない（2026-09-26 オーナー決定。方向の予測は費用を超えなかった。docs/SPEC.md §1.3）。
 */
 import { mockProfile, mockSignals } from "./mock.js";
 

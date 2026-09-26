@@ -56,10 +56,8 @@ Resources:
       Handler: app.handler
       Runtime: python3.12
       Architectures: [arm64]
-      MemorySize: 1024
+      MemorySize: 512
       Timeout: 29
-    Metadata:
-      BuildMethod: makefile
       Environment:
         Variables:
           CACHE_BUCKET: !Ref CacheBucket
