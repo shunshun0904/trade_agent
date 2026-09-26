@@ -584,6 +584,14 @@ bitbank の JPY ペアで、組み合わせ最適化により分散を抑えた�
 - ワークフロー `monitor.yml`: 毎日 00:20 UTC（2026-09-27 に既定ブランチにしたので自動で動く）と手動。`rebalance.yml` も計画を記録して画面を作り直す。
 - `tests/test_monitor.py`: 統計（指数・ボラ・DD、同じ日の重複）、画面の内容、JSONL の往復。
 
+#### 信用取引の対応ペア（`scripts/margin_pairs.py`、`margin.yml`、2026-09-27 オーナー指示で調査）
+
+- `/spot/pairs` の `margin_long_interest` / `margin_short_interest` が入っていて `stop_margin_long_order` / `stop_margin_short_order` が false のペアを対応とみなす。2026-09-27 時点で btc_jpy、xrp_jpy、eth_jpy、sol_jpy、doge_jpy の 5 ペア（他はすべて未対応）。結果は `reports/margin/report.md`。
+- 条件（同 API）: 建玉金利は long / short とも 0.04%/日（年 14.6%）。信用の手数料は BTC が maker 0% / taker 0.10%、他 4 ペアは maker −0.02% / taker 0.12%（新規・返済とも）。個人の委託保証金率 50%（レバレッジ 2 倍に相当）。
+- 公開情報（bitbank のサポート記事、検索結果の要約）: 追証は保証金率 50% 未満で発生し 24 時間以内に解消、強制決済は 25%。信用取引の開始は 2024-11-11（BTC・ETH・XRP）、DOGE・SOL は 2025-04-14 追加。この環境からは bitbank のサイトを直接読めないため、検索結果の要約に基づく。
+- 注文 API は `POST /user/spot/order` に `position_side`（long / short）を付ける。建玉と保証金は `GET /user/margin/status`、`GET /user/margin/positions`。
+- ポートフォリオの候補 15 ペアのうち信用でショートできるのは 5 ペアだけ。TRX・BNB・AVAX 等はロングのみ。
+
 ### Phase 7: 本番実行
 
 Phase 6 の結果をオーナーが確認してから着手する。

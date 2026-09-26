@@ -7,7 +7,7 @@ false のペアを「信用取引できる」とみなす。結果は reports/ma
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from bbdata.client import PublicClient
@@ -25,6 +25,17 @@ def pct(v) -> str:
         return f"{float(v) * 100:.3f}%"
     except (TypeError, ValueError):
         return str(v)
+
+
+def jst(ms) -> str:
+    """ミリ秒の UNIX 時刻を JST の日時にする（9999 年などの「期限なし」は「-」）。"""
+    try:
+        t = int(ms)
+    except (TypeError, ValueError):
+        return "-"
+    if t > 4102444800000:  # 2100 年以降は期限なし扱い
+        return "期限なし"
+    return (datetime.fromtimestamp(t / 1000, tz=timezone.utc) + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M JST")
 
 
 def main() -> None:
@@ -50,8 +61,8 @@ def main() -> None:
             pct(p.get("margin_long_interest")), pct(p.get("margin_short_interest")),
             pct(p.get("margin_open_maker_fee_rate_quote")), pct(p.get("margin_open_taker_fee_rate_quote")),
             pct(p.get("margin_close_maker_fee_rate_quote")), pct(p.get("margin_close_taker_fee_rate_quote")),
-            pct(p.get("margin_current_individual_ratio")), str(p.get("margin_current_individual_until") or "-"),
-            pct(p.get("margin_next_individual_ratio")), str(p.get("margin_next_individual_until") or "-"),
+            pct(p.get("margin_current_individual_ratio")), jst(p.get("margin_current_individual_until")),
+            pct(p.get("margin_next_individual_ratio")), jst(p.get("margin_next_individual_until")),
             str(p.get("stop_margin_long_order")), str(p.get("stop_margin_short_order"))]) + " |")
     text = "\n".join(md) + "\n"
     out = Path("reports/margin")
