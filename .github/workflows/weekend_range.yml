@@ -1,0 +1,38 @@
+# 曜日別の値幅を公式ロウソク足（4 時間足、年ごとに 1 リクエスト）から集計する（公開 API のみ、認証不要）。
+# 実行方法: API の workflow_dispatch（ref にこのブランチを指定）か、scripts/weekend_range.py を変更して push する。
+name: weekend-range
+on:
+  workflow_dispatch:
+    inputs:
+      pair:
+        description: "ペア。省略時は btc_jpy"
+        required: false
+        default: ""
+  push:
+    branches: [claude/bitbank-trade-agent-7ers55]
+    paths:
+      - scripts/weekend_range.py
+permissions:
+  contents: write
+concurrency:
+  group: research-${{ github.ref }}
+jobs:
+  weekend-range:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Weekend range
+        env:
+          PYTHONPATH: .
+        run: python scripts/weekend_range.py ${{ github.event.inputs.pair }}
+      - run: cat reports/weekend_range/report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Commit report
+        run: >-
+          scripts/commit_report.sh "$( [ -f reports/experiments.jsonl ] && wc -l < reports/experiments.jsonl || echo 0 )"
+          "Weekend range report from run ${{ github.run_id }}" reports/weekend_range/report.md
