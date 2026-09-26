@@ -1,6 +1,7 @@
 """ダッシュボード（dashboard/app）のテスト。ネットワークと S3 には触れない。"""
 import json
 import sys
+import urllib.error
 from pathlib import Path
 
 import numpy as np
@@ -130,13 +131,58 @@ def test_refresh_fetches_days_first_then_latest_only():
         return {"transactions": [tx(int(path[-2:]) * 10, now - 5 * H)]}
 
     c = dash.refresh(None, now, get)
-    assert sorted(calls) == ["/btc_jpy/transactions/20260101", "/btc_jpy/transactions/20260102",
-                             "/btc_jpy/transactions/20260103"]
+    assert sorted(calls) == ["/btc_jpy/transactions", "/btc_jpy/transactions/20260101",
+                             "/btc_jpy/transactions/20260102", "/btc_jpy/transactions/20260103"]
+    assert c["skipped"] == []
     calls.clear()
     c2 = dash.refresh(c, now + 5_000, get)       # 10 秒以内は取りに行かない
     assert calls == [] and c2 is c
-    dash.refresh(c, now + 60_000, get)           # 60 件に保存済みの最新が入っていない → 当日を取り直す
+    def get_far(path):  # 60 件がすべて保存済みの最新より新しい（取りこぼしの可能性）→ 当日を取り直す
+        calls.append(path)
+        if path.endswith("/transactions"):
+            return {"transactions": [tx(5000 + k, now + 60_000 - 100 * k) for k in range(60)]}
+        return {"transactions": []}
+
+    dash.refresh(c, now + 60_000, get_far)
     assert "/btc_jpy/transactions" in calls and "/btc_jpy/transactions/20260103" in calls
+
+
+def test_refresh_skips_days_without_data_and_reports_them():
+    now = 1_767_225_600_000 + 60 * H  # 2026-01-03 12:00 UTC
+
+    def get(path):
+        if path.endswith("/transactions"):
+            return {"transactions": [tx(1000 + k, now - 1000 * k) for k in range(60)]}
+        if path.endswith("20260103"):  # 当日分がまだない
+            raise dash.NoData(f"{path}: HTTP 404")
+        return {"transactions": [tx(int(path[-2:]) * 10, now - 5 * H)]}
+
+    c = dash.refresh(None, now, get)
+    assert len(c["skipped"]) == 1 and "20260103" in c["skipped"][0]
+    assert len(c["rows"]) == 62  # 2 日分 + 最新 60 件
+    # HTTP 404 以外の失敗は上に伝える
+    def boom(path):
+        raise urllib.error.HTTPError(path, 500, "server error", {}, None)
+
+    with pytest.raises(urllib.error.HTTPError):
+        dash.refresh(None, now, boom)
+
+
+def test_http_get_json_turns_404_into_nodata(monkeypatch):
+    class Resp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return json.dumps({"success": 0, "data": {"code": 10000}}).encode()
+
+    def open404(req, timeout):
+        raise urllib.error.HTTPError(req.full_url, 404, "not found", {}, None)
+
+    monkeypatch.setattr(dash.urllib.request, "urlopen", open404)
+    with pytest.raises(dash.NoData):
+        dash.http_get_json("/btc_jpy/transactions/20991231")
+    monkeypatch.setattr(dash.urllib.request, "urlopen", lambda req, timeout: Resp())
+    with pytest.raises(dash.NoData):
+        dash.http_get_json("/btc_jpy/transactions/20991231")
 
 
 def test_refresh_incremental_without_gap():

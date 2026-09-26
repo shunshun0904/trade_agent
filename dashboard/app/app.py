@@ -19,6 +19,7 @@ import gzip
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -38,12 +39,21 @@ PAGE = (Path(__file__).parent / "page.html").read_text(encoding="utf-8").replace
 _MEM: dict = {}  # 同じ実行環境で続けて呼ばれたときに使い回す保存データ
 
 
+class NoData(RuntimeError):
+    """その日付のデータがない（HTTP 404 か success != 1）。日付指定の取得で、当日分がまだないときなどに起きる。"""
+
+
 def http_get_json(path: str) -> dict:
     req = urllib.request.Request(PUBLIC + path, headers={"User-Agent": "bitbank-profile-dashboard"})
-    with urllib.request.urlopen(req, timeout=10) as r:
-        body = json.loads(r.read())
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            body = json.loads(r.read())
+    except urllib.error.HTTPError as exc:
+        if exc.code == 404:
+            raise NoData(f"{path}: HTTP 404") from None
+        raise
     if body.get("success") != 1:
-        raise RuntimeError(f"{path}: code={(body.get('data') or {}).get('code')}")
+        raise NoData(f"{path}: code={(body.get('data') or {}).get('code')}")
     return body["data"]
 
 
@@ -98,17 +108,19 @@ def refresh(cache: dict | None, now_ms: int, get=http_get_json) -> dict:
         if latest and min(r[0] for r in latest) > last_id:  # 保存済みの最新が 60 件に入っていない
             last_ts = max(r[1] for r in rows.values() if r[0] <= last_id) if last_id >= 0 else now_ms - KEEP_MS
             need_days.update({_day(last_ts), _day(now_ms)})
-    today = _day(now_ms)
+    skipped = []
     for day in sorted(need_days):
         try:
             for r in _rows(get(f"/{PAIR}/transactions/{day}")["transactions"]):
                 rows[r[0]] = r
-        except RuntimeError:
-            if day != today:  # 当日分は日付が変わった直後だとまだないことがある。それ以外の失敗は上に伝える
-                raise
+        except NoData as exc:  # その日のデータがない（当日分がまだない、など）。飛ばして続ける
+            skipped.append(f"{day}: {exc}")
+    if need_days:  # 日付指定で取ったときも最新 60 件を足す（当日分の日付指定が使えない場合の備え）
+        for r in _rows(get(f"/{PAIR}/transactions")["transactions"]):
+            rows[r[0]] = r
     keep = [r for r in rows.values() if r[1] >= now_ms - KEEP_MS]
     keep.sort(key=lambda r: (r[1], r[0]))
-    return {"rows": keep, "from_ms": max(covered_from, now_ms - KEEP_MS), "fetched_ms": now_ms}
+    return {"rows": keep, "from_ms": max(covered_from, now_ms - KEEP_MS), "fetched_ms": now_ms, "skipped": skipped}
 
 
 def _resp(status: int, body: str, ctype: str) -> dict:
@@ -141,6 +153,9 @@ def handler(event, context, store=None, get=http_get_json, now_ms: int | None = 
             return _resp(502, json.dumps(res), "application/json")
         res["pair"] = PAIR
         res["data_fetched_ms"] = cache["fetched_ms"]
+        res["first_trade_ms"] = cache["rows"][0][1] if cache["rows"] else None
+        if cache.get("skipped"):
+            res["warnings"] = cache["skipped"]
         return _resp(200, json.dumps(res), "application/json")
     except Exception as exc:  # 画面に理由を出す（キーや残高は扱わないので出して問題ない）
         return _resp(502, json.dumps({"error": repr(exc)}), "application/json")

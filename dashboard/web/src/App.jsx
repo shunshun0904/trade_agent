@@ -48,6 +48,10 @@ export default function App() {
         </span>
       </header>
       {err && <div className="err">取得に失敗しました: {err}（{REFRESH_MS / 1000} 秒後に再試行）</div>}
+      {profile && profile.first_trade_ms != null && profile.first_trade_ms > profile.now_ms - profile.window_h * 3_600_000 && (
+        <div className="err">保持している約定は {hms(profile.first_trade_ms)} からです。それより前の時間帯は集計に入っていません
+          {profile.warnings ? `（取得できなかった日付: ${profile.warnings.join("、")}）` : ""}。</div>
+      )}
       <div className="main">
         <section className="panel">
           <div className="panel-head">
