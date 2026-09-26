@@ -15,16 +15,17 @@ import numpy as np
 import pandas as pd
 
 from bbdata.client import BitbankAPIError, PublicClient
-from bbresearch.portfolio import best_combination, shrunk_cov, shrunk_mean, strategy_name, summary, walk_forward, yearly
+from bbresearch.portfolio import best_combination, shrunk_cov, shrunk_mean, strategy_name, summary, trend_on, walk_forward, yearly
 
 POOL = ["btc_jpy", "xrp_jpy", "eth_jpy", "doge_jpy", "sol_jpy", "xlm_jpy", "link_jpy", "ada_jpy", "bcc_jpy",
         "ltc_jpy", "avax_jpy", "trx_jpy", "bnb_jpy", "dot_jpy", "pol_jpy"]
 START, K_MAX, W_MAX, COST = "2021-01-01", 5, 0.4, 0.0015
 CAPS = {"btc_jpy": 0.6}          # 2026-09-27 オーナー決定: BTC は 60% まで、他は 40% まで
-TARGETS = (None, 1.0)            # 期待リターンの目標: なし / 均等配分と同じ（× 1.5 は前回の検証で悪化したので外す）
+TARGETS = (None,)                # 期待リターンの目標: なし（均等配分と同じ目標は 2 回目の検証で結果をほぼ変えなかったので外した）
 VOL_TARGETS = (None, 0.30, 0.20)  # 目標ボラ（年率）。超える月は JPY を混ぜる
 VOL_DAYS = (None,)                # 縮める比率に使うボラの推定窓（None = 365 日。90 日は 3 回目の検証で劣ったので外した）
 CASH_FREQ = (None, 7)             # JPY に縮める比率の見直し: None = 月 1 回、7 = 7 日ごと（銘柄と相対の重みは月 1 回のまま）
+TRENDS = (None, (200, 0.0), (200, 0.5), (100, 0.0))  # トレンドフィルタ: BTC が (日数) 日移動平均を下回る間は暗号資産を (倍率) 倍に
 
 
 def fetch_daily(api: PublicClient, pair: str, years: range) -> pd.Series:
@@ -48,7 +49,7 @@ def main() -> None:
     close = pd.concat([fetch_daily(api, p, years) for p in POOL], axis=1)
     close = close[close.index < pd.Timestamp.now(tz="UTC").normalize()]  # 当日（形成中）は除く
     res = walk_forward(close, START, K_MAX, W_MAX, TARGETS, cost=COST, caps=CAPS, vol_targets=VOL_TARGETS,
-                       vol_days=VOL_DAYS, cash_freq_days=CASH_FREQ)
+                       vol_days=VOL_DAYS, cash_freq_days=CASH_FREQ, trends=TRENDS)
     stats = {s: summary(res.daily[s]) for s in res.daily.columns}
     # 直近 365 日で推定した「今」の重み
     ret = np.log(close).diff()
@@ -81,10 +82,15 @@ def main() -> None:
                 return v
             if s.startswith(k + "_vt"):
                 rest = s.split("_vt")[1]
+                rest, _, tr = rest.partition("_t")
                 weekly = rest.endswith("_c7")
                 rest = rest[:-3] if weekly else rest
                 vt, _, w = rest.partition("_w")
-                return (f"{v}、目標ボラ {vt}%" + (f"（ボラ推定 {w} 日）" if w else "") + ("、JPY 調整 7 日ごと" if weekly else "、JPY 調整 月 1 回"))
+                trend = ""
+                if tr:
+                    d, _, sc = tr.partition("s")
+                    trend = f"、BTC が {d} 日線を下回る間は" + ("全額 JPY" if sc == "0" else f"暗号資産を {sc}% に")
+                return (f"{v}、目標ボラ {vt}%" + (f"（ボラ推定 {w} 日）" if w else "") + ("、JPY 調整 7 日ごと" if weekly else "、JPY 調整 月 1 回") + trend)
         return s
     md = [f"# ボラティリティを抑えるポートフォリオ（{START} 〜 {close.index[-1].date()}、毎月再計算、日足）\n",
           f"- 候補: {', '.join(POOL)}（各月、直前 365 日の 9 割以上のデータがある銘柄だけ）",
@@ -124,6 +130,9 @@ def main() -> None:
             md.append(f"| {label(k)} | 目標に届く組み合わせなし | - | - |")
         else:
             md.append(f"| {label(k)} | " + "、".join(f"{p} {w:.0%}" for p, w in v["weights"].items()) + f" | {v['cash']:.0%} | {v['ann_vol']:.1%} |")
+    t200, t100 = trend_on(close["btc_jpy"], close.index[-1] + pd.Timedelta(days=1), 200), trend_on(close["btc_jpy"], close.index[-1] + pd.Timedelta(days=1), 100)
+    md.append(f"\n今のトレンド判定（{close.index[-1].date()} の終値）: BTC は 200 日線を" + ("上回る" if t200 else "下回る")
+              + "、100 日線を" + ("上回る" if t100 else "下回る") + "。")
     md.append("\n注意: 期待リターンの推定は誤差が大きい。目標付きの結果は目標なしより過去に合わせた度合いが強い。"
               "候補は 2026-09-25 の約定数で選んでおり、上場の遅い銘柄は途中から入る。")
     text = "\n".join(md) + "\n"

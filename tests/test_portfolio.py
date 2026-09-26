@@ -164,3 +164,32 @@ def test_yearly_return_and_drawdown_within_each_year():
     assert abs(y.loc[2025, "return"] - (1.2 * 0.8 - 1)) < 1e-9
     assert abs(y.loc[2024, "max_drawdown"] - (0.9 - 1)) < 1e-9  # 前年の高値は持ち越さない
     assert abs(y.loc[2025, "max_drawdown"] - (0.8 - 1)) < 1e-9
+
+
+def test_trend_filter_moves_to_cash_using_only_past_closes():
+    import numpy as np
+    import pandas as pd
+
+    from bbresearch.portfolio import trend_on, walk_forward
+
+    rng = np.random.default_rng(3)
+    idx = pd.date_range("2023-01-01", periods=900, freq="D", tz="UTC")
+    base = np.exp(np.cumsum(rng.normal(0, 0.01, (900, 4)), axis=0))
+    close = pd.DataFrame(base, index=idx, columns=["btc_jpy", "a_jpy", "b_jpy", "c_jpy"])
+    # 2025-03 以降は BTC を急落させて 100 日線を下回らせる
+    close.loc[close.index >= "2025-03-01", "btc_jpy"] *= 0.5
+    assert trend_on(close["btc_jpy"], pd.Timestamp("2025-04-01", tz="UTC"), 100) is False
+    assert trend_on(close["btc_jpy"], pd.Timestamp("2023-02-01", tz="UTC"), 100) is None  # データ不足
+    # 判定は t0 より前の終値だけを使う: t0 以降を書き換えても変わらない
+    later = close["btc_jpy"].copy()
+    later[later.index >= "2025-04-01"] *= 100
+    assert trend_on(later, pd.Timestamp("2025-04-01", tz="UTC"), 100) is False
+    res = walk_forward(close, "2024-06-01", k_max=3, w_max=0.5, target_mults=(None,), est_days=365, cost=0.0,
+                       vol_targets=(0.30,), trends=(None, (100, 0.0)))
+    w_off = [w for w in res.weights["minvar_vt30_t100s0"] if w["date"] >= "2025-04-01"]
+    assert w_off and all(w["cash"] == 1.0 and not w["weights"] for w in w_off)
+    w_on = [w for w in res.weights["minvar_vt30"] if w["date"] >= "2025-04-01"]
+    assert any(w["cash"] < 1.0 for w in w_on)
+    # 下落中に全額 JPY にした戦略はその期間のリターンが 0
+    r = res.daily["minvar_vt30_t100s0"]
+    assert (r[r.index >= "2025-04-02"] == 0).all()
