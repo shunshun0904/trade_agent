@@ -71,3 +71,36 @@ def test_shrinkage_helpers():
     assert cov.shape == (4, 4) and np.allclose(cov, cov.T) and np.linalg.eigvalsh(cov).min() > 0
     m = shrunk_mean(R, 0.5)
     assert np.allclose(m, 0.5 * R.mean(axis=0) + 0.5 * R.mean())
+
+
+def test_per_asset_caps_and_zero_weights_are_pruned():
+    names = ["btc_jpy", "a", "b", "c"]
+    cov = np.diag([0.01, 0.04, 0.09, 0.16])
+    mu = np.zeros(4)
+    best = best_combination(cov, mu, names, k_max=3, target=None, w_max=0.4, caps={"btc_jpy": 0.6})
+    w = dict(zip(best["names"], best["weights"]))
+    assert abs(w["btc_jpy"] - 0.6) < 1e-6 and abs(sum(w.values()) - 1) < 1e-9
+    assert all(v > 1e-6 for v in w.values())
+    # 上限の合計が 1 に満たない組み合わせ（2 銘柄 × 40%）は使われない
+    best2 = best_combination(cov[1:, 1:], mu[1:], names[1:], k_max=2, target=None, w_max=0.4)
+    assert best2 is None
+    assert min_var_weights(cov[:2, :2], w_max=np.array([0.6, 0.4]))[0].tolist() == [0.6, 0.4]
+
+
+def test_vol_target_moves_into_cash():
+    rng = np.random.default_rng(3)
+    idx = pd.date_range("2020-01-01", periods=800, freq="D", tz="UTC")
+    cols = ["btc_jpy", "a_jpy", "b_jpy", "c_jpy"]
+    r = rng.normal(0, 0.05, size=(800, 4)) + rng.normal(0, 0.03, size=(800, 1))  # 年率ボラ 100% 超
+    close = pd.DataFrame(np.exp(np.cumsum(r, axis=0)) * 100, index=idx, columns=cols)
+    res = walk_forward(close, "2021-01-01", k_max=3, w_max=0.5, target_mults=(None,), est_days=300,
+                       vol_targets=(None, 0.2), caps={"btc_jpy": 0.6})
+    assert {"minvar", "minvar_vt20", "equal", "btc_jpy"} <= set(res.daily.columns)
+    full, vt = res.weights["minvar"], res.weights["minvar_vt20"]
+    assert all(w["cash"] == 0.0 for w in full) and all(0.5 < w["cash"] < 1.0 for w in vt)
+    # 暗号資産の相対の重みは同じ（縮めているだけ）
+    for a, b in zip(full, vt):
+        s = 1 - b["cash"]
+        assert set(a["weights"]) == set(b["weights"])
+        assert all(abs(b["weights"][k] - a["weights"][k] * s) < 2e-4 for k in a["weights"])
+    assert summary(res.daily["minvar_vt20"])["ann_vol"] < summary(res.daily["minvar"])["ann_vol"] * 0.5

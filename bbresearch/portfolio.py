@@ -8,6 +8,9 @@
 - 組み合わせ: 候補から k_max 銘柄以下のすべての組み合わせについて QP（SLSQP、ロング、上限 w_max）を解き、
   分散が最小のものを選ぶ。
 - 前向き検証: 毎月初に、その時点より前の est_days 日で推定して翌月を保有する。売買費用は回転率 × cost。
+- 上限は銘柄ごとに変えられる（caps。2026-09-27 オーナー決定: BTC 60%、他 40%）。
+- 目標ボラ（vol_targets）: 推定ボラ sqrt(w'Σw × 365) が目標を超えるときは、その比率だけ暗号資産を減らして残りを
+  JPY（リターン 0）で持つ。銘柄の選択と相対の重みは変えない（2026-09-27 オーナー決定）。
 """
 from __future__ import annotations
 
@@ -32,12 +35,13 @@ def shrunk_mean(R: np.ndarray, shrink: float = 0.5) -> np.ndarray:
 
 
 def min_var_weights(cov: np.ndarray, mu: np.ndarray | None = None, target: float | None = None,
-                    w_max: float = 0.4) -> tuple[np.ndarray, float] | None:
-    """ロング・合計 1・上限 w_max・（あれば）mu·w ≥ target の最小分散。実行不能なら None。"""
+                    w_max=0.4) -> tuple[np.ndarray, float] | None:
+    """ロング・合計 1・上限 w_max（数値か銘柄ごとの配列）・（あれば）mu·w ≥ target の最小分散。実行不能なら None。"""
     from scipy.optimize import minimize
 
     n = len(cov)
-    if n * w_max < 1 - 1e-9:
+    caps = np.full(n, float(w_max)) if np.isscalar(w_max) else np.asarray(w_max, dtype=float)
+    if caps.sum() < 1 - 1e-9:
         return None
     if n == 1:
         w = np.array([1.0])
@@ -50,9 +54,11 @@ def min_var_weights(cov: np.ndarray, mu: np.ndarray | None = None, target: float
             return None
         cons.append({"type": "ineq", "fun": lambda w: mu @ w - target, "jac": lambda w: mu})
     x0 = np.full(n, 1.0 / n)
+    x0 = np.minimum(x0, caps)
+    x0 /= x0.sum()
     res = minimize(lambda w: w @ cov @ w, x0, jac=lambda w: 2 * cov @ w, method="SLSQP",
-                   bounds=[(0.0, w_max)] * n, constraints=cons, options={"maxiter": 200, "ftol": 1e-12})
-    w = np.clip(res.x, 0.0, w_max)
+                   bounds=[(0.0, float(c)) for c in caps], constraints=cons, options={"maxiter": 200, "ftol": 1e-12})
+    w = np.clip(res.x, 0.0, caps)
     w /= w.sum()
     if not res.success and abs(w.sum() - 1) > 1e-6:
         return None
@@ -62,20 +68,27 @@ def min_var_weights(cov: np.ndarray, mu: np.ndarray | None = None, target: float
 
 
 def best_combination(cov: np.ndarray, mu: np.ndarray, names: list[str], k_max: int, target: float | None,
-                     w_max: float = 0.4) -> dict | None:
-    """k_max 銘柄以下のすべての組み合わせから分散最小のものを選ぶ。"""
+                     w_max: float = 0.4, caps: dict[str, float] | None = None) -> dict | None:
+    """k_max 銘柄以下のすべての組み合わせから分散最小のものを選ぶ。caps は銘柄ごとの上限（なければ w_max）。
+
+    重みが 0 の銘柄は結果から除く。
+    """
     n = len(names)
-    k_min = int(np.ceil(1.0 / w_max - 1e-9))
+    cap = np.array([(caps or {}).get(nm, w_max) for nm in names], dtype=float)
+    k_min = int(np.ceil(1.0 / cap.max() - 1e-9))
     best = None
     for k in range(k_min, min(k_max, n) + 1):
         for idx in combinations(range(n), k):
             ii = list(idx)
-            sol = min_var_weights(cov[np.ix_(ii, ii)], mu[ii], target, w_max)
+            if cap[ii].sum() < 1 - 1e-9:
+                continue
+            sol = min_var_weights(cov[np.ix_(ii, ii)], mu[ii], target, cap[ii])
             if sol is None:
                 continue
             w, var = sol
             if best is None or var < best["var"] - 1e-15:
-                best = {"var": var, "names": [names[i] for i in ii], "weights": w}
+                keep = w > 1e-6
+                best = {"var": var, "names": [names[i] for i, k_ in zip(ii, keep) if k_], "weights": w[keep] / w[keep].sum()}
     return best
 
 
@@ -93,14 +106,22 @@ def _month_starts(index: pd.DatetimeIndex, start) -> list[pd.Timestamp]:
     return [d for i, d in enumerate(idx) if i == 0 or d.month != idx[i - 1].month]
 
 
+def strategy_name(m, v) -> str:
+    return ("minvar" if m is None else f"minvar_x{m}") + ("" if v is None else f"_vt{int(round(v * 100))}")
+
+
 def walk_forward(close: pd.DataFrame, start, k_max: int = 5, w_max: float = 0.4,
                  target_mults: tuple = (None, 1.0, 1.5), est_days: int = 365, cost: float = 0.0015,
-                 benchmark: str = "btc_jpy") -> WalkForwardResult:
-    """close は日足の終値（列 = ペア、index = 日付）。毎月初に直前 est_days 日で推定し、翌月を保有する。"""
+                 benchmark: str = "btc_jpy", caps: dict[str, float] | None = None,
+                 vol_targets: tuple = (None,)) -> WalkForwardResult:
+    """close は日足の終値（列 = ペア、index = 日付）。毎月初に直前 est_days 日で推定し、翌月を保有する。
+
+    vol_targets の各 v（年率）について、推定ボラが v を超える月は暗号資産の比率を v / 推定ボラ に落とし、残りを JPY で持つ。
+    """
     ret = np.log(close).diff()
     starts = _month_starts(close.index, start)
     names = {f"minvar_x{m}" if m is not None else "minvar": m for m in target_mults}
-    strategies = list(names) + ["equal", benchmark]
+    strategies = [strategy_name(m, v) for m in target_mults for v in vol_targets] + ["equal", benchmark]
     daily = {s: pd.Series(0.0, index=close.index[close.index >= starts[0]]) for s in strategies}
     weights = {s: [] for s in strategies}
     prev_w = {s: pd.Series(dtype=float) for s in strategies}
@@ -117,11 +138,16 @@ def walk_forward(close: pd.DataFrame, start, k_max: int = 5, w_max: float = 0.4,
         chosen: dict[str, pd.Series] = {}
         for s, m in names.items():
             tgt = None if m is None else mu_ew * m
-            best = best_combination(cov, mu, avail, k_max, tgt, w_max)
+            best = best_combination(cov, mu, avail, k_max, tgt, w_max, caps)
             if best is None:  # 目標に届かない月は均等配分に落とす
-                chosen[s] = pd.Series(1.0 / len(avail), index=avail)
+                w_r = pd.Series(1.0 / len(avail), index=avail)
             else:
-                chosen[s] = pd.Series(best["weights"], index=best["names"])
+                w_r = pd.Series(best["weights"], index=best["names"])
+            wv = w_r.reindex(avail).fillna(0.0).to_numpy()
+            est_vol = float(np.sqrt(wv @ cov @ wv * DAYS_PER_YEAR))
+            for v in vol_targets:
+                scale = 1.0 if v is None or est_vol <= v else v / est_vol
+                chosen[strategy_name(m, v)] = w_r * scale  # 残り 1 − scale は JPY
         chosen["equal"] = pd.Series(1.0 / len(avail), index=avail)
         chosen[benchmark] = pd.Series({benchmark: 1.0})
         for s, w in chosen.items():
@@ -132,7 +158,8 @@ def walk_forward(close: pd.DataFrame, start, k_max: int = 5, w_max: float = 0.4,
             if len(r):
                 r.iloc[0] -= turnover * cost
             daily[s].loc[r.index] = r
-            weights[s].append({"date": d0.strftime("%Y-%m-%d"), "weights": {k: round(float(v), 4) for k, v in w[w > 1e-6].items()}})
+            weights[s].append({"date": d0.strftime("%Y-%m-%d"), "weights": {k: round(float(v), 4) for k, v in w[w > 1e-6].items()},
+                               "cash": round(float(max(0.0, 1.0 - w.sum())), 4)})
             prev_w[s] = w
     return WalkForwardResult(daily=pd.DataFrame(daily), weights=weights)
 
