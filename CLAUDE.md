@@ -14,6 +14,7 @@
   - `maker_search.yml`: 深い指値・短い保有・売りも指値の決済条件の探索と確認期間での評価（`configs/maker_search.yaml`）
   - `val_rule.yml`: ルール A（VAL での反発）を固定した数値で全期間1回評価（`configs/val_rule.yaml`）
   - `direction.yml`: 15 分後の上げ下げを予測する二段構えのモデル（A: 15 分ごと、B: 1 分ごと）を 2024 年より前で学習し、2024 年以降で1回評価（`configs/direction.yaml`）
+  - `direction_1h.yml`: 同じモデルの 1 時間版。毎正時に判断し、1 分ごとの TPO×価格帯別出来高のシグナルの直近 60 分の推移を加える（`configs/direction_1h.yaml`）
   - `recorder.yml`: 板・約定の記録。約 5 時間 45 分ごとに次のジョブを自分で起動して連続させ、成果物（90 日）に保存する。止めるには `configs/recorder.yaml` の `enabled: false`
   - `auth-check.yml`: 認証付き API の疎通確認（参照系のみ）。キーは Secrets `bitbank_API` / `bitbank_secret` から読む
 - `dashboard/`: TPO・価格帯別出来高のダッシュボード（AWS: API Gateway + Lambda + S3、SAM）。`dashboard/deploy.sh` を AWS CloudShell で実行してデプロイする。Lambda は標準ライブラリだけで書き、計算が `bbresearch/profile.py` と一致することを `tests/test_dashboard.py` で照合している

@@ -6,7 +6,7 @@ import yaml
 
 from bbdata.bars import build_bars
 from bbresearch.direction import (BAR_MS, BIN_SIGMA, FINE, MIN_MS, PROFILE_COLUMNS, feature_table, flow_features,
-                                  profile_features, render, run_direction, stack_features, targets)
+                                  level_summary, profile_features, render, run_direction, stack_features, targets)
 from bbresearch.labeling import TradeTape
 from bbresearch.pipeline import Market
 from bbresearch.profile import value_area
@@ -136,7 +136,24 @@ def test_stack_features_use_only_past_15_minutes():
     pred = pd.Series(np.arange(60, dtype=float), index=t)
     s = stack_features(pred, np.array([30 * MIN_MS], dtype="int64"))
     assert s["B_last"].iloc[0] == 30 and s["B_mean"].iloc[0] == np.mean(np.arange(16, 31))
-    assert s["B_slope"].iloc[0] == 14
+    assert s["B_slope"].iloc[0] == 14 and s["B_mean_recent"].iloc[0] == np.mean(np.arange(28, 31))
+    # 60 分の窓: t−59 … t。窓の外（負の時刻）は NaN として無視する
+    s60 = stack_features(pred, np.array([59 * MIN_MS, 30 * MIN_MS], dtype="int64"), 60)
+    assert s60["B_mean"].iloc[0] == np.mean(np.arange(0, 60)) and s60["B_slope"].iloc[0] == 59
+    assert s60["B_mean"].iloc[1] == np.mean(np.arange(0, 31)) and np.isnan(s60["B_slope"].iloc[1])
+
+
+def test_level_summary_uses_only_past_window():
+    t = np.arange(0, 120 * MIN_MS, MIN_MS, dtype="int64")
+    lv = pd.DataFrame({"vp_poc_dist": np.arange(120, dtype=float), "tpo_va_pos": np.sin(np.arange(120))}, index=t)
+    out = level_summary(lv, np.array([100 * MIN_MS], dtype="int64"), 60)
+    assert out["L_vp_poc_dist_mean"].iloc[0] == np.mean(np.arange(41, 101))
+    assert out["L_vp_poc_dist_chg"].iloc[0] == 100 - 41
+    assert np.isclose(out["L_tpo_va_pos_mean"].iloc[0], np.sin(np.arange(41, 101)).mean())
+    # t より後の値を変えても結果は変わらない
+    lv2 = lv.copy()
+    lv2.loc[lv2.index > 100 * MIN_MS] = 999.0
+    pd.testing.assert_frame_equal(out, level_summary(lv2, np.array([100 * MIN_MS], dtype="int64"), 60))
 
 
 def test_run_direction_end_to_end(tmp_path):
@@ -148,5 +165,26 @@ def test_run_direction_end_to_end(tmp_path):
     rep = run_direction(cfg, {"train_end": "2026-01-07", "n_splits": 3, "thetas": [0.55], "n_boot": 20}, workers=2)
     assert rep["n"]["A_test"] > 100 and rep["n"]["B_test"] > 1000
     assert "auc" in rep["test"]["A"] and "auc" in rep["test"]["A+B"]
+    assert rep["horizon_min"] == 15 and "A+B+L" not in rep["test"]
     assert len((tmp_path / "experiments.jsonl").read_text().splitlines()) == 3
     assert "二段構え" in render(rep)
+
+
+def test_run_direction_one_hour_with_level_summary(tmp_path):
+    write_trades(tmp_path / "data", "btc_jpy", synth_trades("2026-01-01", 9, seed=6, per_min=3, vol=0.002))
+    cfg = yaml.safe_load(CFG.read_text())
+    cfg["data"].update(root=str(tmp_path / "data"), start="2026-01-01", end="2026-01-09")
+    cfg["experiment_log"] = str(tmp_path / "experiments.jsonl")
+    cfg["pair_spec"] = SPEC
+    spec = {"train_end": "2026-01-07", "n_splits": 3, "thetas": [0.55], "n_boot": 20, "horizon_min": 60,
+            "level_summary": True}
+    rep = run_direction(cfg, spec, workers=2)
+    # 1 時間ごとの判断: 評価 2 日で 48 回弱
+    assert 40 <= rep["n"]["A_test"] <= 48 and rep["horizon_min"] == 60
+    assert set(rep["test"]) >= {"A", "A+B", "A+B+L", "B_on_bar"}
+    fa, fab, fabl = (rep["variant_features"][k] for k in ("A", "A+B", "A+B+L"))
+    assert len(fab) == len(fa) + 5 and len(fabl) == len(fab) + 2 * len(PROFILE_COLUMNS)
+    assert set(rep["auc_diff_vs_A"]) == {"A+B", "A+B+L"}
+    assert len((tmp_path / "experiments.jsonl").read_text().splitlines()) == 4
+    md = render(rep)
+    assert "60 分後" in md and "A+B+L" in md

@@ -1,12 +1,15 @@
-"""15 分後に上がるか下がるかを予測する二段構えのモデル（2026-09-25 オーナー指示）。
+"""h 分後に上がるか下がるかを予測する二段構えのモデル（2026-09-25 オーナー指示。h は spec の horizon_min）。
 
     python -m bbresearch direction --config configs/research.yaml --spec configs/direction.yaml --out reports/direction
 
-- モデル B（補強用）: 1 分ごとに、15 分後の価格が今より高いかを予測する。
-- モデル A（判断用）: 15 分ごと（足の区切り）に同じことを予測する。入力は B と同じ特徴量に、直近 15 分の
-  B の予測（平均・最新・変化・ばらつき）を加えたもの（スタッキング）。B の予測は、その時点のデータで
-  学習していないモデルの予測だけを使う（学習期間は Purged K-fold の out-of-fold、評価期間は学習期間だけで
-  学習した B の予測）。
+- モデル B（補強用）: 1 分ごとに、h 分後の価格が今より高いかを予測する。
+- モデル A（判断用）: h 分ごと（h = 15 なら足の区切り、60 なら毎正時）に同じことを予測する。入力は B と同じ
+  特徴量に、直近 h 分の B の予測の要約（平均・最新・変化・ばらつき・直近 1/4 の平均）を加えたもの
+  （スタッキング、A+B）。B の予測は、その時点のデータで学習していないモデルの予測だけを使う（学習期間は
+  Purged K-fold の out-of-fold、評価期間は学習期間だけで学習した B の予測）。
+- A+B+L（spec の level_summary: true のとき）: さらに、直近 h 分の生の価格帯別出来高・TPO の水準
+  （PROFILE_COLUMNS）の平均と変化（最新 − h 分前）を加える（2026-09-26 オーナー指示: 1 時間の判断に
+  1 分ごとの TPO×価格帯別出来高の推移を使う）。
 
 特徴量（オーナー決定: 全部）。どれも時刻 t より前のデータだけから作る:
 - 1 分足から: 直近 1・5・15・60 分の対数リターン、1・5・15 分の出来高・売買の偏り・約定件数
@@ -249,7 +252,8 @@ def profile_features(tape: TradeTape, bars: pd.DataFrame, grid: np.ndarray, pric
 
 # ---------------------------------------------------------------- 特徴量の表
 
-def feature_table(market, start, end, sigma_span: int = 96, workers: int = 1) -> pd.DataFrame:
+def feature_table(market, start, end, sigma_span: int = 96, workers: int = 1,
+                  horizon_ms: int = BAR_MS) -> pd.DataFrame:
     """[start, end) の 1 分ごとの特徴量・正解。最初の 49 時間は準備期間（24 時間の窓と σ のため）。"""
     start, end = to_utc(start), to_utc(end)
     grid = minute_grid(int((start + pd.Timedelta(hours=49)).value // 1_000_000), int(end.value // 1_000_000))
@@ -268,7 +272,7 @@ def feature_table(market, start, end, sigma_span: int = 96, workers: int = 1) ->
     hour = tt.hour + tt.minute / 60.0
     X["hour_sin"], X["hour_cos"] = np.sin(2 * np.pi * hour / 24), np.cos(2 * np.pi * hour / 24)
     X["dow_sin"], X["dow_cos"] = np.sin(2 * np.pi * tt.dayofweek / 7), np.cos(2 * np.pi * tt.dayofweek / 7)
-    y, r = targets(tape, grid)
+    y, r = targets(tape, grid, horizon_ms)
     X["y"], X["r"] = y, r
     return X.astype({c: "float32" for c in X.columns if c not in ("y", "r")})
 
@@ -300,13 +304,31 @@ def oof_and_final(X: pd.DataFrame, y: np.ndarray, t_ms: np.ndarray, X_test: pd.D
     return oof, final.predict_proba(X_test)[:, 1], folds
 
 
-def stack_features(pred_min: pd.Series, t_ms: np.ndarray) -> pd.DataFrame:
-    """15 分ごとの時刻 t に、直前 15 分（t − 14 分 〜 t）の B の予測の要約を付ける。"""
-    s = pred_min.reindex(np.concatenate([t_ms - k * MIN_MS for k in range(14, -1, -1)]))
-    v = s.to_numpy().reshape(15, len(t_ms)).T  # 行: 時刻、列: t−14 … t
+def stack_features(pred_min: pd.Series, t_ms: np.ndarray, n_min: int = 15) -> pd.DataFrame:
+    """判断時刻 t に、直前 n_min 分（t − (n_min−1) 分 〜 t）の B の予測の要約を付ける。"""
+    s = pred_min.reindex(np.concatenate([t_ms - k * MIN_MS for k in range(n_min - 1, -1, -1)]))
+    v = s.to_numpy().reshape(n_min, len(t_ms)).T  # 行: 時刻、列: t−(n_min−1) … t
+    q = max(1, n_min // 4)
     with np.errstate(invalid="ignore"):
         return pd.DataFrame({"B_mean": np.nanmean(v, axis=1), "B_last": v[:, -1], "B_slope": v[:, -1] - v[:, 0],
-                             "B_std": np.nanstd(v, axis=1)}, index=t_ms)
+                             "B_std": np.nanstd(v, axis=1), "B_mean_recent": np.nanmean(v[:, -q:], axis=1)},
+                            index=t_ms)
+
+
+def level_summary(levels: pd.DataFrame, t_ms: np.ndarray, n_min: int) -> pd.DataFrame:
+    """判断時刻 t に、直前 n_min 分（t − (n_min−1) 分 〜 t）の生の水準（1 分ごと）の平均と変化（最新 − 最初）を付ける。
+
+    levels の index は 1 分ごとの時刻（ミリ秒）。窓に含まれない時刻は NaN として扱う。
+    """
+    cols = list(levels.columns)
+    idx = np.concatenate([t_ms - k * MIN_MS for k in range(n_min - 1, -1, -1)])
+    v = levels.reindex(idx).to_numpy(dtype=float).reshape(n_min, len(t_ms), len(cols))  # (窓, 時刻, 列)
+    out = {}
+    with np.errstate(invalid="ignore"):
+        for j, c in enumerate(cols):
+            out[f"L_{c}_mean"] = np.nanmean(v[:, :, j], axis=0)
+            out[f"L_{c}_chg"] = v[-1, :, j] - v[0, :, j]
+    return pd.DataFrame(out, index=t_ms)
 
 
 def pnl(p: np.ndarray, r: np.ndarray, theta: float, fees: tuple[float, float], slip: float) -> dict:
@@ -336,14 +358,18 @@ def run_direction(cfg: dict, spec: dict, workers: int | None = None) -> dict:
     train_end = to_utc(spec["train_end"])
     bprm = barrier_params({**cfg, "pair_spec": market.spec}, market.spec)
     fees, slip = (bprm.maker_fee, bprm.taker_fee), bprm.s_slip
-    log.info("特徴量を計算 %s〜%s", start, end)
-    F = feature_table(market, start, end, cfg["signal"]["sigma_span"], workers)
+    h_min = int(spec.get("horizon_min", 15))
+    h_ms = h_min * MIN_MS
+    use_levels = bool(spec.get("level_summary", False))
+    log.info("特徴量を計算 %s〜%s、ホライズン %d 分", start, end, h_min)
+    F = feature_table(market, start, end, cfg["signal"]["sigma_span"], workers, h_ms)
     del market  # 約定データは以降使わない（メモリを空ける）
+    levels = F[PROFILE_COLUMNS] if use_levels else None  # 1 分ごとの生の水準（正解のない時刻も窓に使う）
     F = F[F["y"].notna()]
     log.info("特徴量 %d 行 × %d 列、最大メモリ %.1f GB", len(F), F.shape[1], _peak_gb())
     t_ms = F.index.to_numpy()
     feat_cols = [c for c in F.columns if c not in ("y", "r")]
-    is_tr = t_ms < int(train_end.value // 1_000_000) - BAR_MS  # 正解が学習期間内で決まるものだけ
+    is_tr = t_ms < int(train_end.value // 1_000_000) - h_ms  # 正解が学習期間内で決まるものだけ
     is_te = t_ms >= int(train_end.value // 1_000_000)
     n_splits = int(spec.get("n_splits", 5))
 
@@ -351,67 +377,78 @@ def run_direction(cfg: dict, spec: dict, workers: int | None = None) -> dict:
     log.info("モデル B: 学習 %d、評価 %d", int(is_tr.sum()), int(is_te.sum()))
     Xb_tr, Xb_te = F.loc[is_tr, feat_cols], F.loc[is_te, feat_cols]
     yb_tr, yb_te = F.loc[is_tr, "y"].to_numpy(int), F.loc[is_te, "y"].to_numpy(int)
-    oof_b, test_b, folds_b = oof_and_final(Xb_tr, yb_tr, t_ms[is_tr], Xb_te, n_splits, BAR_MS)
+    oof_b, test_b, folds_b = oof_and_final(Xb_tr, yb_tr, t_ms[is_tr], Xb_te, n_splits, h_ms)
     pred_b = pd.Series(np.concatenate([oof_b, test_b]), index=np.concatenate([t_ms[is_tr], t_ms[is_te]]))
 
-    # モデル A（15 分ごと）。足の区切りの時刻だけ
-    on_bar = (t_ms % BAR_MS) == 0
+    # モデル A（h 分ごと）。h の区切りの時刻だけ
+    on_bar = (t_ms % h_ms) == 0
     a_tr, a_te = is_tr & on_bar, is_te & on_bar
     ta_tr, ta_te = t_ms[a_tr], t_ms[a_te]
     ya_tr, ya_te = F.loc[a_tr, "y"].to_numpy(int), F.loc[a_te, "y"].to_numpy(int)
     ra_te = F.loc[a_te, "r"].to_numpy()
     XA_tr, XA_te = F.loc[a_tr, feat_cols], F.loc[a_te, feat_cols]
-    SB_tr, SB_te = stack_features(pred_b, ta_tr), stack_features(pred_b, ta_te)
-    XAB_tr = pd.concat([XA_tr, SB_tr.set_axis(XA_tr.index)], axis=1)
-    XAB_te = pd.concat([XA_te, SB_te.set_axis(XA_te.index)], axis=1)
-    log.info("モデル A: 学習 %d、評価 %d", len(XA_tr), len(XA_te))
-    oof_a, test_a, folds_a = oof_and_final(XA_tr, ya_tr, ta_tr, XA_te, n_splits, BAR_MS)
-    oof_ab, test_ab, folds_ab = oof_and_final(XAB_tr, ya_tr, ta_tr, XAB_te, n_splits, BAR_MS)
+    SB_tr, SB_te = stack_features(pred_b, ta_tr, h_min), stack_features(pred_b, ta_te, h_min)
+    variants = {"A": (XA_tr, XA_te),
+                "A+B": (pd.concat([XA_tr, SB_tr.set_axis(XA_tr.index)], axis=1),
+                        pd.concat([XA_te, SB_te.set_axis(XA_te.index)], axis=1))}
+    if use_levels:
+        LS_tr, LS_te = level_summary(levels, ta_tr, h_min), level_summary(levels, ta_te, h_min)
+        variants["A+B+L"] = (pd.concat([variants["A+B"][0], LS_tr.set_axis(XA_tr.index)], axis=1),
+                             pd.concat([variants["A+B"][1], LS_te.set_axis(XA_te.index)], axis=1))
+    log.info("モデル A: 学習 %d、評価 %d、変種 %s", len(XA_tr), len(XA_te), list(variants))
+    oof, test, folds = {}, {}, {}
+    for name, (Xtr, Xte) in variants.items():
+        oof[name], test[name], folds[name] = oof_and_final(Xtr, ya_tr, ta_tr, Xte, n_splits, h_ms)
     log.info("学習を終了、最大メモリ %.1f GB", _peak_gb())
 
     thetas = spec.get("thetas", [0.55, 0.6])
     b_on_bar = pred_b.reindex(ta_te).to_numpy()
+    cv = {"B": {k: v for k, v in metrics(yb_tr, oof_b).items() if k != "calibration"}, "B_folds": folds_b}
+    for name in variants:
+        cv[name] = {k: v for k, v in metrics(ya_tr, oof[name]).items() if k != "calibration"}
+        cv[f"{name}_folds"] = folds[name]
     res = {
         "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "horizon_min": h_min,
         "periods": {"train": [str(start), str(train_end)], "test": [str(train_end), str(end)]},
         "n": {"B_train": int(is_tr.sum()), "B_test": int(is_te.sum()), "A_train": int(len(XA_tr)), "A_test": int(len(XA_te))},
         "base_rate_test": float(ya_te.mean()) if len(ya_te) else None,
         "features": feat_cols,
-        "cv": {"B": {k: v for k, v in metrics(yb_tr, oof_b).items() if k != "calibration"}, "B_folds": folds_b,
-               "A": {k: v for k, v in metrics(ya_tr, oof_a).items() if k != "calibration"}, "A_folds": folds_a,
-               "A+B": {k: v for k, v in metrics(ya_tr, oof_ab).items() if k != "calibration"}, "A+B_folds": folds_ab},
+        "variant_features": {name: list(Xtr.columns) for name, (Xtr, _) in variants.items()},
+        "cv": cv,
         "test": {"B_all_minutes": metrics(yb_te, test_b), "B_on_bar": metrics(ya_te, b_on_bar),
-                 "A": metrics(ya_te, test_a), "A+B": metrics(ya_te, test_ab)},
+                 **{name: metrics(ya_te, test[name]) for name in variants}},
         "pnl_test": {name: [pnl(p, ra_te, th, fees, slip) for th in thetas]
-                     for name, p in (("A", test_a), ("A+B", test_ab), ("B_on_bar", b_on_bar))},
+                     for name, p in (*test.items(), ("B_on_bar", b_on_bar))},
         "unconditional_test": pnl(np.ones(len(ra_te)), ra_te, 0.0, fees, slip),
         "fees": {"maker": fees[0], "taker": fees[1], "s_slip": slip},
     }
-    # AUC の差（A+B − A）の日単位ブロック・ブートストラップ
+    # AUC の差（各変種 − A）の日単位ブロック・ブートストラップ
     days = (ta_te // (24 * H_MS)).astype(np.int64)
     uniq = np.unique(days)
     rng = np.random.default_rng(0)
     from sklearn.metrics import roc_auc_score
 
     idx_by_day = {d: np.flatnonzero(days == d) for d in uniq}
-    diffs = []
+    diffs = {name: [] for name in variants if name != "A"}
     for _ in range(int(spec.get("n_boot", 200))):
         pick = np.concatenate([idx_by_day[d] for d in rng.choice(uniq, size=len(uniq), replace=True)])
         yy = ya_te[pick]
         if len(np.unique(yy)) < 2:
             continue
-        diffs.append(roc_auc_score(yy, test_ab[pick]) - roc_auc_score(yy, test_a[pick]))
-    if diffs:
-        res["auc_diff_A+B_minus_A"] = {"mean": float(np.mean(diffs)), "p05": float(np.percentile(diffs, 5)),
-                                       "p95": float(np.percentile(diffs, 95))}
+        base = roc_auc_score(yy, test["A"][pick])
+        for name in diffs:
+            diffs[name].append(roc_auc_score(yy, test[name][pick]) - base)
+    res["auc_diff_vs_A"] = {name: {"mean": float(np.mean(d)), "p05": float(np.percentile(d, 5)),
+                                   "p95": float(np.percentile(d, 95))} for name, d in diffs.items() if d}
     # 実験ログ（試行として数える）
     th = params_hash({"direction": spec, "features": feat_cols, "fees": list(fees), "s_slip": slip})
     log_path = Path(cfg.get("experiment_log", "reports/experiments.jsonl"))
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a") as fh:
-        for name in ("A", "A+B", "B_on_bar"):
+        for name in (*variants, "B_on_bar"):
             fh.write(json.dumps({"run_at": res["run_at"], "stage": "direction", "trial_hash": th,
-                                 "code_version": os.environ.get("GITHUB_SHA"), "key": f"direction/{name}",
+                                 "code_version": os.environ.get("GITHUB_SHA"), "key": f"direction/{h_min}m/{name}",
                                  "test_auc": res["test"][name].get("auc")}) + "\n")
     res["trial_hash"] = th
     return res
@@ -424,23 +461,27 @@ def _p(x, pct=True):
 
 
 def render(rep: dict) -> str:
-    md = [f"# 15 分後の上げ下げの予測（二段構え、{rep['run_at']}）\n",
+    h = rep.get("horizon_min", 15)
+    md = [f"# {h} 分後の上げ下げの予測（二段構え、{rep['run_at']}）\n",
           f"- 学習・交差検証: {rep['periods']['train'][0]} 〜 {rep['periods']['train'][1]}",
           f"- 評価（1 回だけ）: {rep['periods']['test'][0]} 〜 {rep['periods']['test'][1]}（これまでの分析で一部を見ている期間）",
           f"- 標本: B 学習 {rep['n']['B_train']:,} / 評価 {rep['n']['B_test']:,}、A 学習 {rep['n']['A_train']:,} / 評価 {rep['n']['A_test']:,}",
-          f"- 評価期間で 15 分後に上がった割合: {_p(rep['base_rate_test'])[1:]}、特徴量 {len(rep['features'])} 個\n",
+          f"- 評価期間で {h} 分後に上がった割合: {_p(rep['base_rate_test'])[1:]}、特徴量 {len(rep['features'])} 個"
+          + (f"（A+B+L は {len(rep['variant_features']['A+B+L'])} 個）" if "A+B+L" in rep.get("variant_features", {}) else "") + "\n",
           "## 当たり具合（AUC、0.5 が当て推量）\n",
           "| モデル | 交差検証（学習期間） | 評価期間 | 評価期間 log loss |\n|---|---|---|---|"]
     cv, te = rep["cv"], rep["test"]
-    for name, cvk, tek in (("B（1 分ごと、全時刻）", "B", "B_all_minutes"), ("B（15 分の区切りだけ）", None, "B_on_bar"),
-                           ("A（15 分ごと）", "A", "A"), ("A+B（二段構え）", "A+B", "A+B")):
+    rows = [("B（1 分ごと、全時刻）", "B", "B_all_minutes"), (f"B（{h} 分の区切りだけ）", None, "B_on_bar"),
+            (f"A（{h} 分ごと）", "A", "A"), ("A+B（二段構え: A + 直近の B の要約）", "A+B", "A+B")]
+    if "A+B+L" in te:
+        rows.append(("A+B+L（さらに直近の TPO・価格帯別出来高の水準の推移）", "A+B+L", "A+B+L"))
+    for name, cvk, tek in rows:
         c = cv.get(cvk, {}) if cvk else {}
         md.append(f"| {name} | {_p(c.get('auc'), False)} | {_p(te[tek].get('auc'), False)} | {_p(te[tek].get('log_loss'), False)} |")
-    if "auc_diff_A+B_minus_A" in rep:
-        d = rep["auc_diff_A+B_minus_A"]
-        md.append(f"\nA+B と A の AUC の差（評価期間、日単位ブートストラップ）: 平均 {_p(d['mean'], False)}、"
+    for name, d in rep.get("auc_diff_vs_A", {}).items():
+        md.append(f"\n{name} と A の AUC の差（評価期間、日単位ブートストラップ）: 平均 {_p(d['mean'], False)}、"
                   f"5〜95% 区間 [{_p(d['p05'], False)}, {_p(d['p95'], False)}]")
-    md.append("\n## 費用込みの損益（評価期間、確率がしきい値以上で買い 15 分後に売る）\n")
+    md.append(f"\n## 費用込みの損益（評価期間、確率がしきい値以上で買い {h} 分後に売る）\n")
     md.append("| モデル | しきい値 | 発注割合 | 取引 | 成行往復の平均 | t 値 | 勝率 | 手数料・滑りなしの平均（上限） |\n|---|---|---|---|---|---|---|---|")
     for name, rows in rep["pnl_test"].items():
         for r in rows:

@@ -35,6 +35,8 @@ python -m bbresearch direction --config configs/research.yaml --spec configs/dir
 B の予測を特徴量として加える（A+B）。特徴量は 1 分足の流れ・15 分足・価格帯別出来高と TPO・時刻。
 2024 年より前で学習し、2024 年以降で1回だけ評価して A 単独と A+B を比べる。`configs/direction.yaml` を変更して
 push すると GitHub Actions（`direction.yml`）で実行し、`reports/direction/` をコミットする。
+`configs/direction_1h.yaml` は 1 時間版（毎正時に判断し、直近 60 分の B の予測と TPO・価格帯別出来高の水準の推移を
+加える）。`direction_1h.yml` で実行し、`reports/direction_1h/` をコミットする。
 
 # bbdata — bitbank 過去データ取得と足・約定集計
 

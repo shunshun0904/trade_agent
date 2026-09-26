@@ -1,0 +1,10 @@
+# 1 時間後の上げ下げを予測する二段構えのモデル（python -m bbresearch direction --spec configs/direction_1h.yaml）。
+# 2026-09-26 オーナー決定: 最終のエントリー判断は 1 時間ごと（売買は多くても 1 時間に 1 回）。その判断に、
+# 1 分ごとの TPO×価格帯別出来高のシグナル（B の上げ確率と生の水準）の直近 60 分の推移を使う。決済は 1 時間後に売る。
+# 学習・交差検証は data.start 〜 train_end、評価は train_end 〜 data.end で1回だけ。A、A+B、A+B+L を比べる。
+train_end: "2024-01-01"
+horizon_min: 60
+level_summary: true     # 直近 60 分の生の価格帯別出来高・TPO の水準の平均と変化を A に加える（A+B+L）
+n_splits: 5
+thetas: [0.55, 0.6]
+n_boot: 200
