@@ -138,16 +138,18 @@ def render(daily: list[dict], rebalances: list[dict], target_vol: float = 0.30) 
                f'<td class="n">{last["target_cash"]:.1%}</td><td class="n">{(last["target_cash"] - last["cash_frac"]) * 100:+.1f} pt</td></tr>')
     body.append('<div class="panel"><h2>現在の保有と目標の重み</h2><div class="wrap"><table><thead><tr><th>銘柄</th><th class="n">評価額</th>'
                 '<th class="n">現在</th><th class="n">目標</th><th class="n">差</th></tr></thead><tbody>' + "".join(trs) + '</tbody></table></div>'
-                f'<p class="note">目標は {html.escape(last["date"])} までのデータで推定した重み（推定ボラ {last.get("est_vol", 0) * 100:.1f}%）。'
-                '差が総額の 1% 以上のものが月初の売買の対象。</p></div>')
+                f'<p class="note">目標は {html.escape(last["date"])} までのデータで推定した重み（推定ボラ {last.get("est_vol", 0) * 100:.1f}%'
+                + {None: "", True: "、BTC は移動平均の上", False: "、BTC は移動平均の下、暗号資産を縮める"}[last.get("trend")]
+                + "）。差が総額の 1% 以上のものが売買の対象。</p></div>")
     # リバランスの履歴
     hist = []
     for r in reversed(rebalances[-24:]):
         tw = "、".join(f"{p} {w:.0%}" for p, w in r["target_weights"].items()) + f"、JPY {r['target_cash']:.0%}"
         od = "、".join(f"{o['pair']} {o['side']} {o['frac']:.1%}" for o in r.get("orders", [])) or "なし"
-        hist.append(f'<tr><td>{html.escape(r["date"])}</td><td>{html.escape(tw)}</td><td>{html.escape(od)}</td>'
+        kind = "月初" if r.get("kind", "monthly") == "monthly" else "週次"
+        hist.append(f'<tr><td>{html.escape(r["date"])}</td><td>{kind}</td><td>{html.escape(tw)}</td><td>{html.escape(od)}</td>'
                     f'<td>{"ドライラン" if r.get("dry_run", True) else "発注"}</td></tr>')
-    body.append('<div class="panel"><h2>リバランスの履歴</h2><div class="wrap"><table><thead><tr><th>日付</th><th>目標</th><th>計画した売買（総額比）</th><th>種別</th></tr></thead>'
-                '<tbody>' + ("".join(hist) or '<tr><td colspan="4" class="note">まだありません</td></tr>') + '</tbody></table></div></div>')
+    body.append('<div class="panel"><h2>リバランスの履歴</h2><div class="wrap"><table><thead><tr><th>日付</th><th>方式</th><th>目標</th><th>計画した売買（総額比）</th><th>種別</th></tr></thead>'
+                '<tbody>' + ("".join(hist) or '<tr><td colspan="5" class="note">まだありません</td></tr>') + '</tbody></table></div></div>')
     body.append("</div>")
     return "\n".join(head + body)

@@ -236,9 +236,33 @@ def yearly(r: pd.Series) -> pd.DataFrame:
     return pd.DataFrame(rows).set_index("year")
 
 
+def scale_weights(close: pd.DataFrame, rel: dict[str, float], target_vol: float | None = 0.30, est_days: int = 365,
+                  trend_days: int | None = None, trend_scale: float = 0.0, benchmark: str = "btc_jpy") -> dict:
+    """相対の重み rel（合計 1）を、直前 est_days 日で推定したボラで target_vol に縮め、トレンドフィルタを掛ける。
+
+    trend_days が入っていて benchmark の最後の終値がその日数の移動平均を下回っていれば、さらに trend_scale 倍にする
+    （2026-09-27 オーナー決定: 200 日、0 倍 = 全額 JPY、判定は週 1 回）。walk_forward と同じ規則。
+    """
+    ret = np.log(close).diff()
+    names = list(rel)
+    est = ret[ret.index >= close.index[-1] - pd.Timedelta(days=est_days)][names].dropna()
+    cov = shrunk_cov(est.to_numpy())
+    wv = np.array([rel[n] for n in names])
+    vol = float(np.sqrt(wv @ cov @ wv * DAYS_PER_YEAR))
+    scale = 1.0 if target_vol is None or vol <= target_vol else target_vol / vol
+    trend = None
+    if trend_days:
+        trend = trend_on(close[benchmark], close.index[-1] + pd.Timedelta(days=1), trend_days)
+        if trend is False:
+            scale *= trend_scale
+    return {"weights": {n: float(rel[n]) * scale for n in names}, "cash": 1.0 - scale, "est_vol": vol * scale,
+            "est_vol_full": vol, "trend": trend, "as_of": str(close.index[-1].date())}
+
+
 def current_weights(close: pd.DataFrame, k_max: int = 5, w_max: float = 0.4, caps: dict[str, float] | None = None,
-                    target_vol: float | None = 0.30, est_days: int = 365) -> dict:
-    """直近 est_days 日で推定した今の重み（ペア → 割合）と JPY の割合、推定ボラ。scripts/rebalance.py が使う。"""
+                    target_vol: float | None = 0.30, est_days: int = 365, trend_days: int | None = None,
+                    trend_scale: float = 0.0) -> dict:
+    """直近 est_days 日で銘柄と相対の重みを選び、scale_weights で JPY の割合を決める。scripts/rebalance.py が月初に使う。"""
     ret = np.log(close).diff()
     est = ret[ret.index >= close.index[-1] - pd.Timedelta(days=est_days)]
     avail = [c for c in close.columns if est[c].notna().sum() >= est_days * 0.9]
@@ -249,8 +273,7 @@ def current_weights(close: pd.DataFrame, k_max: int = 5, w_max: float = 0.4, cap
     best = best_combination(cov, mu, avail, k_max, None, w_max, caps)
     if best is None:
         raise ValueError("実行可能な組み合わせがない")
-    wv = pd.Series(best["weights"], index=best["names"]).reindex(avail).fillna(0.0).to_numpy()
-    vol = float(np.sqrt(wv @ cov @ wv * DAYS_PER_YEAR))
-    scale = 1.0 if target_vol is None or vol <= target_vol else target_vol / vol
-    return {"weights": {n: float(w) * scale for n, w in zip(best["names"], best["weights"])},
-            "cash": 1.0 - scale, "est_vol": vol * scale, "est_vol_full": vol, "as_of": str(close.index[-1].date())}
+    rel = {n: float(w) for n, w in zip(best["names"], best["weights"])}
+    out = scale_weights(close, rel, target_vol, est_days, trend_days, trend_scale)
+    out["relative"] = rel
+    return out

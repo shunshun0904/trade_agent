@@ -1,5 +1,7 @@
 # 月初のリバランス（scripts/rebalance.py、ドライラン）。2026-09-27 オーナー決定。
 # 目標ボラ 30%、候補銘柄の残高 + JPY の全額、成行、Actions で毎月 1 日に実行（まずドライラン）。
+# 2026-09-27 オーナー決定（5 回目の検証）: 銘柄と相対の重みは月 1 回、JPY の割合は週 1 回（月曜）見直し、
+# BTC が 200 日移動平均を下回る間は全額 JPY。
 pool: [btc_jpy, xrp_jpy, eth_jpy, doge_jpy, sol_jpy, xlm_jpy, link_jpy, ada_jpy, bcc_jpy, ltc_jpy, avax_jpy,
        trx_jpy, bnb_jpy, dot_jpy, pol_jpy]
 history_from_year: 2019
@@ -9,5 +11,8 @@ w_max: 0.4
 caps:
   btc_jpy: 0.6
 target_vol: 0.30
+cash_freq_days: 7        # JPY の割合の見直し間隔（月曜に cash-only で実行）
+trend_days: 200          # BTC がこの日数の移動平均を下回る間は暗号資産を trend_scale 倍に
+trend_scale: 0.0
 min_trade_frac: 0.01     # 総額の 1% 未満の差は動かさない
 buy_buffer: 0.003        # 買いは手数料と滑りのぶん少なめに

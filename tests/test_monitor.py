@@ -32,7 +32,7 @@ def test_render_contains_holdings_targets_and_history():
             "orders": [{"pair": "btc_jpy", "side": "buy", "frac": 0.2}], "dry_run": True}]
     page = render(rows, reb, 0.30)
     assert "<title>Portfolio Monitor</title>" in page and "103,000 円" in page and "+3.0%" in page
-    assert "btc_jpy buy 20.0%" in page and "ドライラン" in page
+    assert "btc_jpy buy 20.0%" in page and "ドライラン" in page and "月初" in page
     assert "<polyline" in page and "JPY の割合" in page
     assert "記録が 2 日分" not in page
     empty = render([], [], 0.30)

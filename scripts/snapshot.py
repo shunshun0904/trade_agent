@@ -18,9 +18,8 @@ import yaml
 
 from bbdata.client import PublicClient
 from bbresearch.monitor import append_jsonl, load_jsonl, render
-from bbresearch.portfolio import current_weights
 from bbresearch.rebalance import portfolio_value
-from scripts.rebalance import fetch_daily
+from scripts.rebalance import fetch_daily, target_for_today
 
 
 def build_page(out: Path, target_vol: float) -> None:
@@ -50,8 +49,8 @@ def main(argv: list[str] | None = None) -> int:
     years = range(cfg.get("history_from_year", 2019), datetime.now(timezone.utc).year + 1)
     close = pd.concat([fetch_daily(api, p, years) for p in pool], axis=1)
     close = close[close.index < pd.Timestamp.now(tz="UTC").normalize()]
-    tw = current_weights(close, cfg.get("k_max", 5), cfg.get("w_max", 0.4), cfg.get("caps") or {},
-                         cfg.get("target_vol"), cfg.get("est_days", 365))
+    # 目標は運用と同じ規則（直近の月初の相対の重み + 今日のボラとトレンドで JPY の割合）で出す
+    tw = target_for_today(cfg, close, load_jsonl(out / "rebalances.jsonl"), "weekly")
     assets = {a["asset"]: float(a.get("onhand_amount") or a.get("free_amount") or 0.0)
               for a in PrivateClient(key, secret).assets()}
     prices = {p: float(api.ticker(p)["last"]) for p in pool}
@@ -66,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
         "fractions": {p: round(f, 4) for p, f in fractions.items() if f > 0},
         "cash_frac": round(1 - sum(fractions.values()), 4) if total > 0 else 1.0,
         "target_weights": {p: round(w, 4) for p, w in tw["weights"].items()},
-        "target_cash": round(tw["cash"], 4), "est_vol": round(tw["est_vol"], 4),
+        "target_cash": round(tw["cash"], 4), "est_vol": round(tw["est_vol"], 4), "trend": tw.get("trend"),
         "btc_price": prices.get("btc_jpy"),
     }
     append_jsonl(out / "daily.jsonl", row)

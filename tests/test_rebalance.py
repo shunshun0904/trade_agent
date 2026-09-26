@@ -69,3 +69,51 @@ def test_current_weights_scales_to_target_vol():
     assert tw["est_vol"] == pytest.approx(0.3) and tw["est_vol_full"] > 0.3
     full = current_weights(close, k_max=3, w_max=0.5, caps={"btc_jpy": 0.6}, target_vol=None)
     assert full["cash"] == 0.0 and set(full["weights"]) == set(tw["weights"])
+
+
+def _close(seed=11, n=400):
+    rng = np.random.default_rng(seed)
+    idx = pd.date_range("2024-01-01", periods=n, freq="D", tz="UTC")
+    cols = ["btc_jpy", "a_jpy", "b_jpy", "c_jpy"]
+    r = rng.normal(0, 0.04, size=(n, 4)) + rng.normal(0, 0.03, size=(n, 1))
+    return pd.DataFrame(np.exp(np.cumsum(r, axis=0)) * 100, index=idx, columns=cols)
+
+
+def test_scale_weights_applies_trend_filter_from_past_closes_only():
+    from bbresearch.portfolio import scale_weights
+
+    close = _close()
+    rel = {"btc_jpy": 0.5, "a_jpy": 0.5}
+    plain = scale_weights(close, rel, target_vol=0.3, est_days=365)
+    assert plain["trend"] is None and plain["est_vol"] == pytest.approx(0.3)
+    up = close.copy()
+    up.iloc[-1, 0] = up["btc_jpy"].iloc[-200:].mean() * 1.5  # 最後の終値を 200 日線の上に
+    on = scale_weights(up, rel, target_vol=0.3, est_days=365, trend_days=200, trend_scale=0.0)
+    assert on["trend"] is True and on["cash"] < 1.0
+    down = close.copy()
+    down.iloc[-1, 0] = down["btc_jpy"].iloc[-200:].mean() * 0.5
+    off = scale_weights(down, rel, target_vol=0.3, est_days=365, trend_days=200, trend_scale=0.0)
+    assert off["trend"] is False and off["cash"] == 1.0 and all(w == 0 for w in off["weights"].values())
+    half = scale_weights(down, rel, target_vol=0.3, est_days=365, trend_days=200, trend_scale=0.5)
+    assert half["weights"]["btc_jpy"] == pytest.approx(on["weights"]["btc_jpy"] * 0.5, rel=0.2)
+
+
+def test_target_for_today_weekly_keeps_the_monthly_relative_weights():
+    from scripts.rebalance import target_for_today
+
+    close = _close()
+    cfg = {"target_vol": 0.3, "est_days": 365, "k_max": 3, "w_max": 0.5, "caps": {"btc_jpy": 0.6}, "trend_days": None}
+    monthly = target_for_today(cfg, close, [], "monthly")
+    assert monthly["kind"] == "monthly" and abs(sum(monthly["relative"].values()) - 1) < 1e-9
+    # weekly は直近の monthly の相対の重みを使う（銘柄を選び直さない）
+    fake_hist = [{"date": "2026-10-01", "kind": "monthly", "relative": {"a_jpy": 0.7, "b_jpy": 0.3},
+                  "target_weights": {"a_jpy": 0.35, "b_jpy": 0.15}, "target_cash": 0.5}]
+    weekly = target_for_today(cfg, close, fake_hist, "weekly")
+    assert weekly["kind"] == "weekly" and weekly["based_on"] == "2026-10-01" and set(weekly["weights"]) == {"a_jpy", "b_jpy"}
+    assert weekly["weights"]["a_jpy"] / weekly["weights"]["b_jpy"] == pytest.approx(0.7 / 0.3)
+    # 古い記録（relative なし）は目標の重みから相対の重みを戻す
+    old = [{"date": "2026-09-01", "target_weights": {"a_jpy": 0.35, "b_jpy": 0.15}, "target_cash": 0.5}]
+    weekly2 = target_for_today(cfg, close, old, "weekly")
+    assert weekly2["kind"] == "weekly" and weekly2["weights"]["a_jpy"] / weekly2["weights"]["b_jpy"] == pytest.approx(0.7 / 0.3)
+    # monthly の記録がなければ monthly と同じ
+    assert target_for_today(cfg, close, [], "weekly")["kind"] == "monthly"
