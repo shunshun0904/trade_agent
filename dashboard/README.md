@@ -1,11 +1,11 @@
 # TPO・価格帯別出来高ダッシュボード
 
-直近 3 時間の BTC/JPY の価格帯別出来高と TPO を 1 分足の粒度で、30 秒ごとに更新して表示する。bitbank の公開データだけを使い、API キーは使わない。
+直近 24 時間の BTC/JPY の価格帯別出来高と TPO を 15 分足の粒度で、5 分ごとに更新して表示する（配色はダーク）。bitbank の公開データだけを使い、API キーは使わない。
 
 - 構成: API Gateway（REST API。許可した IP アドレスからだけ受け付ける）→ Lambda（呼ばれたときだけ計算）→ S3（約定の一時保存、非公開）
-- 画面（React、`web/`）: 左に 1 分足（直近 3 時間）と POC・VAH・VAL の線、価格帯別出来高、TPO（5 分区間）。右に直近 60 分の 1 分ごとの水準（POC までの距離、バリューエリア内の位置、価格帯の厚さ、シングルプリントの割合）の推移。タブが裏にある間は更新しない
+- 画面（React、`web/`）: 左に 15 分足（直近 24 時間）と POC・VAH・VAL の線、価格帯別出来高、TPO（30 分区間）。右に直近 60 分の 1 分ごとの水準（POC までの距離、バリューエリア内の位置、価格帯の厚さ、シングルプリントの割合）の推移。タブが裏にある間は更新しない
 - API: `/api/profile`（左の列）と `/api/signals`（右の列）。どちらも標準ライブラリだけで計算する。分ごとの水準は実行環境の中に残し、新しい分だけ計算する（初回 60 分で約 1.4 秒、以後 0.1 秒）
-- 計算の定義は `bbresearch/profile.py` と同じ（`tests/test_dashboard.py` で照合）。窓は 3 時間、TPO は 1 分足 5 本の区間（研究用の 24 時間・15 分足 2 本と異なる。2026-09-26 オーナー決定）。σ は直近 180 本の 1 分足のリターンの標準偏差（刻みは 0.25σ ≈ 0.025%）
+- 計算の定義は `bbresearch/profile.py` と同じ（`tests/test_dashboard.py` で照合）。窓は 24 時間、TPO は 15 分足 2 本の区間、σ は直近 96 本の 15 分足のリターンの標準偏差（刻みは 0.25σ）
 
 ## デプロイ（AWS CloudShell、ap-northeast-1）
 
@@ -15,7 +15,7 @@ curl -fsSL https://raw.githubusercontent.com/shunshun0904/trade_agent/claude/bit
 
 途中で自宅の IP アドレスを聞かれる（CloudShell の IP ではない）。最後に表示される URL を自宅のブラウザで開く。
 IP アドレスが変わったら、同じコマンドをもう一度実行する。更新間隔を変えるには `sam deploy` の
-`--parameter-overrides` に `RefreshSeconds=10` などを足す（最小 5 秒）。
+`--parameter-overrides` に `RefreshSeconds=60` などを足す（最小 5 秒）。
 
 ## 画面の変更（`web/`）
 
@@ -30,8 +30,8 @@ cd dashboard/web && npm run build:preview    # dist-preview/index.html にダミ
 
 - API の形は `web/src/api.js` の冒頭に書いた。
 - モデルの予測は載せない（2026-09-26 オーナー決定。方向の予測は費用を超えなかった。`docs/SPEC.md` §1.3）。
-- 当日分の約定は日付指定で取れない（HTTP 404）ので、約定がそろっていない時間帯は公式 1 分足で補う（画面に注記が出る）。約定は最新 60 件を更新のたびに足して貯める
-- 更新間隔は Lambda の `REFRESH_SECONDS`（既定 30 秒）。画面は 1 回の更新で `/api/profile` と `/api/signals` を 1 回ずつ呼ぶ。
+- 当日分の約定は日付指定で取れない（HTTP 404）ので、約定がそろっていない時間帯は公式 15 分足で補う（画面に注記が出る）
+- 更新間隔は Lambda の `REFRESH_SECONDS`（既定 300 秒 = 5 分）。画面は 1 回の更新で `/api/profile` と `/api/signals` を 1 回ずつ呼ぶ。
 
 ## 削除
 

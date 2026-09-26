@@ -4,8 +4,8 @@ import ProfileChart from "./ProfileChart.jsx";
 import SignalPanel from "./SignalPanel.jsx";
 import { yen, hms } from "./format.js";
 
-// Lambda が配信するとき "__REFRESH_SECONDS__" を設定値に置き換える（プレビューでは置き換わらず 30 秒）
-const REFRESH_MS = (Number("__REFRESH_SECONDS__") || 30) * 1000;
+// Lambda が配信するとき "__REFRESH_SECONDS__" を設定値に置き換える（プレビューでは置き換わらず 5 分）
+const REFRESH_MS = (Number("__REFRESH_SECONDS__") || 300) * 1000;
 
 export default function App() {
   const [profile, setProfile] = useState(null);
@@ -42,7 +42,7 @@ export default function App() {
         {profile && <span className="price">{yen(profile.price)}<small>円</small></span>}
         <span className="meta">
           {isMock && <span className="pill wait">ダミーデータ</span>}
-          {!isMock && !err && profile && <span className="pill ok live">{REFRESH_MS / 1000} 秒ごとに更新</span>}
+          {!isMock && !err && profile && <span className="pill ok live">{REFRESH_MS >= 60_000 ? `${REFRESH_MS / 60_000} 分` : `${REFRESH_MS / 1000} 秒`}ごとに更新</span>}
           {err && <span className="pill err">取得に失敗</span>}
           {profile && <span>更新 <span className="num">{hms(profile.now_ms)}</span></span>}
           {profile && <span>刻み <span className="num">{yen(profile.bin_width)}</span> 円（0.25σ）</span>}
@@ -52,7 +52,7 @@ export default function App() {
       {err && <div className="err">取得に失敗しました: {err}（{REFRESH_MS / 1000} 秒後に再試行）</div>}
       {!err && !profile && <div className="note">読み込み中です。初回は約定の取得と集計に 5〜15 秒ほどかかります。</div>}
       {profile && profile.approx_until_ms != null && (
-        <div className="note">{hms(profile.approx_until_ms)} より前は公式の 1 分足で補っています（価格帯別出来高は足の安値〜高値に均等配分した近似）。
+        <div className="note">{hms(profile.approx_until_ms)} より前は公式の 15 分足で補っています（価格帯別出来高は足の安値〜高値に均等配分した近似）。
           約定がそろうにつれて置き換わります。</div>
       )}
       {profile && profile.approx_until_ms == null && profile.first_trade_ms != null

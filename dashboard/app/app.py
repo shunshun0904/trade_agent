@@ -1,10 +1,10 @@
 """TPO・価格帯別出来高ダッシュボードの Lambda（API Gateway の REST API から呼ばれる）。
 
 - GET /             画面（page.html）
-- GET /api/profile  直近 3 時間の価格帯別出来高・TPO・1 分足（JSON）
+- GET /api/profile  直近 24 時間の価格帯別出来高・TPO・15 分足（JSON）
 - GET /api/signals  直近 60 分の 1 分ごとの水準（POC までの距離など。JSON）。分ごとの結果は実行環境の中に残し、新しい分だけ計算する
 
-画面が REFRESH_SECONDS（既定 30 秒、2026-09-26 オーナー決定）ごとに /api/profile を呼ぶ。タブが裏にある間は呼ばない。約定は bitbank の公開 REST API（認証不要）から取り、S3 に保存して
+画面が REFRESH_SECONDS（既定 300 秒 = 5 分、2026-09-26 オーナー決定）ごとに /api/profile を呼ぶ。タブが裏にある間は呼ばない。約定は bitbank の公開 REST API（認証不要）から取り、S3 に保存して
 次回は差分だけ取る。表示の窓 3 時間と σ（1 分足 180 本）に足りるように直近 4 時間分を保持する（初回の取得を軽くするため。2026-09-26）。
 - 保存がない・古いとき: 日付指定（UTC の日付、Phase 0 V5）で必要な日を取る
 - それ以外: 最新 60 件を取り、保存済みの最新より新しいものを足す。60 件の中に保存済みの最新が含まれなければ
@@ -13,7 +13,7 @@
 - 保存データは Lambda の実行環境の中にも持ち、S3 への書き込みは SAVE_INTERVAL 秒に 1 回までにする
   （呼び出しごとの S3 の読み書きを減らして費用を抑える）
 - 当日分の日付指定は HTTP 404 になることがある（2026-09-26 に実機で確認）。約定がそろっているのは trade_from_ms 以降
-  だけなので、それより前は公式 1 分足（/candlestick/1min/{日付}）で補う。価格帯別出来高は足の安値〜高値に均等に配る近似
+  だけなので、それより前は公式 15 分足（/candlestick/15min/{日付}）で補う。価格帯別出来高は足の安値〜高値に均等に配る近似
 """
 from __future__ import annotations
 
@@ -33,8 +33,8 @@ BUCKET = os.environ.get("CACHE_BUCKET", "")
 CACHE_KEY = f"cache/{PAIR}.json.gz"
 PUBLIC = "https://public.bitbank.cc"
 CACHE_VERSION = 2  # 形式を変えたら上げる。古い保存データは捨てて取り直す
-KEEP_MS = 4 * 3_600_000  # 窓 3 時間 + σ の 180 分 + TPO の 5 分に足りる。日付指定の取得は多くても 2 日分
-REFRESH_SECONDS = int(os.environ.get("REFRESH_SECONDS", "30"))
+KEEP_MS = 26 * 3_600_000  # 窓 24 時間 + σ の 96 本（24 時間）+ TPO の 30 分に足りる。日付指定の取得は多くても 3 日分
+REFRESH_SECONDS = int(os.environ.get("REFRESH_SECONDS", "300"))
 MIN_FETCH_INTERVAL = REFRESH_SECONDS
 SAVE_INTERVAL = 60
 PAGE = (Path(__file__).parent / "page.html").read_text(encoding="utf-8").replace(
@@ -79,11 +79,11 @@ def _days_between(a_ms: int, b_ms: int) -> list[str]:
 
 
 def _candles(get, days: list[str], from_ms: int, to_ms: int, skipped: list[str]) -> list[list]:
-    """公式 1 分足 [t, o, h, l, c, v]（[from_ms, to_ms)）。取れない日は skipped に記す。"""
+    """公式 15 分足 [t, o, h, l, c, v]（[from_ms, to_ms)）。取れない日は skipped に記す。"""
     out = []
     for day in days:
         try:
-            blocks = get(f"/{PAIR}/candlestick/1min/{day}").get("candlestick") or []
+            blocks = get(f"/{PAIR}/candlestick/15min/{day}").get("candlestick") or []
         except NoData as exc:
             skipped.append(f"candlestick {day}: {exc}")
             continue
@@ -158,7 +158,7 @@ def refresh(cache: dict | None, now_ms: int, get=http_get_json) -> dict:
     keep.sort(key=lambda r: (r[1], r[0]))
     if trade_from is not None and trade_from <= now_ms - KEEP_MS:
         trade_from = None
-    # 約定がそろっていない時間帯は公式 1 分足で補う（その間だけ毎回取り直す。1 日分で約 50KB）
+    # 約定がそろっていない時間帯は公式 15 分足で補う（その間だけ毎回取り直す。1 日分で約 5KB）
     candles = ([] if trade_from is None
                else _candles(get, _days_between(now_ms - KEEP_MS, trade_from), now_ms - KEEP_MS, now_ms, skipped))
     return {"v": CACHE_VERSION, "rows": keep, "from_ms": max(covered_from, now_ms - KEEP_MS), "fetched_ms": now_ms,
@@ -191,7 +191,7 @@ def handler(event, context, store=None, get=http_get_json, now_ms: int | None = 
                 mem["signals"], mem["signals_key"] = {}, extra["trade_from_ms"]
             res = signals(trades, now_ms, known=mem["signals"], **extra)
             if not res["minutes"]:
-                res["error"] = "σ を計算するデータが足りない（約定か 1 分足が 3 時間分そろうまで待つ）"
+                res["error"] = "σ を計算するデータが足りない（約定か公式の足が 24 時間分そろうまで待つ）"
         else:
             res = compute(trades, now_ms, **extra)
         if "error" in res:

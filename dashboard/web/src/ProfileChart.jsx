@@ -131,9 +131,9 @@ export default function ProfileChart({ d, height = 520 }) {
                   stroke={col} strokeWidth={1.5} strokeDasharray="2 4" />
           ))}
           {/* 現在値 */}
-          <line x1={M.left} x2={W - M.right} y1={g.y(d.price)} y2={g.y(d.price)} stroke="var(--ink)" strokeWidth={1} strokeDasharray="6 4" />
-          <rect x={4} y={g.y(d.price) - 8} width={M.left - 10} height={16} rx={3} fill="var(--ink)" />
-          <text x={M.left - 8} y={g.y(d.price) + 3.5} textAnchor="end" style={{ fill: "var(--panel)", fontWeight: 500 }}>{yen(d.price)}</text>
+          <line x1={M.left} x2={W - M.right} y1={g.y(d.price)} y2={g.y(d.price)} stroke="var(--poc)" strokeWidth={1} strokeDasharray="6 4" />
+          <rect x={4} y={g.y(d.price) - 8} width={M.left - 10} height={16} rx={3} fill="var(--poc)" />
+          <text x={M.left - 8} y={g.y(d.price) + 3.5} textAnchor="end" style={{ fill: "#0b0e14", fontWeight: 600 }}>{yen(d.price)}</text>
           {tip && <line x1={M.left} x2={W - M.right} y1={tip.py} y2={tip.py} stroke="var(--ink-3)" strokeWidth={0.75} />}
         </svg>
       )}

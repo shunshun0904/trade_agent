@@ -57,7 +57,7 @@ export default function SignalPanel({ s }) {
         <div className="summary">
           <div className="cell"><div className="k">現在値</div><div className="v">{yen(last.price)}</div></div>
           <div className="cell"><div className="k">60 分の変化</div><div className="v">{signed((last.price / first.price - 1) * 100, 2)}%</div></div>
-          <div className="cell"><div className="k">σ（1 分足、180 本）</div><div className="v">{fix(last.sigma * 100, 3)}%</div></div>
+          <div className="cell"><div className="k">σ（{s.candle_min || 15} 分足、{s.sigma_n || 96} 本）</div><div className="v">{fix(last.sigma * 100, 3)}%</div></div>
           <div className="cell"><div className="k">出来高 POC まで</div><div className="v">{signed(last.vp_poc_dist, 2)}σ</div></div>
           <div className="cell"><div className="k">TPO POC まで</div><div className="v">{signed(last.tpo_poc_dist, 2)}σ</div></div>
         </div>

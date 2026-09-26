@@ -1,12 +1,12 @@
 """価格帯別出来高と TPO の計算（標準ライブラリだけで書いたダッシュボード用の実装）。
 
 研究用の bbresearch/profile.py と同じ定義にしている（テストで照合する）:
-- 区間は [now − window, now)。画面は直近 3 時間（2026-09-26 オーナー決定。研究用の既定は 24 時間）。
+- 区間は [now − window, now)。画面は直近 24 時間・15 分足（2026-09-26 オーナー決定。一度 3 時間・1 分足にしたが、約定が少なく
+  粗く見えるため戻した）。
 - 価格帯の刻みは w = bin_sigma × σ × 基準価格（基準価格は now 直前の約定価格）。境界は基準価格に揃える。
 - バリューエリアは POC から隣の多い側へ広げて全体の 70% に達するまで（同量なら上側）。
-- TPO は足を now から過去へ block 本ずつまとめた区間ごとに、安値〜高値にかかる価格帯へ 1 を数える。
-  画面は 1 分足を 5 本ずつ（5 分区間）。研究用は 15 分足を 2 本ずつ（30 分区間）。
-σ は直近 180 本の 1 分足の対数リターンの標準偏差（2026-09-26 オーナー決定。研究用の 15 分足の EWMA とは異なる。表示用）。
+- TPO は足を now から過去へ block 本ずつまとめた区間ごとに、安値〜高値にかかる価格帯へ 1 を数える（15 分足 2 本 = 30 分区間）。
+σ は直近 96 本の 15 分足の対数リターンの標準偏差（研究用の EWMA とは異なる。表示用の近似）。
 """
 from __future__ import annotations
 
@@ -36,8 +36,8 @@ def bars_at(trades: list[tuple[int, float, float]], start_ms: int, end_ms: int, 
             candles: list[list] | None = None, trade_from_ms: int | None = None) -> list[dict]:
     """[start, end) の step_ms ごとの足（約定なしの足は直前の close で埋める）。trades は (ts, price, amount) の時刻順。
 
-    candles（公式 1 分足 [t, o, h, l, c, v]）を渡すと、trade_from_ms より前の分はそれで作る（約定がそろっていない
-    時間帯の補い。step_ms が 1 分のときだけ）。
+    candles（公式の足 [t, o, h, l, c, v]、step_ms と同じ間隔）を渡すと、trade_from_ms より前の足はそれで作る
+    （約定がそろっていない時間帯の補い。step_ms が CANDLE_MS のときだけ）。
     """
     n = (end_ms - start_ms) // step_ms
     out = [{"t": start_ms + i * step_ms, "o": None, "h": None, "l": None, "c": None, "v": 0.0} for i in range(n)]
@@ -94,7 +94,7 @@ def _approx_until(trade_from_ms: int | None, step_ms: int) -> int | None:
 
 def volume_profile(trades, now_ms: int, ref: float, w: float, window_ms: int, candles: list[list] | None = None,
                    trade_from_ms: int | None = None) -> tuple[dict, list[dict]]:
-    """価格帯別出来高。candles を渡すと、trade_from_ms の分より前は公式 1 分足の出来高を安値〜高値の価格帯に均等に配る。"""
+    """価格帯別出来高。candles を渡すと、trade_from_ms の足より前は公式の足の出来高を安値〜高値の価格帯に均等に配る。"""
     acc: dict[int, float] = {}
     cut = _approx_until(trade_from_ms, CANDLE_MS) if candles else None
     for ts, px, amt in trades:
@@ -135,10 +135,10 @@ def tpo_profile(bars: list[dict], now_ms: int, ref: float, w: float, window_ms: 
     return _levels(counts, first, ref, w), rows
 
 
-WINDOW_H = 3.0        # 画面の窓（2026-09-26 オーナー決定）
-CANDLE_MS = 60_000    # 画面のローソク足は 1 分足
-TPO_BLOCK = 5         # TPO は 1 分足 5 本 = 5 分区間
-SIGMA_N = 180         # σ は直近 180 本の 1 分足のリターンの標準偏差（2026-09-26 オーナー決定）
+WINDOW_H = 24.0       # 画面の窓（2026-09-26 オーナー決定）
+CANDLE_MS = BAR_MS    # 画面のローソク足は 15 分足
+TPO_BLOCK = 2         # TPO は 15 分足 2 本 = 30 分区間
+SIGMA_N = 96          # σ は直近 96 本の 15 分足のリターンの標準偏差
 
 
 def compute(trades: list[tuple[int, float, float]], now_ms: int, window_h: float = WINDOW_H,
@@ -147,7 +147,7 @@ def compute(trades: list[tuple[int, float, float]], now_ms: int, window_h: float
     """ダッシュボードに渡す一式。trades は (ts, price, amount) の時刻順で、σ の計算に十分前から含むこと。
 
     σ は candle_ms の足の対数リターン直近 sigma_n 本の標準偏差。価格帯の刻みは bin_sigma × σ × 基準価格。
-    candles と trade_from_ms を渡すと、約定がそろっていない時間帯（trade_from_ms より前）を公式 1 分足で補う。
+    candles と trade_from_ms を渡すと、約定がそろっていない時間帯（trade_from_ms より前）を公式の足で補う。
     """
     window_ms = int(window_h * 3_600_000)
     past = [t for t in trades if t[0] < now_ms]
@@ -159,7 +159,7 @@ def compute(trades: list[tuple[int, float, float]], now_ms: int, window_h: float
     bars = bars_at(past, end - back, end, candle_ms, candles, trade_from_ms)
     sigma = sigma_from_bars([b for b in bars if b["t"] + candle_ms <= now_ms], sigma_n)
     if sigma is None:
-        return {"error": "σ を計算するデータが足りない（約定か 1 分足が 3 時間分そろうまで待つ）"}
+        return {"error": "σ を計算するデータが足りない（約定か公式の足が 24 時間分そろうまで待つ）"}
     w = bin_sigma * sigma * ref
     vp_lv, vp = volume_profile(past, now_ms, ref, w, window_ms, candles, trade_from_ms)
     tpo_lv, tpo = tpo_profile(bars, now_ms, ref, w, window_ms, candle_ms, tpo_block)
@@ -202,12 +202,12 @@ def level_features(levels: dict, rows: list[dict], key: str, ref: float, sigma: 
     return out
 
 
-def signal_at(trades: list[tuple[int, float, float]], bars1: list[dict], t_ms: int,
+def signal_at(trades: list[tuple[int, float, float]], bars: list[dict], t_ms: int,
               window_h: float = WINDOW_H, bin_sigma: float = 0.25, candles: list[list] | None = None,
               trade_from_ms: int | None = None) -> dict | None:
     """時刻 t の水準（t より前の約定と、t 以前に確定した足だけを使う。compute と同じ定義）。
 
-    bars1 は σ と TPO に使う 1 分足。t を含む十分な範囲（t − 3 時間 − 5 分より前から）。
+    bars は σ と TPO に使う CANDLE_MS の足。t を含む十分な範囲（t − 24 時間 − 30 分より前から）。
     """
     window_ms = int(window_h * 3_600_000)
     lo = _bisect_ts(trades, t_ms - window_ms)
@@ -215,13 +215,13 @@ def signal_at(trades: list[tuple[int, float, float]], bars1: list[dict], t_ms: i
     if hi == 0:
         return None
     ref = trades[hi - 1][1]
-    done = [b for b in bars1 if b["t"] + CANDLE_MS <= t_ms]
+    done = [b for b in bars if b["t"] + CANDLE_MS <= t_ms]
     sigma = sigma_from_bars(done[-(SIGMA_N + 1):], SIGMA_N)
     if sigma is None:
         return None
     w = bin_sigma * sigma * ref
     vp_lv, vp = volume_profile(trades[lo:hi], t_ms, ref, w, window_ms, candles, trade_from_ms)
-    tpo_lv, tpo = tpo_profile(bars1, t_ms, ref, w, window_ms, CANDLE_MS, TPO_BLOCK)
+    tpo_lv, tpo = tpo_profile(bars, t_ms, ref, w, window_ms, CANDLE_MS, TPO_BLOCK)
     row = {"t": t_ms, "price": ref, "sigma": sigma}
     row.update(level_features(vp_lv, vp, "v", ref, sigma, w, "vp"))
     row.update(level_features(tpo_lv, tpo, "n", ref, sigma, w, "tpo"))
@@ -247,14 +247,17 @@ def signals(trades: list[tuple[int, float, float]], now_ms: int, n_min: int = 60
     ts = [t_last - k * MIN_MS for k in range(n_min - 1, -1, -1)]
     window_ms = int(window_h * 3_600_000)
     back = max(window_ms + CANDLE_MS * TPO_BLOCK, CANDLE_MS * (SIGMA_N + 2))
-    bars1 = bars_at(trades, ts[0] - back, t_last + CANDLE_MS, CANDLE_MS, candles, trade_from_ms)
+    end = t_last // CANDLE_MS * CANDLE_MS + CANDLE_MS
+    extra = (n_min * MIN_MS + CANDLE_MS - 1) // CANDLE_MS * CANDLE_MS  # 窓の最初の分にも σ 用の足がそろうように
+    bars = bars_at(trades, end - back - CANDLE_MS - extra, end, CANDLE_MS, candles, trade_from_ms)
     known = known if known is not None else {}
     out = []
     for t in ts:
         if t not in known:
-            known[t] = signal_at(trades, bars1, t, window_h, candles=candles, trade_from_ms=trade_from_ms)
+            known[t] = signal_at(trades, bars, t, window_h, candles=candles, trade_from_ms=trade_from_ms)
         if known[t] is not None:
             out.append(known[t])
     for t in [k for k in known if k < ts[0]]:  # 窓の外は捨てる
         del known[t]
-    return {"now_ms": now_ms, "window_min": n_min, "keys": list(SIGNAL_KEYS), "minutes": out}
+    return {"now_ms": now_ms, "window_min": n_min, "keys": list(SIGNAL_KEYS), "minutes": out,
+            "sigma_n": SIGMA_N, "candle_min": CANDLE_MS // 60_000}

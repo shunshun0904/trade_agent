@@ -14,6 +14,8 @@ sys.path.insert(0, str(APP))
 import app as dash  # noqa: E402
 import profile_core as core  # noqa: E402
 
+dash.MIN_FETCH_INTERVAL = 10  # テストは 10 秒刻みで進める（本番は REFRESH_SECONDS = 300）
+
 from bbresearch.labeling import TradeTape  # noqa: E402
 from bbresearch.profile import profile_features_at  # noqa: E402
 from bbresearch.profile import value_area as value_area_np  # noqa: E402
@@ -59,39 +61,22 @@ def test_profile_matches_research_implementation():
     assert res["vp_levels"]["val"] < res["vp_levels"]["poc"] < res["vp_levels"]["vah"]
 
 
-def test_compute_three_hours_matches_brute_force():
+def test_compute_default_is_24h_15min_and_matches_brute_force():
     ts, px, amt = synth(seed=9)
     now = int(ts[0] + 49 * H) + 37_000
     trades = list(zip(ts.tolist(), px.tolist(), amt.tolist()))
     res = core.compute(trades, now)
-    assert res["window_h"] == 3.0 and res["candle_ms"] == 60_000 and res["tpo_block_min"] == 5 and res["sigma_n"] == 180
-    # σ は直近 180 本の 1 分足の対数リターンの標準偏差
-    m1 = now // 60_000 * 60_000
-    closes = []
-    for k in range(181, 0, -1):
-        sel = [p for t, p, a in trades if m1 - k * 60_000 <= t < m1 - (k - 1) * 60_000]
-        closes.append(sel[-1] if sel else closes[-1])
-    r = np.diff(np.log(closes))
-    assert res["sigma"] == pytest.approx(r.std(ddof=1), rel=1e-9)
-    assert 180 <= len(res["candles"]) <= 181 and res["candles"][0][0] >= now - 3 * H  # 3 時間 + 形成中の 1 分
+    assert res["window_h"] == 24.0 and res["candle_ms"] == core.BAR_MS and res["tpo_block_min"] == 30 and res["sigma_n"] == 96
+    assert 96 <= len(res["candles"]) <= 97 and res["candles"][0][0] >= now - 24 * H
     w, ref = res["bin_width"], res["price"]
-    # 価格帯別出来高: 3 時間の約定を刻みで数え直す
     acc = {}
     for t, p, a in trades:
-        if now - 3 * H <= t < now:
+        if now - 24 * H <= t < now:
             k = int(np.floor(round((p - ref) / w, 9)))
             acc[k] = acc.get(k, 0.0) + a
     assert sum(r["v"] for r in res["vp"]) == pytest.approx(sum(acc.values()))
     assert all(r["v"] == pytest.approx(acc.get(int(np.floor(round((r["lo"] - ref) / w, 9))), 0.0)) for r in res["vp"])
-    # TPO: 確定した 1 分足を now から過去へ 5 本ずつ（36 区間）
-    m1 = now // 60_000 * 60_000
-    blocks = 0
-    for k in range(36):
-        b_end = m1 - k * 5 * 60_000
-        sel = [(p) for t, p, a in trades if b_end - 5 * 60_000 <= t < b_end]
-        if sel:
-            blocks += 1
-    assert sum(r["n"] for r in res["tpo"]) >= blocks  # 各区間は少なくとも 1 価格帯に 1 を足す
+    assert sum(r["n"] for r in res["tpo"]) >= 48  # 30 分区間 48 個、各区間は少なくとも 1 価格帯に 1 を足す
     assert res["vp_levels"]["val"] <= res["vp_levels"]["poc"] <= res["vp_levels"]["vah"]
 
 
@@ -130,9 +115,9 @@ def test_refresh_fetches_days_first_then_latest_only():
             return {"transactions": [tx(1000 + k, now - 1000 * k) for k in range(60)]}
         return {"transactions": [tx(int(path[-2:]) * 10, now - 2 * H)]}
 
-    c = dash.refresh(None, now, get)  # 保持は 4 時間なので、日付指定は当日だけ
-    assert sorted(calls) == ["/btc_jpy/transactions", "/btc_jpy/transactions/20260103"]
-    assert c["skipped"] == [] and len(c["rows"]) == 61
+    c = dash.refresh(None, now, get)  # 保持は 26 時間なので、日付指定は前日と当日
+    assert sorted(calls) == ["/btc_jpy/transactions", "/btc_jpy/transactions/20260102", "/btc_jpy/transactions/20260103"]
+    assert c["skipped"] == [] and len(c["rows"]) == 62
     calls.clear()
     c2 = dash.refresh(c, now + 5_000, get)       # 10 秒以内は取りに行かない
     assert calls == [] and c2 is c
@@ -226,7 +211,7 @@ def test_page_gets_refresh_interval_and_pauses_when_hidden():
     import re
 
     # React 版（dashboard/web）が置き換え用に埋めた文字列 Number("__REFRESH_SECONDS__") || 10（縮小後は +"..."||10）
-    assert re.search(rf'"{dash.REFRESH_SECONDS}"\s*\)?\s*\|\|\s*30', dash.PAGE)
+    assert re.search(rf'"{dash.REFRESH_SECONDS}"\s*\)?\s*\|\|\s*300', dash.PAGE)
     assert "visibilitychange" in dash.PAGE and "api/signals" in dash.PAGE
 
 
@@ -257,8 +242,9 @@ def test_signal_at_matches_profile_definitions():
     now = int(ts[-1]) + 1
     t = now // core.MIN_MS * core.MIN_MS - 7 * core.MIN_MS
     end = now // core.BAR_MS * core.BAR_MS + core.BAR_MS
-    bars1 = core.bars_at(trades, t - 4 * H, t + core.MIN_MS, core.CANDLE_MS)
-    row = core.signal_at(trades, bars1, t)
+    end = t // core.CANDLE_MS * core.CANDLE_MS + core.CANDLE_MS
+    bars = core.bars_at(trades, end - 26 * H, end, core.CANDLE_MS)
+    row = core.signal_at(trades, bars, t)
     # 同じ時刻の compute（画面の左の列）と同じ水準になる
     ref = core.compute(trades, t)
     assert row["price"] == ref["price"] and abs(row["sigma"] - ref["sigma"]) < 1e-12
@@ -303,8 +289,8 @@ def test_handler_signals_route():
     assert len(body["minutes"]) == 60 and set(body["keys"]) <= set(body["minutes"][-1])
 
 
-def _candle_rows(t0, n, px=10_000_000.0, step=60_000):
-    """[t, o, h, l, c, v] を n 分。価格は少しずつ上がる"""
+def _candle_rows(t0, n, px=10_000_000.0, step=core.BAR_MS):
+    """[t, o, h, l, c, v] を n 本。価格は少しずつ上がる"""
     out = []
     for i in range(n):
         p = px * (1 + 0.0002 * i)
@@ -313,42 +299,41 @@ def _candle_rows(t0, n, px=10_000_000.0, step=60_000):
 
 
 def test_refresh_falls_back_to_candles_when_today_is_missing():
-    now = 1_767_225_600_000 + 50 * H  # 2026-01-03 02:00 UTC（4 時間前は前日）
+    now = 1_767_225_600_000 + 50 * H  # 2026-01-03 02:00 UTC（26 時間前は前日）
     calls = []
 
     def get(path):
         calls.append(path)
         if path.endswith("/transactions"):
             return {"transactions": [tx(1000 + k, now - 1000 * k) for k in range(60)]}
-        if "/candlestick/1min/" in path:
+        if "/candlestick/15min/" in path:
             day = path[-8:]
             t0 = 1_767_225_600_000 + (48 if day == "20260103" else 24) * H
-            return {"candlestick": [{"type": "1min", "ohlcv": [[o, h, l, c, v, t] for t, o, h, l, c, v in _candle_rows(t0, 1440)]}]}
+            return {"candlestick": [{"type": "15min", "ohlcv": [[o, h, l, c, v, t] for t, o, h, l, c, v in _candle_rows(t0, 96)]}]}
         if path.endswith("20260103"):
             raise dash.NoData(f"{path}: HTTP 404")
         return {"transactions": [tx(5, now - 3 * H)]}
 
     c = dash.refresh(None, now, get)
     assert c["trade_from_ms"] == now - 59_000  # 最新 60 件の最初から先はそろっている
-    assert any("/candlestick/1min/20260102" in p for p in calls) and any("/candlestick/1min/20260103" in p for p in calls)
+    assert any("/candlestick/15min/20260102" in p for p in calls) and any("/candlestick/15min/20260103" in p for p in calls)
     assert c["candles"][0][0] >= now - dash.KEEP_MS and c["candles"][-1][0] < now
-    # 次の更新: 最新 60 件に保存済みの最新が入っていれば trade_from は変わらず、1 分足は取り直す
+    # 次の更新: 最新 60 件に保存済みの最新が入っていれば trade_from は変わらず、足は取り直す
     calls.clear()
     c2 = dash.refresh(c, now + 60_000, get)
     assert c2["trade_from_ms"] == c["trade_from_ms"] and any("/candlestick/" in p for p in calls)
-    # 集計: 約定は 1 分しかないが、1 分足で σ と価格帯別出来高がそろう
+    # 集計: 約定は 1 分しかないが、公式の足で σ と価格帯別出来高がそろう
     trades = [(r[1], r[2], r[3]) for r in c2["rows"]]
     res = core.compute(trades, now + 60_000, candles=c2["candles"], trade_from_ms=c2["trade_from_ms"])
     assert "error" not in res, res
-    assert res["approx_until_ms"] == (now - 59_000) // 60_000 * 60_000
-    assert 180 <= len(res["candles"]) <= 181 and res["n_trades_window"] == 60
-    # 補った時間帯の出来高は 1 分足の出来高の合計と一致する（3 時間 = 180 本 × 0.5、ただし約定のある分は除く）
+    assert res["approx_until_ms"] == (now - 59_000) // core.BAR_MS * core.BAR_MS
+    assert 96 <= len(res["candles"]) <= 97 and res["n_trades_window"] == 61  # 前日分 1 件 + 最新 60 件
     cut = res["approx_until_ms"]
-    approx_v = sum(v for t, o, h, l, cl, v in c2["candles"] if now + 60_000 - 3 * H <= t < cut)
+    approx_v = sum(v for t, o, h, l, cl, v in c2["candles"] if now + 60_000 - 24 * H <= t < cut)
     trade_v = sum(a for t, p, a in trades if t >= cut)
     assert sum(r["v"] for r in res["vp"]) == pytest.approx(approx_v + trade_v)
     sig = core.signals(trades, now + 60_000, n_min=5, candles=c2["candles"], trade_from_ms=c2["trade_from_ms"])
-    assert len(sig["minutes"]) == 5
+    assert len(sig["minutes"]) == 5 and sig["candle_min"] == 15
 
 
 def test_refresh_without_gap_keeps_no_candles():
