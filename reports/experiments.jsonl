@@ -2618,3 +2618,7 @@
 {"run_at": "2026-09-25T10:08:06+00:00", "stage": "direction", "trial_hash": "9b7ab50ed497", "code_version": "43aa4a60be8634a4205638b7b8a2c6860a832d66", "key": "direction/A", "test_auc": 0.539647567675232}
 {"run_at": "2026-09-25T10:08:06+00:00", "stage": "direction", "trial_hash": "9b7ab50ed497", "code_version": "43aa4a60be8634a4205638b7b8a2c6860a832d66", "key": "direction/A+B", "test_auc": 0.5415427359026347}
 {"run_at": "2026-09-25T10:08:06+00:00", "stage": "direction", "trial_hash": "9b7ab50ed497", "code_version": "43aa4a60be8634a4205638b7b8a2c6860a832d66", "key": "direction/B_on_bar", "test_auc": 0.5443552250372559}
+{"run_at": "2026-09-26T09:25:44+00:00", "stage": "direction", "trial_hash": "bf10ac52ae27", "code_version": "024eabc6a195ba173cf6b484c38eb023a857154f", "key": "direction/60m/A", "test_auc": 0.5383289423864693}
+{"run_at": "2026-09-26T09:25:44+00:00", "stage": "direction", "trial_hash": "bf10ac52ae27", "code_version": "024eabc6a195ba173cf6b484c38eb023a857154f", "key": "direction/60m/A+B", "test_auc": 0.5390676647859939}
+{"run_at": "2026-09-26T09:25:44+00:00", "stage": "direction", "trial_hash": "bf10ac52ae27", "code_version": "024eabc6a195ba173cf6b484c38eb023a857154f", "key": "direction/60m/A+B+L", "test_auc": 0.5337970215848566}
+{"run_at": "2026-09-26T09:25:44+00:00", "stage": "direction", "trial_hash": "bf10ac52ae27", "code_version": "024eabc6a195ba173cf6b484c38eb023a857154f", "key": "direction/60m/B_on_bar", "test_auc": 0.5389151022451404}
