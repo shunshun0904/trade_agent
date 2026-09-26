@@ -15,7 +15,7 @@
   - `val_rule.yml`: ルール A（VAL での反発）を固定した数値で全期間1回評価（`configs/val_rule.yaml`）
   - `direction.yml`: 15 分後の上げ下げを予測する二段構えのモデル（A: 15 分ごと、B: 1 分ごと）を 2024 年より前で学習し、2024 年以降で1回評価（`configs/direction.yaml`）
   - `direction_1h.yml`: 同じモデルの 1 時間版。毎正時に判断し、1 分ごとの TPO×価格帯別出来高のシグナルの直近 60 分の推移を加える（`configs/direction_1h.yaml`）
-  - `direction_cost.yml`: 目的変数を「成行往復の費用（約 0.3%）を超えて上がるか」にした版を 15 分と 1 時間で実行（`configs/direction_cost.yaml`、`direction_1h_cost.yaml`）
+  - `direction_cost.yml`: 目的変数を「成行往復の費用（約 0.3%）を超えて上がるか」にし、下げ側も学習して差を信号にする版を 15 分と 1 時間で実行（`configs/direction_cost.yaml`、`direction_1h_cost.yaml`）
   - `recorder.yml`: 板・約定の記録。約 5 時間 45 分ごとに次のジョブを自分で起動して連続させ、成果物（90 日）に保存する。止めるには `configs/recorder.yaml` の `enabled: false`
   - `auth-check.yml`: 認証付き API の疎通確認（参照系のみ）。キーは Secrets `bitbank_API` / `bitbank_secret` から読む
 - `dashboard/`: TPO・価格帯別出来高のダッシュボード（AWS: API Gateway + Lambda + S3、SAM）。`dashboard/deploy.sh` を AWS CloudShell で実行してデプロイする。Lambda は標準ライブラリだけで書き、計算が `bbresearch/profile.py` と一致することを `tests/test_dashboard.py` で照合している。`dashboard/web/` は React 版の画面（Vite）。TPO・価格帯別出来高に 1 分ごとのシグナルの 60 分の推移と毎正時の判断を並べる。`/api/signals` は未実装（形は `web/src/api.js`）

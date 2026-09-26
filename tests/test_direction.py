@@ -216,3 +216,26 @@ def test_run_direction_cost_target(tmp_path):
     assert rows[1]["top_frac"] == 0.1 and abs(rows[1]["coverage"] - 0.1) < 0.03
     md = render(rep)
     assert "0.30% を超えて上がるか" in md and "上位 10%" in md
+    assert "two_sided" not in rep
+
+
+def test_run_direction_two_sided(tmp_path):
+    write_trades(tmp_path / "data", "btc_jpy", synth_trades("2026-01-01", 9, seed=8, per_min=3, vol=0.002))
+    cfg = yaml.safe_load(CFG.read_text())
+    cfg["data"].update(root=str(tmp_path / "data"), start="2026-01-01", end="2026-01-09")
+    cfg["experiment_log"] = str(tmp_path / "experiments.jsonl")
+    cfg["pair_spec"] = SPEC
+    spec = {"train_end": "2026-01-07", "n_splits": 3, "thetas": [0.5], "top_fracs": [0.2], "diff_thetas": [0.0],
+            "n_boot": 10, "horizon_min": 60, "target_min_return": "taker_round_trip", "two_sided": True,
+            "level_summary": True}
+    rep = run_direction(cfg, spec, workers=2)
+    ts = rep["two_sided"]
+    assert 0 < ts["base_rate_down_test"] < 0.5
+    assert set(ts["test_down"]) == {"B_all_minutes", "A", "A+B", "A+B+L", "B_on_bar"}
+    assert set(ts["pnl_diff"]) == {"A", "A+B", "A+B+L", "B_on_bar"}
+    rows = ts["pnl_diff"]["A"]
+    assert rows[0]["theta"] == 0.0 and rows[1]["top_frac"] == 0.2 and abs(rows[1]["coverage"] - 0.2) < 0.03
+    assert -1 <= ts["corr_up_down_test"]["A"] <= 1 and "0.2" in ts["bottom_mean_r"]["A"]
+    md = render(rep)
+    assert "下げ側" in md and "上げ確率 − 下げ確率" in md and md.rstrip().endswith("0.0005")
+    assert "two_sided/A" in (tmp_path / "experiments.jsonl").read_text()

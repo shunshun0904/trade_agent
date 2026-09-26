@@ -1,4 +1,4 @@
-# 目的変数を「費用（成行往復 約 0.3%）を超えて上がるか」に変えた二段構えのモデルを 15 分と 1 時間で学習し、2024 年以降で1回評価する。公開 API のみ、認証不要。
+# 目的変数を「費用（成行往復 約 0.3%）を超えて上がるか」に変え、下げ側も学習して差を信号にする二段構えのモデルを 15 分と 1 時間で学習し、2024 年以降で1回評価する。公開 API のみ、認証不要。
 # 実行方法: API の workflow_dispatch（ref にこのブランチを指定）か、configs/direction_cost.yaml か configs/direction_1h_cost.yaml を変更して push する。
 name: direction-cost
 on:
@@ -14,7 +14,7 @@ concurrency:
 jobs:
   direction-cost:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
+    timeout-minutes: 355
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

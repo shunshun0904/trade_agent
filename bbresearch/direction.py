@@ -390,50 +390,59 @@ def run_direction(cfg: dict, spec: dict, workers: int | None = None) -> dict:
     is_te = t_ms >= int(train_end.value // 1_000_000)
     n_splits = int(spec.get("n_splits", 5))
 
-    # モデル B（1 分ごと）
-    log.info("モデル B: 学習 %d、評価 %d", int(is_tr.sum()), int(is_te.sum()))
-    Xb_tr, Xb_te = F.loc[is_tr, feat_cols], F.loc[is_te, feat_cols]
-    yb_tr, yb_te = F.loc[is_tr, "y"].to_numpy(int), F.loc[is_te, "y"].to_numpy(int)
-    oof_b, test_b, folds_b = oof_and_final(Xb_tr, yb_tr, t_ms[is_tr], Xb_te, n_splits, h_ms)
-    pred_b = pd.Series(np.concatenate([oof_b, test_b]), index=np.concatenate([t_ms[is_tr], t_ms[is_te]]))
-
-    # モデル A（h 分ごと）。h の区切りの時刻だけ
     on_bar = (t_ms % h_ms) == 0
     a_tr, a_te = is_tr & on_bar, is_te & on_bar
     ta_tr, ta_te = t_ms[a_tr], t_ms[a_te]
-    ya_tr, ya_te = F.loc[a_tr, "y"].to_numpy(int), F.loc[a_te, "y"].to_numpy(int)
     ra_te = F.loc[a_te, "r"].to_numpy()
     XA_tr, XA_te = F.loc[a_tr, feat_cols], F.loc[a_te, feat_cols]
-    SB_tr, SB_te = stack_features(pred_b, ta_tr, h_min), stack_features(pred_b, ta_te, h_min)
-    variants = {"A": (XA_tr, XA_te),
-                "A+B": (pd.concat([XA_tr, SB_tr.set_axis(XA_tr.index)], axis=1),
-                        pd.concat([XA_te, SB_te.set_axis(XA_te.index)], axis=1))}
-    if use_levels:
-        LS_tr, LS_te = level_summary(levels, ta_tr, h_min), level_summary(levels, ta_te, h_min)
-        variants["A+B+L"] = (pd.concat([variants["A+B"][0], LS_tr.set_axis(XA_tr.index)], axis=1),
-                             pd.concat([variants["A+B"][1], LS_te.set_axis(XA_te.index)], axis=1))
-    log.info("モデル A: 学習 %d、評価 %d、変種 %s", len(XA_tr), len(XA_te), list(variants))
-    oof, test, folds = {}, {}, {}
-    for name, (Xtr, Xte) in variants.items():
-        oof[name], test[name], folds[name] = oof_and_final(Xtr, ya_tr, ta_tr, Xte, n_splits, h_ms)
-    log.info("学習を終了、最大メモリ %.1f GB", _peak_gb())
+    LS = (level_summary(levels, ta_tr, h_min), level_summary(levels, ta_te, h_min)) if use_levels else None
+
+    def fit_side(y_all: np.ndarray, label: str) -> dict:
+        """B（1 分ごと）と A の変種（A、A+B、A+B+L）を 1 つの正解で学習し、予測と指標を返す。"""
+        yb_tr, yb_te = y_all[is_tr].astype(int), y_all[is_te].astype(int)
+        log.info("モデル B（%s）: 学習 %d、評価 %d", label, int(is_tr.sum()), int(is_te.sum()))
+        oof_b, test_b, folds_b = oof_and_final(F.loc[is_tr, feat_cols], yb_tr, t_ms[is_tr], F.loc[is_te, feat_cols],
+                                               n_splits, h_ms)
+        pred_b = pd.Series(np.concatenate([oof_b, test_b]), index=np.concatenate([t_ms[is_tr], t_ms[is_te]]))
+        ya_tr, ya_te = y_all[a_tr].astype(int), y_all[a_te].astype(int)
+        SB_tr, SB_te = stack_features(pred_b, ta_tr, h_min), stack_features(pred_b, ta_te, h_min)
+        variants = {"A": (XA_tr, XA_te),
+                    "A+B": (pd.concat([XA_tr, SB_tr.set_axis(XA_tr.index)], axis=1),
+                            pd.concat([XA_te, SB_te.set_axis(XA_te.index)], axis=1))}
+        if LS is not None:
+            variants["A+B+L"] = (pd.concat([variants["A+B"][0], LS[0].set_axis(XA_tr.index)], axis=1),
+                                 pd.concat([variants["A+B"][1], LS[1].set_axis(XA_te.index)], axis=1))
+        log.info("モデル A（%s）: 学習 %d、評価 %d、変種 %s", label, len(XA_tr), len(XA_te), list(variants))
+        oof, test, folds = {}, {}, {}
+        for name, (Xtr, Xte) in variants.items():
+            oof[name], test[name], folds[name] = oof_and_final(Xtr, ya_tr, ta_tr, Xte, n_splits, h_ms)
+        test["B_on_bar"] = pred_b.reindex(ta_te).to_numpy()
+        cv = {"B": {k: v for k, v in metrics(yb_tr, oof_b).items() if k != "calibration"}, "B_folds": folds_b}
+        for name in variants:
+            cv[name] = {k: v for k, v in metrics(ya_tr, oof[name]).items() if k != "calibration"}
+            cv[f"{name}_folds"] = folds[name]
+        te = {"B_all_minutes": metrics(yb_te, test_b), **{name: metrics(ya_te, test[name]) for name in test}}
+        log.info("学習を終了（%s）、最大メモリ %.1f GB", label, _peak_gb())
+        return {"ya_tr": ya_tr, "ya_te": ya_te, "variants": variants, "oof": oof, "test": test, "cv": cv, "metrics": te}
+
+    up = fit_side(F["y"].to_numpy(), "上げ")
+    ya_te, variants, test = up["ya_te"], up["variants"], up["test"]
+    two_sided = bool(spec.get("two_sided", False)) and min_ret > 0
+    dn = None
+    if two_sided:  # 下げ側: r < −c を 1 とする同じモデル（2026-09-26 オーナー指示）
+        dn = fit_side(np.where(F["r"].to_numpy() < -min_ret, 1.0, 0.0), "下げ")
 
     thetas = list(spec.get("thetas", [0.55, 0.6]))
     top_fracs = list(spec.get("top_fracs", []))
-    b_on_bar = pred_b.reindex(ta_te).to_numpy()
 
-    def pnl_rows(p):
-        rows = [pnl(p, ra_te, th, fees, slip) for th in thetas]
+    def pnl_rows(p, ths=None):
+        rows = [pnl(p, ra_te, th, fees, slip) for th in (thetas if ths is None else ths)]
         for f in top_fracs:  # 評価期間の予測確率の上位 f（順位で選ぶ）。しきい値を評価期間で決めるので、説明用
             k = max(1, int(round(f * len(p))))
             top = np.zeros(len(p), bool)
             top[np.argsort(-p, kind="stable")[:k]] = True
             rows.append({**pnl(p, ra_te, float(p[top].min()), fees, slip, sel=top), "top_frac": f})
         return rows
-    cv = {"B": {k: v for k, v in metrics(yb_tr, oof_b).items() if k != "calibration"}, "B_folds": folds_b}
-    for name in variants:
-        cv[name] = {k: v for k, v in metrics(ya_tr, oof[name]).items() if k != "calibration"}
-        cv[f"{name}_folds"] = folds[name]
     res = {
         "run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "horizon_min": h_min,
@@ -442,14 +451,28 @@ def run_direction(cfg: dict, spec: dict, workers: int | None = None) -> dict:
         "base_rate_test": float(ya_te.mean()) if len(ya_te) else None,
         "features": feat_cols,
         "variant_features": {name: list(Xtr.columns) for name, (Xtr, _) in variants.items()},
-        "cv": cv,
-        "test": {"B_all_minutes": metrics(yb_te, test_b), "B_on_bar": metrics(ya_te, b_on_bar),
-                 **{name: metrics(ya_te, test[name]) for name in variants}},
+        "cv": up["cv"],
+        "test": up["metrics"],
         "target_min_return": min_ret,
-        "pnl_test": {name: pnl_rows(p) for name, p in (*test.items(), ("B_on_bar", b_on_bar))},
+        "pnl_test": {name: pnl_rows(p) for name, p in test.items()},
         "unconditional_test": pnl(np.ones(len(ra_te)), ra_te, 0.0, fees, slip),
         "fees": {"maker": fees[0], "taker": fees[1], "s_slip": slip},
     }
+    if dn is not None:
+        # 信号 = P(上げ > c) − P(下げ > c)。同じ変種どうしの差
+        diff = {name: test[name] - dn["test"][name] for name in test}
+        diff_thetas = list(spec.get("diff_thetas", [0.05, 0.1, 0.2]))
+        res["two_sided"] = {
+            "base_rate_down_test": float(dn["ya_te"].mean()) if len(dn["ya_te"]) else None,
+            "cv_down": dn["cv"], "test_down": dn["metrics"],
+            "corr_up_down_test": {name: float(np.corrcoef(test[name], dn["test"][name])[0, 1]) for name in test},
+            "diff_stats": {name: {"mean": float(d.mean()), "std": float(d.std()), "p95": float(np.percentile(d, 95))}
+                           for name, d in diff.items()},
+            # 差が正の側（買い）。差が小さい側は空売りできないので、値動きの平均だけ参考に出す
+            "pnl_diff": {name: pnl_rows(d, diff_thetas) for name, d in diff.items()},
+            "bottom_mean_r": {name: {str(f): float(np.mean(ra_te[np.argsort(d, kind="stable")[:max(1, int(round(f * len(d))))]]))
+                                     for f in top_fracs} for name, d in diff.items()},
+        }
     # AUC の差（各変種 − A）の日単位ブロック・ブートストラップ
     days = (ta_te // (24 * H_MS)).astype(np.int64)
     uniq = np.unique(days)
@@ -473,9 +496,10 @@ def run_direction(cfg: dict, spec: dict, workers: int | None = None) -> dict:
     log_path = Path(cfg.get("experiment_log", "reports/experiments.jsonl"))
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("a") as fh:
-        for name in (*variants, "B_on_bar"):
+        for name in test:
             fh.write(json.dumps({"run_at": res["run_at"], "stage": "direction", "trial_hash": th,
-                                 "code_version": os.environ.get("GITHUB_SHA"), "key": f"direction/{h_min}m/r>{min_ret:.4f}/{name}",
+                                 "code_version": os.environ.get("GITHUB_SHA"),
+                                 "key": f"direction/{h_min}m/r>{min_ret:.4f}/{'two_sided/' if dn else ''}{name}",
                                  "test_auc": res["test"][name].get("auc")}) + "\n")
     res["trial_hash"] = th
     return res
@@ -521,6 +545,29 @@ def render(rep: dict) -> str:
     u = rep["unconditional_test"]
     md.append(f"| 常に買う | - | 100% | {u['taker'].get('n', 0)} | {_p(u['taker'].get('mean'))} | "
               f"{_p(u['taker'].get('t'), False)} | {_p(u['taker'].get('win'))[1:]} | {_p(u['maker_upper'].get('mean'))} |")
+    if "two_sided" in rep:
+        ts = rep["two_sided"]
+        md.append(f"\n## 下げ側（{h} 分後に {mr * 100:.2f}% を超えて下がるか）と、上げ − 下げの信号\n")
+        md.append(f"評価期間で下げ側の 1 の割合: {_p(ts['base_rate_down_test'])[1:]}\n")
+        md.append("| モデル | 上げ側 AUC | 下げ側 AUC | 上げ確率と下げ確率の相関 | 差の平均 | 差の標準偏差 |\n|---|---|---|---|---|---|")
+        for name in rep["test"]:
+            if name == "B_all_minutes":
+                md.append(f"| B（1 分ごと、全時刻） | {_p(rep['test'][name].get('auc'), False)} | {_p(ts['test_down'][name].get('auc'), False)} | - | - | - |")
+                continue
+            c, d = ts["corr_up_down_test"][name], ts["diff_stats"][name]
+            md.append(f"| {name} | {_p(rep['test'][name].get('auc'), False)} | {_p(ts['test_down'][name].get('auc'), False)} | "
+                      f"{_p(c, False)} | {_p(d['mean'], False)} | {_p(d['std'], False)} |")
+        md.append(f"\n### 信号（上げ確率 − 下げ確率）がしきい値以上で買い {h} 分後に売る\n")
+        md.append("| モデル | しきい値 | 発注割合 | 取引 | 成行往復の平均 | t 値 | 勝率 | 手数料・滑りなしの平均（上限） |\n|---|---|---|---|---|---|---|---|")
+        for name, rows in ts["pnl_diff"].items():
+            for r in rows:
+                tk, mk = r["taker"], r["maker_upper"]
+                th = f"上位 {r['top_frac'] * 100:.0f}%（{r['theta']:.3f}）" if "top_frac" in r else f"{r['theta']}"
+                md.append(f"| {name} | {th} | {_p(r['coverage'])[1:]} | {tk.get('n', 0)} | {_p(tk.get('mean'))} | "
+                          f"{_p(tk.get('t'), False)} | {_p(tk.get('win'))[1:]} | {_p(mk.get('mean'))} |")
+        md.append("\n参考: 信号が最も低い側（空売りはできないので取引しない）の値動きの平均（手数料なし）")
+        for name, d in ts["bottom_mean_r"].items():
+            md.append(f"- {name}: " + "、".join(f"下位 {float(f) * 100:.0f}% {_p(v)}" for f, v in d.items()))
     md.append(f"\n手数料: メイカー {rep['fees']['maker']}、テイカー {rep['fees']['taker']}、成行の滑り {rep['fees']['s_slip']}")
     return "\n".join(md) + "\n"
 
