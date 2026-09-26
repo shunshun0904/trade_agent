@@ -15,7 +15,7 @@ import numpy as np
 import pandas as pd
 
 from bbdata.client import BitbankAPIError, PublicClient
-from bbresearch.portfolio import best_combination, shrunk_cov, shrunk_mean, strategy_name, summary, walk_forward
+from bbresearch.portfolio import best_combination, shrunk_cov, shrunk_mean, strategy_name, summary, walk_forward, yearly
 
 POOL = ["btc_jpy", "xrp_jpy", "eth_jpy", "doge_jpy", "sol_jpy", "xlm_jpy", "link_jpy", "ada_jpy", "bcc_jpy",
         "ltc_jpy", "avax_jpy", "trx_jpy", "bnb_jpy", "dot_jpy", "pol_jpy"]
@@ -97,12 +97,16 @@ def main() -> None:
         st["rebalances_per_year"] = len(res.weights[s]) / max(1e-9, st["days"] / 365)
         md.append(f"| {label(s)} | {st['ann_vol']:.1%} | {st['ann_return']:.1%} | {st['sharpe']:.2f} | "
                   f"{st['max_drawdown']:.1%} | {st['worst_day']:.1%} | {st['total']:+.0%} | {cash:.0%} | {st['rebalances_per_year']:.0f} |")
-    # 年ごとのボラ
-    md.append("\n## 年ごとの年率ボラ\n")
-    md.append("| 年 | " + " | ".join(label(s) for s in stats) + " |")
-    md.append("|---|" + "---|" * len(stats))
-    for y, g in res.daily.groupby(res.daily.index.year):
-        md.append(f"| {y} | " + " | ".join(f"{g[s].std(ddof=1) * np.sqrt(365):.1%}" for s in stats) + " |")
+    # 年ごとのボラ・リターン・最大ドローダウン（リターンはその年の累積で、年率化しない。最大 DD はその年の中で測る）
+    yr = {s: yearly(res.daily[s]) for s in stats}
+    for title, col, fmt in [("年ごとの年率ボラ", "ann_vol", "{:.1%}"), ("年ごとのリターン（その年の累積）", "return", "{:+.1%}"),
+                            ("年ごとの最大ドローダウン（その年の中で）", "max_drawdown", "{:.1%}")]:
+        md.append(f"\n## {title}\n")
+        md.append("| 年 | " + " | ".join(label(s) for s in stats) + " |")
+        md.append("|---|" + "---|" * len(stats))
+        for y in sorted(set().union(*[set(v.index) for v in yr.values()])):
+            md.append(f"| {y} | " + " | ".join(fmt.format(yr[s].loc[y, col]) if y in yr[s].index and yr[s].loc[y, col] is not None else "-"
+                                                 for s in stats) + " |")
     # 選ばれた回数
     md.append("\n## 選ばれた回数（最小分散、目標なし）\n")
     cnt: dict[str, int] = {}
@@ -126,7 +130,7 @@ def main() -> None:
     out = Path("reports/portfolio")
     out.mkdir(parents=True, exist_ok=True)
     (out / "report.md").write_text(text)
-    (out / "weights.json").write_text(json.dumps({"walk_forward": res.weights, "now": now, "stats": stats},
+    (out / "weights.json").write_text(json.dumps({"walk_forward": res.weights, "now": now, "stats": stats, "yearly": {s: v.reset_index().to_dict("records") for s, v in yr.items()}},
                                                  ensure_ascii=False, indent=1))
     print(text)
 

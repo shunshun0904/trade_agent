@@ -207,6 +207,18 @@ def summary(r: pd.Series) -> dict:
             "max_drawdown": float(dd), "worst_day": float(r.min()), "total": float(np.exp(r.sum()) - 1)}
 
 
+def yearly(r: pd.Series) -> pd.DataFrame:
+    """年ごとのリターン（その年の累積。年率化しない）、年率ボラ、その年の中での最大ドローダウン。"""
+    r = r.dropna()
+    rows = []
+    for y, g in r.groupby(r.index.year):
+        eq = np.exp(g.cumsum())
+        rows.append({"year": int(y), "days": int(len(g)), "return": float(np.exp(g.sum()) - 1),
+                     "ann_vol": float(g.std(ddof=1) * np.sqrt(DAYS_PER_YEAR)) if len(g) > 1 else None,
+                     "max_drawdown": float((eq / eq.cummax() - 1).min())})
+    return pd.DataFrame(rows).set_index("year")
+
+
 def current_weights(close: pd.DataFrame, k_max: int = 5, w_max: float = 0.4, caps: dict[str, float] | None = None,
                     target_vol: float | None = 0.30, est_days: int = 365) -> dict:
     """直近 est_days 日で推定した今の重み（ペア → 割合）と JPY の割合、推定ボラ。scripts/rebalance.py が使う。"""

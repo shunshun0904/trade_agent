@@ -148,3 +148,19 @@ def test_weekly_cash_adjustment_keeps_selection_monthly():
             assert abs(w["cash"] - m["cash"]) < 1e-9
     # 日次リターンの合計日数は同じ
     assert res.daily["minvar_vt30"].notna().sum() == res.daily["minvar_vt30_c7"].notna().sum()
+
+
+def test_yearly_return_and_drawdown_within_each_year():
+    import numpy as np
+    import pandas as pd
+
+    from bbresearch.portfolio import yearly
+
+    idx = pd.date_range("2024-12-30", periods=5, freq="D", tz="UTC")
+    r = pd.Series(np.log([1.1, 0.9, 1.2, 0.8, 1.0]), index=idx)  # 2024: 2 日, 2025: 3 日
+    y = yearly(r)
+    assert list(y.index) == [2024, 2025] and y.loc[2024, "days"] == 2 and y.loc[2025, "days"] == 3
+    assert abs(y.loc[2024, "return"] - (1.1 * 0.9 - 1)) < 1e-9
+    assert abs(y.loc[2025, "return"] - (1.2 * 0.8 - 1)) < 1e-9
+    assert abs(y.loc[2024, "max_drawdown"] - (0.9 - 1)) < 1e-9  # 前年の高値は持ち越さない
+    assert abs(y.loc[2025, "max_drawdown"] - (0.8 - 1)) < 1e-9
