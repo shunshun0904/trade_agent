@@ -108,27 +108,63 @@ def _month_starts(index: pd.DatetimeIndex, start) -> list[pd.Timestamp]:
     return [d for i, d in enumerate(idx) if i == 0 or d.month != idx[i - 1].month]
 
 
-def strategy_name(m, v, vd=None) -> str:
+def strategy_name(m, v, vd=None, cf=None) -> str:
     return (("minvar" if m is None else f"minvar_x{m}") + ("" if v is None else f"_vt{int(round(v * 100))}")
-            + ("" if vd is None or v is None else f"_w{vd}"))
+            + ("" if vd is None or v is None else f"_w{vd}") + ("" if cf is None or v is None else f"_c{cf}"))
+
+
+def _segments(d0: pd.Timestamp, d1: pd.Timestamp, index: pd.DatetimeIndex, every_days: int | None) -> list[tuple]:
+    """[d0, d1) を every_days 日ごとに区切る（None なら区切らない）。各区切りの開始は index にある日。"""
+    if every_days is None:
+        return [(d0, d1)]
+    days = index[(index >= d0) & (index < d1)]
+    bounds = [days[i] for i in range(0, len(days), every_days)]
+    return [(b, bounds[i + 1] if i + 1 < len(bounds) else d1) for i, b in enumerate(bounds)]
 
 
 def walk_forward(close: pd.DataFrame, start, k_max: int = 5, w_max: float = 0.4,
                  target_mults: tuple = (None, 1.0, 1.5), est_days: int = 365, cost: float = 0.0015,
                  benchmark: str = "btc_jpy", caps: dict[str, float] | None = None,
-                 vol_targets: tuple = (None,), vol_days: tuple = (None,)) -> WalkForwardResult:
+                 vol_targets: tuple = (None,), vol_days: tuple = (None,),
+                 cash_freq_days: tuple = (None,)) -> WalkForwardResult:
     """close は日足の終値（列 = ペア、index = 日付）。毎月初に直前 est_days 日で推定し、翌月を保有する。
 
-    vol_targets の各 v（年率）について、推定ボラが v を超える月は暗号資産の比率を v / 推定ボラ に落とし、残りを JPY で持つ。
+    vol_targets の各 v（年率）について、推定ボラが v を超えるときは暗号資産の比率を v / 推定ボラ に落とし、残りを JPY で持つ。
+    cash_freq_days に 7 を入れると、銘柄と相対の重みは月 1 回のまま、JPY に縮める比率だけ 7 日ごとに見直す
+    （2026-09-27 オーナー決定）。None は月 1 回。
     """
     ret = np.log(close).diff()
     starts = _month_starts(close.index, start)
     names = {f"minvar_x{m}" if m is not None else "minvar": m for m in target_mults}
-    combos = [(m, v, vd) for m in target_mults for v in vol_targets for vd in (vol_days if v is not None else (None,))]
-    strategies = list(dict.fromkeys(strategy_name(m, v, vd) for m, v, vd in combos)) + ["equal", benchmark]
+    combos = [(m, v, vd, cf) for m in target_mults for v in vol_targets
+              for vd in (vol_days if v is not None else (None,)) for cf in (cash_freq_days if v is not None else (None,))]
+    strategies = list(dict.fromkeys(strategy_name(*c) for c in combos)) + ["equal", benchmark]
     daily = {s: pd.Series(0.0, index=close.index[close.index >= starts[0]]) for s in strategies}
     weights = {s: [] for s in strategies}
     prev_w = {s: pd.Series(dtype=float) for s in strategies}
+
+    def apply(s: str, w: pd.Series, s0, s1) -> None:
+        """[s0, s1) を重み w で保有し、初日に回転率 × cost を引く。"""
+        w = w.reindex(close.columns).fillna(0.0)
+        hold = ret[(ret.index >= s0) & (ret.index < s1)]
+        turnover = float((w - prev_w[s].reindex(close.columns).fillna(0.0)).abs().sum())
+        r = (hold[w.index].fillna(0.0) * w).sum(axis=1)
+        if len(r):
+            r.iloc[0] -= turnover * cost
+        daily[s].loc[r.index] = r
+        weights[s].append({"date": pd.Timestamp(s0).strftime("%Y-%m-%d"),
+                           "weights": {k: round(float(v), 4) for k, v in w[w > 1e-6].items()},
+                           "cash": round(float(max(0.0, 1.0 - w.sum())), 4)})
+        prev_w[s] = w
+
+    def vol_scale(wv: np.ndarray, avail: list[str], t0, v: float, vd, cov_full: np.ndarray) -> float:
+        """t0 より前の直近 vd 日（None なら est_days 日）で推定した年率ボラに対する縮め率。"""
+        days = est_days if vd is None else min(vd, est_days)
+        win = ret[(ret.index < t0) & (ret.index >= t0 - pd.Timedelta(days=days))][avail].dropna()
+        cov_v = shrunk_cov(win.to_numpy()) if len(win) >= 20 else cov_full
+        est_vol = float(np.sqrt(wv @ cov_v @ wv * DAYS_PER_YEAR))
+        return 1.0 if est_vol <= v else v / est_vol
+
     for j, d0 in enumerate(starts):
         d1 = starts[j + 1] if j + 1 < len(starts) else close.index[-1] + pd.Timedelta(days=1)
         est = ret[(ret.index < d0) & (ret.index >= d0 - pd.Timedelta(days=est_days))]
@@ -138,8 +174,6 @@ def walk_forward(close: pd.DataFrame, start, k_max: int = 5, w_max: float = 0.4,
         R = est[avail].dropna().to_numpy()
         cov, mu = shrunk_cov(R), shrunk_mean(R)
         mu_ew = float(mu.mean())
-        hold = ret[(ret.index >= d0) & (ret.index < d1)]
-        chosen: dict[str, pd.Series] = {}
         for s, m in names.items():
             tgt = None if m is None else mu_ew * m
             best = best_combination(cov, mu, avail, k_max, tgt, w_max, caps)
@@ -149,29 +183,16 @@ def walk_forward(close: pd.DataFrame, start, k_max: int = 5, w_max: float = 0.4,
                 w_r = pd.Series(best["weights"], index=best["names"])
             wv = w_r.reindex(avail).fillna(0.0).to_numpy()
             for v in vol_targets:
-                for vd in (vol_days if v is not None else (None,)):
-                    if vd is None or vd >= est_days:
-                        cov_v = cov
-                    else:
-                        short = est[avail].dropna()
-                        short = short[short.index >= d0 - pd.Timedelta(days=vd)]
-                        cov_v = shrunk_cov(short.to_numpy()) if len(short) >= 20 else cov
-                    est_vol = float(np.sqrt(wv @ cov_v @ wv * DAYS_PER_YEAR))
-                    scale = 1.0 if v is None or est_vol <= v else v / est_vol
-                    chosen[strategy_name(m, v, vd)] = w_r * scale  # 残り 1 − scale は JPY
-        chosen["equal"] = pd.Series(1.0 / len(avail), index=avail)
-        chosen[benchmark] = pd.Series({benchmark: 1.0})
-        for s, w in chosen.items():
-            w = w.reindex(close.columns).fillna(0.0)
-            turnover = float((w - prev_w[s].reindex(close.columns).fillna(0.0)).abs().sum())
-            # 月内は重みを固定した日次リバランスとみなす（単純和）。初日に費用を引く
-            r = (hold[w.index].fillna(0.0) * w).sum(axis=1)
-            if len(r):
-                r.iloc[0] -= turnover * cost
-            daily[s].loc[r.index] = r
-            weights[s].append({"date": d0.strftime("%Y-%m-%d"), "weights": {k: round(float(v), 4) for k, v in w[w > 1e-6].items()},
-                               "cash": round(float(max(0.0, 1.0 - w.sum())), 4)})
-            prev_w[s] = w
+                if v is None:
+                    apply(strategy_name(m, None), w_r, d0, d1)
+                    continue
+                for vd in vol_days:
+                    for cf in cash_freq_days:
+                        name = strategy_name(m, v, vd, cf)
+                        for s0, s1 in _segments(d0, d1, close.index, cf):
+                            apply(name, w_r * vol_scale(wv, avail, s0, v, vd, cov), s0, s1)  # 残りは JPY
+        apply("equal", pd.Series(1.0 / len(avail), index=avail), d0, d1)
+        apply(benchmark, pd.Series({benchmark: 1.0}), d0, d1)
     return WalkForwardResult(daily=pd.DataFrame(daily), weights=weights)
 
 

@@ -116,8 +116,35 @@ def test_short_vol_window_reacts_to_regime_change():
     res = walk_forward(close, "2021-01-01", k_max=3, w_max=0.5, target_mults=(None,), est_days=300,
                        vol_targets=(0.3,), vol_days=(None, 60), caps={"btc_jpy": 0.6})
     assert {"minvar_vt30", "minvar_vt30_w60"} <= set(res.daily.columns)
+    assert set(res.weights["minvar_vt30"][0]) == {"date", "weights", "cash"}
     long_w = {w["date"]: w["cash"] for w in res.weights["minvar_vt30"]}
     short_w = {w["date"]: w["cash"] for w in res.weights["minvar_vt30_w60"]}
     # ボラが上がった後の月は、短い窓のほうが早く JPY を増やす
     late = [d for d in long_w if d >= "2021-10-01"]
     assert late and all(short_w[d] >= long_w[d] - 1e-9 for d in late) and any(short_w[d] > long_w[d] + 0.05 for d in late)
+
+
+def test_weekly_cash_adjustment_keeps_selection_monthly():
+    rng = np.random.default_rng(7)
+    idx = pd.date_range("2020-01-01", periods=700, freq="D", tz="UTC")
+    cols = ["btc_jpy", "a_jpy", "b_jpy", "c_jpy"]
+    r = rng.normal(0, 0.04, size=(700, 4)) + rng.normal(0, 0.03, size=(700, 1))
+    close = pd.DataFrame(np.exp(np.cumsum(r, axis=0)) * 100, index=idx, columns=cols)
+    res = walk_forward(close, "2021-01-01", k_max=3, w_max=0.5, target_mults=(None,), est_days=300,
+                       vol_targets=(0.3,), cash_freq_days=(None, 7), caps={"btc_jpy": 0.6})
+    monthly, weekly = res.weights["minvar_vt30"], res.weights["minvar_vt30_c7"]
+    assert len(weekly) > 3 * len(monthly)  # 月に 4〜5 回
+    # 同じ月の中では銘柄と相対の重みが同じ（JPY の比率だけ違う）
+    for w in weekly:
+        m = [x for x in monthly if x["date"][:7] == w["date"][:7]][0]
+        assert set(w["weights"]) == set(m["weights"])
+        rm = {k: v / (1 - m["cash"]) for k, v in m["weights"].items()}
+        rw = {k: v / (1 - w["cash"]) for k, v in w["weights"].items()}
+        assert all(abs(rm[k] - rw[k]) < 5e-3 for k in rm)
+    # 月初の区切りは月次と同じ比率
+    for w in weekly:
+        if w["date"] in {m["date"] for m in monthly}:
+            m = [x for x in monthly if x["date"] == w["date"]][0]
+            assert abs(w["cash"] - m["cash"]) < 1e-9
+    # 日次リターンの合計日数は同じ
+    assert res.daily["minvar_vt30"].notna().sum() == res.daily["minvar_vt30_c7"].notna().sum()

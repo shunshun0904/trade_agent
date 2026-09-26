@@ -23,7 +23,8 @@ START, K_MAX, W_MAX, COST = "2021-01-01", 5, 0.4, 0.0015
 CAPS = {"btc_jpy": 0.6}          # 2026-09-27 オーナー決定: BTC は 60% まで、他は 40% まで
 TARGETS = (None, 1.0)            # 期待リターンの目標: なし / 均等配分と同じ（× 1.5 は前回の検証で悪化したので外す）
 VOL_TARGETS = (None, 0.30, 0.20)  # 目標ボラ（年率）。超える月は JPY を混ぜる
-VOL_DAYS = (None, 90)             # 縮める比率に使うボラの推定窓（None = 365 日、90 日は急変への追随が速い）
+VOL_DAYS = (None,)                # 縮める比率に使うボラの推定窓（None = 365 日。90 日は 3 回目の検証で劣ったので外した）
+CASH_FREQ = (None, 7)             # JPY に縮める比率の見直し: None = 月 1 回、7 = 7 日ごと（銘柄と相対の重みは月 1 回のまま）
 
 
 def fetch_daily(api: PublicClient, pair: str, years: range) -> pd.Series:
@@ -47,7 +48,7 @@ def main() -> None:
     close = pd.concat([fetch_daily(api, p, years) for p in POOL], axis=1)
     close = close[close.index < pd.Timestamp.now(tz="UTC").normalize()]  # 当日（形成中）は除く
     res = walk_forward(close, START, K_MAX, W_MAX, TARGETS, cost=COST, caps=CAPS, vol_targets=VOL_TARGETS,
-                       vol_days=VOL_DAYS)
+                       vol_days=VOL_DAYS, cash_freq_days=CASH_FREQ)
     stats = {s: summary(res.daily[s]) for s in res.daily.columns}
     # 直近 365 日で推定した「今」の重み
     ret = np.log(close).diff()
@@ -62,7 +63,7 @@ def main() -> None:
         b = best_combination(cov, mu, avail, K_MAX, None if m is None else float(mu.mean()) * m, W_MAX, CAPS)
         for v in VOL_TARGETS:
             for vd in (VOL_DAYS if v is not None else (None,)):
-                key = strategy_name(m, v, vd)
+                key = strategy_name(m, v, vd)  # 今の重みは週次でも同じ（今日の推定）
                 if b is None:
                     now[key] = None
                     continue
@@ -80,19 +81,22 @@ def main() -> None:
                 return v
             if s.startswith(k + "_vt"):
                 rest = s.split("_vt")[1]
+                weekly = rest.endswith("_c7")
+                rest = rest[:-3] if weekly else rest
                 vt, _, w = rest.partition("_w")
-                return f"{v}、目標ボラ {vt}%" + (f"（ボラ推定 {w} 日）" if w else "（ボラ推定 365 日）")
+                return (f"{v}、目標ボラ {vt}%" + (f"（ボラ推定 {w} 日）" if w else "") + ("、JPY 調整 7 日ごと" if weekly else "、JPY 調整 月 1 回"))
         return s
     md = [f"# ボラティリティを抑えるポートフォリオ（{START} 〜 {close.index[-1].date()}、毎月再計算、日足）\n",
           f"- 候補: {', '.join(POOL)}（各月、直前 365 日の 9 割以上のデータがある銘柄だけ）",
           f"- 制約: {K_MAX} 銘柄以内、1 銘柄 {W_MAX:.0%} まで（BTC は {CAPS['btc_jpy']:.0%} まで）、ロングのみ。目標ボラ付きは、推定ボラが目標を超える月に暗号資産を減らして残りを JPY で持つ。売買費用は回転率 × {COST:.2%}",
           "- 共分散は Ledoit-Wolf の縮小推定、期待リターンは標本平均を横断平均へ 50% 縮めたもの。目標は均等配分の期待リターンの倍率\n",
           "## 前向き検証（各月の重みは、その月より前のデータだけで決めている）\n",
-          "| 戦略 | 年率ボラ | 年率リターン | シャープ | 最大ドローダウン | 最悪の日 | 累積 | JPY 比率の平均 |", "|---|---|---|---|---|---|---|---|"]
+          "| 戦略 | 年率ボラ | 年率リターン | シャープ | 最大ドローダウン | 最悪の日 | 累積 | JPY 比率の平均 | 見直し回数 / 年 |", "|---|---|---|---|---|---|---|---|---|"]
     for s, st in stats.items():
         cash = np.mean([w.get("cash", 0.0) for w in res.weights[s]]) if res.weights.get(s) else 0.0
+        st["rebalances_per_year"] = len(res.weights[s]) / max(1e-9, st["days"] / 365)
         md.append(f"| {label(s)} | {st['ann_vol']:.1%} | {st['ann_return']:.1%} | {st['sharpe']:.2f} | "
-                  f"{st['max_drawdown']:.1%} | {st['worst_day']:.1%} | {st['total']:+.0%} | {cash:.0%} |")
+                  f"{st['max_drawdown']:.1%} | {st['worst_day']:.1%} | {st['total']:+.0%} | {cash:.0%} | {st['rebalances_per_year']:.0f} |")
     # 年ごとのボラ
     md.append("\n## 年ごとの年率ボラ\n")
     md.append("| 年 | " + " | ".join(label(s) for s in stats) + " |")
