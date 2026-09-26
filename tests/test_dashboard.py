@@ -128,12 +128,11 @@ def test_refresh_fetches_days_first_then_latest_only():
         calls.append(path)
         if path.endswith("/transactions"):
             return {"transactions": [tx(1000 + k, now - 1000 * k) for k in range(60)]}
-        return {"transactions": [tx(int(path[-2:]) * 10, now - 5 * H)]}
+        return {"transactions": [tx(int(path[-2:]) * 10, now - 2 * H)]}
 
-    c = dash.refresh(None, now, get)
-    assert sorted(calls) == ["/btc_jpy/transactions", "/btc_jpy/transactions/20260101",
-                             "/btc_jpy/transactions/20260102", "/btc_jpy/transactions/20260103"]
-    assert c["skipped"] == []
+    c = dash.refresh(None, now, get)  # 保持は 4 時間なので、日付指定は当日だけ
+    assert sorted(calls) == ["/btc_jpy/transactions", "/btc_jpy/transactions/20260103"]
+    assert c["skipped"] == [] and len(c["rows"]) == 61
     calls.clear()
     c2 = dash.refresh(c, now + 5_000, get)       # 10 秒以内は取りに行かない
     assert calls == [] and c2 is c
@@ -148,18 +147,18 @@ def test_refresh_fetches_days_first_then_latest_only():
 
 
 def test_refresh_skips_days_without_data_and_reports_them():
-    now = 1_767_225_600_000 + 60 * H  # 2026-01-03 12:00 UTC
+    now = 1_767_225_600_000 + 50 * H  # 2026-01-03 02:00 UTC（4 時間前は前日）
 
     def get(path):
         if path.endswith("/transactions"):
             return {"transactions": [tx(1000 + k, now - 1000 * k) for k in range(60)]}
         if path.endswith("20260103"):  # 当日分がまだない
             raise dash.NoData(f"{path}: HTTP 404")
-        return {"transactions": [tx(int(path[-2:]) * 10, now - 5 * H)]}
+        return {"transactions": [tx(int(path[-2:]) * 10, now - 3 * H)]}
 
     c = dash.refresh(None, now, get)
     assert len(c["skipped"]) == 1 and "20260103" in c["skipped"][0]
-    assert len(c["rows"]) == 62  # 2 日分 + 最新 60 件
+    assert len(c["rows"]) == 61  # 前日分 1 件 + 最新 60 件
     # HTTP 404 以外の失敗は上に伝える
     def boom(path):
         raise urllib.error.HTTPError(path, 500, "server error", {}, None)

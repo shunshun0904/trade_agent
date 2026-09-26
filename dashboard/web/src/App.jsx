@@ -17,7 +17,9 @@ export default function App() {
     let timer = null, alive = true;
     const load = async () => {
       try {
-        const [p, s] = await Promise.all([fetchProfile(), fetchSignals()]);
+        // 順に呼ぶ（同時に呼ぶと初回に Lambda が 2 つ起動し、それぞれが約定を取りに行くため）
+        const p = await fetchProfile();
+        const s = await fetchSignals();
         if (!alive) return;
         setProfile(p); setSignals(s); setErr(null);
       } catch (e) {
@@ -48,6 +50,7 @@ export default function App() {
         </span>
       </header>
       {err && <div className="err">取得に失敗しました: {err}（{REFRESH_MS / 1000} 秒後に再試行）</div>}
+      {!err && !profile && <div className="note">読み込み中です。初回は約定の取得と集計に 5〜15 秒ほどかかります。</div>}
       {profile && profile.first_trade_ms != null && profile.first_trade_ms > profile.now_ms - profile.window_h * 3_600_000 && (
         <div className="err">保持している約定は {hms(profile.first_trade_ms)} からです。それより前の時間帯は集計に入っていません
           {profile.warnings ? `（取得できなかった日付: ${profile.warnings.join("、")}）` : ""}。</div>
