@@ -23,6 +23,7 @@ START, K_MAX, W_MAX, COST = "2021-01-01", 5, 0.4, 0.0015
 CAPS = {"btc_jpy": 0.6}          # 2026-09-27 オーナー決定: BTC は 60% まで、他は 40% まで
 TARGETS = (None, 1.0)            # 期待リターンの目標: なし / 均等配分と同じ（× 1.5 は前回の検証で悪化したので外す）
 VOL_TARGETS = (None, 0.30, 0.20)  # 目標ボラ（年率）。超える月は JPY を混ぜる
+VOL_DAYS = (None, 90)             # 縮める比率に使うボラの推定窓（None = 365 日、90 日は急変への追随が速い）
 
 
 def fetch_daily(api: PublicClient, pair: str, years: range) -> pd.Series:
@@ -45,7 +46,8 @@ def main() -> None:
     years = range(2019, datetime.now(timezone.utc).year + 1)
     close = pd.concat([fetch_daily(api, p, years) for p in POOL], axis=1)
     close = close[close.index < pd.Timestamp.now(tz="UTC").normalize()]  # 当日（形成中）は除く
-    res = walk_forward(close, START, K_MAX, W_MAX, TARGETS, cost=COST, caps=CAPS, vol_targets=VOL_TARGETS)
+    res = walk_forward(close, START, K_MAX, W_MAX, TARGETS, cost=COST, caps=CAPS, vol_targets=VOL_TARGETS,
+                       vol_days=VOL_DAYS)
     stats = {s: summary(res.daily[s]) for s in res.daily.columns}
     # 直近 365 日で推定した「今」の重み
     ret = np.log(close).diff()
@@ -53,18 +55,22 @@ def main() -> None:
     avail = [c for c in close.columns if est[c].notna().sum() >= 330]
     R = est[avail].dropna().to_numpy()
     cov, mu = shrunk_cov(R), shrunk_mean(R)
+    short = est[avail].dropna()
+    cov90 = shrunk_cov(short[short.index >= close.index[-1] - pd.Timedelta(days=90)].to_numpy())
     now = {}
     for m in TARGETS:
         b = best_combination(cov, mu, avail, K_MAX, None if m is None else float(mu.mean()) * m, W_MAX, CAPS)
         for v in VOL_TARGETS:
-            key = strategy_name(m, v)
-            if b is None:
-                now[key] = None
-                continue
-            vol = float(np.sqrt(b["var"] * 365))
-            scale = 1.0 if v is None or vol <= v else v / vol
-            now[key] = {"weights": dict(zip(b["names"], [round(float(x) * scale, 4) for x in b["weights"]])),
-                        "cash": round(1 - scale, 4), "ann_vol": vol * scale}
+            for vd in (VOL_DAYS if v is not None else (None,)):
+                key = strategy_name(m, v, vd)
+                if b is None:
+                    now[key] = None
+                    continue
+                wv = pd.Series(b["weights"], index=b["names"]).reindex(avail).fillna(0.0).to_numpy()
+                vol = float(np.sqrt(wv @ (cov if vd is None else cov90) @ wv * 365))
+                scale = 1.0 if v is None or vol <= v else v / vol
+                now[key] = {"weights": dict(zip(b["names"], [round(float(x) * scale, 4) for x in b["weights"]])),
+                            "cash": round(1 - scale, 4), "ann_vol": vol * scale}
 
     def label(s: str) -> str:
         base = {"minvar": "最小分散（目標なし）", "minvar_x1.0": "最小分散（目標 = 均等配分の期待リターン）",
@@ -73,7 +79,9 @@ def main() -> None:
             if s == k:
                 return v
             if s.startswith(k + "_vt"):
-                return f"{v}、目標ボラ {s.split('_vt')[1]}%"
+                rest = s.split("_vt")[1]
+                vt, _, w = rest.partition("_w")
+                return f"{v}、目標ボラ {vt}%" + (f"（ボラ推定 {w} 日）" if w else "（ボラ推定 365 日）")
         return s
     md = [f"# ボラティリティを抑えるポートフォリオ（{START} 〜 {close.index[-1].date()}、毎月再計算、日足）\n",
           f"- 候補: {', '.join(POOL)}（各月、直前 365 日の 9 割以上のデータがある銘柄だけ）",

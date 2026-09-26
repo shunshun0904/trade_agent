@@ -104,3 +104,20 @@ def test_vol_target_moves_into_cash():
         assert set(a["weights"]) == set(b["weights"])
         assert all(abs(b["weights"][k] - a["weights"][k] * s) < 2e-4 for k in a["weights"])
     assert summary(res.daily["minvar_vt20"])["ann_vol"] < summary(res.daily["minvar"])["ann_vol"] * 0.5
+
+
+def test_short_vol_window_reacts_to_regime_change():
+    rng = np.random.default_rng(5)
+    idx = pd.date_range("2020-01-01", periods=700, freq="D", tz="UTC")
+    cols = ["btc_jpy", "a_jpy", "b_jpy"]
+    sd = np.where(np.arange(700)[:, None] < 560, 0.01, 0.05)  # 最後の 140 日でボラが 5 倍
+    r = rng.normal(0, 1, size=(700, 3)) * sd + rng.normal(0, 1, size=(700, 1)) * sd * 0.5
+    close = pd.DataFrame(np.exp(np.cumsum(r, axis=0)) * 100, index=idx, columns=cols)
+    res = walk_forward(close, "2021-01-01", k_max=3, w_max=0.5, target_mults=(None,), est_days=300,
+                       vol_targets=(0.3,), vol_days=(None, 60), caps={"btc_jpy": 0.6})
+    assert {"minvar_vt30", "minvar_vt30_w60"} <= set(res.daily.columns)
+    long_w = {w["date"]: w["cash"] for w in res.weights["minvar_vt30"]}
+    short_w = {w["date"]: w["cash"] for w in res.weights["minvar_vt30_w60"]}
+    # ボラが上がった後の月は、短い窓のほうが早く JPY を増やす
+    late = [d for d in long_w if d >= "2021-10-01"]
+    assert late and all(short_w[d] >= long_w[d] - 1e-9 for d in late) and any(short_w[d] > long_w[d] + 0.05 for d in late)

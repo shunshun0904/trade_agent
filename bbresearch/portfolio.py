@@ -11,6 +11,8 @@
 - 上限は銘柄ごとに変えられる（caps。2026-09-27 オーナー決定: BTC 60%、他 40%）。
 - 目標ボラ（vol_targets）: 推定ボラ sqrt(w'Σw × 365) が目標を超えるときは、その比率だけ暗号資産を減らして残りを
   JPY（リターン 0）で持つ。銘柄の選択と相対の重みは変えない（2026-09-27 オーナー決定）。
+- 目標ボラの推定窓（vol_days）: 銘柄の選択は est_days（365 日）のまま、縮める比率に使う Σ だけ直近 vol_days 日
+  （例 90 日）で推定し直す。急変への追随を速めるため（2026-09-27 オーナー決定）。None なら est_days と同じ。
 """
 from __future__ import annotations
 
@@ -106,14 +108,15 @@ def _month_starts(index: pd.DatetimeIndex, start) -> list[pd.Timestamp]:
     return [d for i, d in enumerate(idx) if i == 0 or d.month != idx[i - 1].month]
 
 
-def strategy_name(m, v) -> str:
-    return ("minvar" if m is None else f"minvar_x{m}") + ("" if v is None else f"_vt{int(round(v * 100))}")
+def strategy_name(m, v, vd=None) -> str:
+    return (("minvar" if m is None else f"minvar_x{m}") + ("" if v is None else f"_vt{int(round(v * 100))}")
+            + ("" if vd is None or v is None else f"_w{vd}"))
 
 
 def walk_forward(close: pd.DataFrame, start, k_max: int = 5, w_max: float = 0.4,
                  target_mults: tuple = (None, 1.0, 1.5), est_days: int = 365, cost: float = 0.0015,
                  benchmark: str = "btc_jpy", caps: dict[str, float] | None = None,
-                 vol_targets: tuple = (None,)) -> WalkForwardResult:
+                 vol_targets: tuple = (None,), vol_days: tuple = (None,)) -> WalkForwardResult:
     """close は日足の終値（列 = ペア、index = 日付）。毎月初に直前 est_days 日で推定し、翌月を保有する。
 
     vol_targets の各 v（年率）について、推定ボラが v を超える月は暗号資産の比率を v / 推定ボラ に落とし、残りを JPY で持つ。
@@ -121,7 +124,8 @@ def walk_forward(close: pd.DataFrame, start, k_max: int = 5, w_max: float = 0.4,
     ret = np.log(close).diff()
     starts = _month_starts(close.index, start)
     names = {f"minvar_x{m}" if m is not None else "minvar": m for m in target_mults}
-    strategies = [strategy_name(m, v) for m in target_mults for v in vol_targets] + ["equal", benchmark]
+    combos = [(m, v, vd) for m in target_mults for v in vol_targets for vd in (vol_days if v is not None else (None,))]
+    strategies = list(dict.fromkeys(strategy_name(m, v, vd) for m, v, vd in combos)) + ["equal", benchmark]
     daily = {s: pd.Series(0.0, index=close.index[close.index >= starts[0]]) for s in strategies}
     weights = {s: [] for s in strategies}
     prev_w = {s: pd.Series(dtype=float) for s in strategies}
@@ -144,10 +148,17 @@ def walk_forward(close: pd.DataFrame, start, k_max: int = 5, w_max: float = 0.4,
             else:
                 w_r = pd.Series(best["weights"], index=best["names"])
             wv = w_r.reindex(avail).fillna(0.0).to_numpy()
-            est_vol = float(np.sqrt(wv @ cov @ wv * DAYS_PER_YEAR))
             for v in vol_targets:
-                scale = 1.0 if v is None or est_vol <= v else v / est_vol
-                chosen[strategy_name(m, v)] = w_r * scale  # 残り 1 − scale は JPY
+                for vd in (vol_days if v is not None else (None,)):
+                    if vd is None or vd >= est_days:
+                        cov_v = cov
+                    else:
+                        short = est[avail].dropna()
+                        short = short[short.index >= d0 - pd.Timedelta(days=vd)]
+                        cov_v = shrunk_cov(short.to_numpy()) if len(short) >= 20 else cov
+                    est_vol = float(np.sqrt(wv @ cov_v @ wv * DAYS_PER_YEAR))
+                    scale = 1.0 if v is None or est_vol <= v else v / est_vol
+                    chosen[strategy_name(m, v, vd)] = w_r * scale  # 残り 1 − scale は JPY
         chosen["equal"] = pd.Series(1.0 / len(avail), index=avail)
         chosen[benchmark] = pd.Series({benchmark: 1.0})
         for s, w in chosen.items():
