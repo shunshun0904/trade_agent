@@ -16,6 +16,24 @@ curl -fsSL https://raw.githubusercontent.com/shunshun0904/trade_agent/claude/bit
 IP アドレスが変わったら、同じコマンドをもう一度実行する。更新間隔を変えるには `sam deploy` の
 `--parameter-overrides` に `RefreshSeconds=30` などを足す（最小 5 秒）。
 
+## React 版の画面（`web/`）
+
+TPO・価格帯別出来高に、1 分ごとのシグナル（モデル B の上げ確率と生の水準）の直近 60 分の推移と、毎正時の判断を
+並べる画面。2026-09-26 オーナー指示。今の Lambda の `/api/profile` にそのままつながる。
+
+```bash
+cd dashboard/web
+npm install
+VITE_API_BASE=https://<api-id>.execute-api.ap-northeast-1.amazonaws.com/prod npm run dev   # 手元で見る（/api を転送）
+npm run build            # dist/ に静的ファイル
+npm run build:preview    # dist-preview/index.html に 1 ファイル。ダミーデータで動く（プレビュー用）
+```
+
+- `/api/signals` の形は `web/src/api.js` の冒頭に書いた。Lambda にモデルを載せるまでは 404 を返すので、画面は「未接続」と出す。
+- 右の列の 5 つの要約（平均・最新・変化・ばらつき・直近 15 分）は `bbresearch/direction.py` の `stack_features` と同じ定義。
+- タブが裏にある間は取得しない。更新間隔は `VITE_REFRESH_SECONDS`（既定 10 秒）。
+- 配信は未定（S3 + CloudFront か、Lambda から `dist/index.html` を返す）。決まったら `deploy.sh` に足す。
+
 ## 削除
 
 ```bash
