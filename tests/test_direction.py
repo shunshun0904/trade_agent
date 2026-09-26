@@ -6,7 +6,8 @@ import yaml
 
 from bbdata.bars import build_bars
 from bbresearch.direction import (BAR_MS, BIN_SIGMA, FINE, MIN_MS, PROFILE_COLUMNS, feature_table, flow_features,
-                                  level_summary, profile_features, render, run_direction, stack_features, targets)
+                                  level_summary, profile_features, render, run_direction, stack_features, taker_round_trip,
+                                  targets)
 from bbresearch.labeling import TradeTape
 from bbresearch.pipeline import Market
 from bbresearch.profile import value_area
@@ -62,6 +63,16 @@ def test_targets_are_aligned():
     assert np.isclose(r[1], np.log(105 / 102)) and y[1] == 1
     # t = 30 分: 直前は 101、45 分は最後の約定より後 → 正解なし
     assert np.isnan(r[2]) and np.isnan(y[2])
+    # 費用を超える値幅: 0.5% を超えて上がったときだけ 1。t = 1 分は +0.99%、t = 2 分は +2.9%
+    y2, _ = targets(tape, np.array([MIN_MS, 2 * MIN_MS, 30 * MIN_MS], dtype="int64"), min_ret=0.02)
+    assert y2[0] == 0 and y2[1] == 1 and np.isnan(y2[2])
+
+
+def test_taker_round_trip_is_break_even():
+    c = taker_round_trip(0.001, 0.0005)
+    g = np.exp(c)
+    assert abs(g * (1 - 0.0005) * (1 - 0.001) / ((1 + 0.0005) * (1 + 0.001)) - 1) < 1e-12
+    assert 0.0029 < c < 0.0031
 
 
 def test_profile_features_match_direct_recount(tmp_path):
@@ -188,3 +199,20 @@ def test_run_direction_one_hour_with_level_summary(tmp_path):
     assert len((tmp_path / "experiments.jsonl").read_text().splitlines()) == 4
     md = render(rep)
     assert "60 分後" in md and "A+B+L" in md
+
+
+def test_run_direction_cost_target(tmp_path):
+    write_trades(tmp_path / "data", "btc_jpy", synth_trades("2026-01-01", 9, seed=7, per_min=3, vol=0.002))
+    cfg = yaml.safe_load(CFG.read_text())
+    cfg["data"].update(root=str(tmp_path / "data"), start="2026-01-01", end="2026-01-09")
+    cfg["experiment_log"] = str(tmp_path / "experiments.jsonl")
+    cfg["pair_spec"] = SPEC
+    spec = {"train_end": "2026-01-07", "n_splits": 3, "thetas": [0.5], "top_fracs": [0.1], "n_boot": 10,
+            "horizon_min": 60, "target_min_return": "taker_round_trip"}
+    rep = run_direction(cfg, spec, workers=2)
+    assert abs(rep["target_min_return"] - taker_round_trip(0.001, 0.0005)) < 1e-12
+    assert 0 < rep["base_rate_test"] < 0.5   # 0.3% を超える上げは半分より少ない
+    rows = rep["pnl_test"]["A"]
+    assert rows[1]["top_frac"] == 0.1 and abs(rows[1]["coverage"] - 0.1) < 0.03
+    md = render(rep)
+    assert "0.30% を超えて上がるか" in md and "上位 10%" in md

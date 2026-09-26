@@ -113,15 +113,28 @@ def flow_features(tape: TradeTape, grid: np.ndarray) -> pd.DataFrame:
     return pd.DataFrame(out, index=grid)
 
 
-def targets(tape: TradeTape, grid: np.ndarray, horizon_ms: int = BAR_MS) -> tuple[np.ndarray, np.ndarray]:
-    """(y, r)。r は t+h の直前の約定価格と t の直前の約定価格の対数比。y は r > 0 で 1、r < 0 で 0、r = 0 は NaN。"""
+def targets(tape: TradeTape, grid: np.ndarray, horizon_ms: int = BAR_MS, min_ret: float = 0.0
+            ) -> tuple[np.ndarray, np.ndarray]:
+    """(y, r)。r は t+h の直前の約定価格と t の直前の約定価格の対数比。
+
+    min_ret = 0（上げ下げ）: y は r > 0 で 1、r < 0 で 0、r = 0 は NaN。
+    min_ret > 0（費用を超える値幅で上がるか、2026-09-26 オーナー指示）: y は r > min_ret で 1、それ以外は 0。
+    """
     i0 = np.searchsorted(tape.ts, grid, side="left") - 1
     i1 = np.searchsorted(tape.ts, grid + horizon_ms, side="left") - 1
     ok = (i0 >= 0) & (grid + horizon_ms <= tape.ts[-1])
     r = np.full(len(grid), np.nan)
     r[ok] = np.log(tape.price[i1[ok]] / tape.price[i0[ok]])
-    y = np.where(r > 0, 1.0, np.where(r < 0, 0.0, np.nan))
+    if min_ret > 0:
+        y = np.where(np.isnan(r), np.nan, np.where(r > min_ret, 1.0, 0.0))
+    else:
+        y = np.where(r > 0, 1.0, np.where(r < 0, 0.0, np.nan))
     return y, r
+
+
+def taker_round_trip(taker_fee: float, slip: float) -> float:
+    """成行で買って成行で売ったときに、損益ゼロになるために必要な対数リターン。"""
+    return float(np.log((1 + slip) * (1 + taker_fee) / ((1 - slip) * (1 - taker_fee))))
 
 
 # ---------------------------------------------------------------- 価格帯別出来高・TPO（1 分ごと）
@@ -253,7 +266,7 @@ def profile_features(tape: TradeTape, bars: pd.DataFrame, grid: np.ndarray, pric
 # ---------------------------------------------------------------- 特徴量の表
 
 def feature_table(market, start, end, sigma_span: int = 96, workers: int = 1,
-                  horizon_ms: int = BAR_MS) -> pd.DataFrame:
+                  horizon_ms: int = BAR_MS, min_ret: float = 0.0) -> pd.DataFrame:
     """[start, end) の 1 分ごとの特徴量・正解。最初の 49 時間は準備期間（24 時間の窓と σ のため）。"""
     start, end = to_utc(start), to_utc(end)
     grid = minute_grid(int((start + pd.Timedelta(hours=49)).value // 1_000_000), int(end.value // 1_000_000))
@@ -272,7 +285,7 @@ def feature_table(market, start, end, sigma_span: int = 96, workers: int = 1,
     hour = tt.hour + tt.minute / 60.0
     X["hour_sin"], X["hour_cos"] = np.sin(2 * np.pi * hour / 24), np.cos(2 * np.pi * hour / 24)
     X["dow_sin"], X["dow_cos"] = np.sin(2 * np.pi * tt.dayofweek / 7), np.cos(2 * np.pi * tt.dayofweek / 7)
-    y, r = targets(tape, grid, horizon_ms)
+    y, r = targets(tape, grid, horizon_ms, min_ret)
     X["y"], X["r"] = y, r
     return X.astype({c: "float32" for c in X.columns if c not in ("y", "r")})
 
@@ -331,9 +344,10 @@ def level_summary(levels: pd.DataFrame, t_ms: np.ndarray, n_min: int) -> pd.Data
     return pd.DataFrame(out, index=t_ms)
 
 
-def pnl(p: np.ndarray, r: np.ndarray, theta: float, fees: tuple[float, float], slip: float) -> dict:
-    """確率が theta 以上のとき t で買い t+15 分で売る。taker: 成行往復、maker: 手数料・滑りなし（楽観的な上限）。"""
-    sel = p >= theta
+def pnl(p: np.ndarray, r: np.ndarray, theta: float, fees: tuple[float, float], slip: float,
+        sel: np.ndarray | None = None) -> dict:
+    """確率が theta 以上（sel を渡せばその時刻）のとき t で買い t+h で売る。taker: 成行往復、maker: 手数料・滑りなし（楽観的な上限）。"""
+    sel = p >= theta if sel is None else sel
     g = np.exp(r[sel])
     taker = g * (1 - slip) * (1 - fees[1]) / ((1 + slip) * (1 + fees[1])) - 1
     maker = g - 1
@@ -360,9 +374,12 @@ def run_direction(cfg: dict, spec: dict, workers: int | None = None) -> dict:
     fees, slip = (bprm.maker_fee, bprm.taker_fee), bprm.s_slip
     h_min = int(spec.get("horizon_min", 15))
     h_ms = h_min * MIN_MS
+    # 目的変数のしきい値: "taker_round_trip" なら成行往復の費用（手数料・滑りから計算）、数値ならその対数リターン、なければ 0
+    tm = spec.get("target_min_return", 0.0)
+    min_ret = taker_round_trip(fees[1], slip) if tm == "taker_round_trip" else float(tm)
     use_levels = bool(spec.get("level_summary", False))
     log.info("特徴量を計算 %s〜%s、ホライズン %d 分", start, end, h_min)
-    F = feature_table(market, start, end, cfg["signal"]["sigma_span"], workers, h_ms)
+    F = feature_table(market, start, end, cfg["signal"]["sigma_span"], workers, h_ms, min_ret)
     del market  # 約定データは以降使わない（メモリを空ける）
     levels = F[PROFILE_COLUMNS] if use_levels else None  # 1 分ごとの生の水準（正解のない時刻も窓に使う）
     F = F[F["y"].notna()]
@@ -401,8 +418,18 @@ def run_direction(cfg: dict, spec: dict, workers: int | None = None) -> dict:
         oof[name], test[name], folds[name] = oof_and_final(Xtr, ya_tr, ta_tr, Xte, n_splits, h_ms)
     log.info("学習を終了、最大メモリ %.1f GB", _peak_gb())
 
-    thetas = spec.get("thetas", [0.55, 0.6])
+    thetas = list(spec.get("thetas", [0.55, 0.6]))
+    top_fracs = list(spec.get("top_fracs", []))
     b_on_bar = pred_b.reindex(ta_te).to_numpy()
+
+    def pnl_rows(p):
+        rows = [pnl(p, ra_te, th, fees, slip) for th in thetas]
+        for f in top_fracs:  # 評価期間の予測確率の上位 f（順位で選ぶ）。しきい値を評価期間で決めるので、説明用
+            k = max(1, int(round(f * len(p))))
+            top = np.zeros(len(p), bool)
+            top[np.argsort(-p, kind="stable")[:k]] = True
+            rows.append({**pnl(p, ra_te, float(p[top].min()), fees, slip, sel=top), "top_frac": f})
+        return rows
     cv = {"B": {k: v for k, v in metrics(yb_tr, oof_b).items() if k != "calibration"}, "B_folds": folds_b}
     for name in variants:
         cv[name] = {k: v for k, v in metrics(ya_tr, oof[name]).items() if k != "calibration"}
@@ -418,8 +445,8 @@ def run_direction(cfg: dict, spec: dict, workers: int | None = None) -> dict:
         "cv": cv,
         "test": {"B_all_minutes": metrics(yb_te, test_b), "B_on_bar": metrics(ya_te, b_on_bar),
                  **{name: metrics(ya_te, test[name]) for name in variants}},
-        "pnl_test": {name: [pnl(p, ra_te, th, fees, slip) for th in thetas]
-                     for name, p in (*test.items(), ("B_on_bar", b_on_bar))},
+        "target_min_return": min_ret,
+        "pnl_test": {name: pnl_rows(p) for name, p in (*test.items(), ("B_on_bar", b_on_bar))},
         "unconditional_test": pnl(np.ones(len(ra_te)), ra_te, 0.0, fees, slip),
         "fees": {"maker": fees[0], "taker": fees[1], "s_slip": slip},
     }
@@ -448,7 +475,7 @@ def run_direction(cfg: dict, spec: dict, workers: int | None = None) -> dict:
     with log_path.open("a") as fh:
         for name in (*variants, "B_on_bar"):
             fh.write(json.dumps({"run_at": res["run_at"], "stage": "direction", "trial_hash": th,
-                                 "code_version": os.environ.get("GITHUB_SHA"), "key": f"direction/{h_min}m/{name}",
+                                 "code_version": os.environ.get("GITHUB_SHA"), "key": f"direction/{h_min}m/r>{min_ret:.4f}/{name}",
                                  "test_auc": res["test"][name].get("auc")}) + "\n")
     res["trial_hash"] = th
     return res
@@ -462,11 +489,13 @@ def _p(x, pct=True):
 
 def render(rep: dict) -> str:
     h = rep.get("horizon_min", 15)
-    md = [f"# {h} 分後の上げ下げの予測（二段構え、{rep['run_at']}）\n",
+    mr = rep.get("target_min_return", 0.0)
+    what = f"{h} 分後に {mr * 100:.2f}% を超えて上がるか" if mr > 0 else f"{h} 分後の上げ下げ"
+    md = [f"# {what}の予測（二段構え、{rep['run_at']}）\n",
           f"- 学習・交差検証: {rep['periods']['train'][0]} 〜 {rep['periods']['train'][1]}",
           f"- 評価（1 回だけ）: {rep['periods']['test'][0]} 〜 {rep['periods']['test'][1]}（これまでの分析で一部を見ている期間）",
           f"- 標本: B 学習 {rep['n']['B_train']:,} / 評価 {rep['n']['B_test']:,}、A 学習 {rep['n']['A_train']:,} / 評価 {rep['n']['A_test']:,}",
-          f"- 評価期間で {h} 分後に上がった割合: {_p(rep['base_rate_test'])[1:]}、特徴量 {len(rep['features'])} 個"
+          f"- 目的変数: {what}（1 = はい）。評価期間で 1 の割合: {_p(rep['base_rate_test'])[1:]}、特徴量 {len(rep['features'])} 個"
           + (f"（A+B+L は {len(rep['variant_features']['A+B+L'])} 個）" if "A+B+L" in rep.get("variant_features", {}) else "") + "\n",
           "## 当たり具合（AUC、0.5 が当て推量）\n",
           "| モデル | 交差検証（学習期間） | 評価期間 | 評価期間 log loss |\n|---|---|---|---|"]
@@ -486,7 +515,8 @@ def render(rep: dict) -> str:
     for name, rows in rep["pnl_test"].items():
         for r in rows:
             tk, mk = r["taker"], r["maker_upper"]
-            md.append(f"| {name} | {r['theta']} | {_p(r['coverage'])[1:]} | {tk.get('n', 0)} | {_p(tk.get('mean'))} | "
+            th = f"上位 {r['top_frac'] * 100:.0f}%（{r['theta']:.3f}）" if "top_frac" in r else f"{r['theta']}"
+            md.append(f"| {name} | {th} | {_p(r['coverage'])[1:]} | {tk.get('n', 0)} | {_p(tk.get('mean'))} | "
                       f"{_p(tk.get('t'), False)} | {_p(tk.get('win'))[1:]} | {_p(mk.get('mean'))} |")
     u = rep["unconditional_test"]
     md.append(f"| 常に買う | - | 100% | {u['taker'].get('n', 0)} | {_p(u['taker'].get('mean'))} | "

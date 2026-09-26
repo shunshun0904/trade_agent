@@ -1,0 +1,9 @@
+# 目的変数を「15 分後に成行往復の費用（約 0.3%）を超えて上がるか」に変えた版（2026-09-26 オーナー指示）。
+# それ以外は configs/direction.yaml と同じ。損益は固定のしきい値に加え、評価期間の予測確率の上位 10%・5% でも出す。
+train_end: "2024-01-01"
+horizon_min: 15
+target_min_return: taker_round_trip
+n_splits: 5
+thetas: [0.3, 0.4]
+top_fracs: [0.1, 0.05]
+n_boot: 200
