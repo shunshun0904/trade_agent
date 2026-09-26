@@ -135,11 +135,6 @@ svg .axis path { stroke: var(--line); fill: none; }
 
 /* シグナル列 */
 .signals { display: flex; flex-direction: column; gap: 12px; }
-.decision { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; align-items: center; }
-.decision .big { font-family: var(--font-num); font-size: 26px; font-weight: 500; line-height: 1.1; }
-.decision .big small { font-size: 12px; font-family: var(--font-ui); color: var(--ink-2); font-weight: 400; margin-left: 6px; }
-.decision .label { font-size: 11px; color: var(--ink-2); letter-spacing: 0.06em; text-transform: uppercase; }
-.decision .countdown { text-align: right; }
 
 .summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
 @media (max-width: 480px) { .summary { grid-template-columns: repeat(3, minmax(0, 1fr)); } }

@@ -1,5 +1,5 @@
 /* プレビュー用のダミーデータ。形は api.js のとおり。乱数の種を固定し、時刻だけ現在に合わせる。 */
-const MIN = 60_000, BAR = 15 * MIN, H = 3_600_000;
+const MIN = 60_000, BAR = 15 * MIN;
 
 function rng(seed) {
   let s = seed >>> 0;
@@ -70,30 +70,15 @@ export function mockProfile(now) {
 export function mockSignals(now) {
   const r = rng(777);
   const t0 = Math.floor(now / MIN) * MIN - 59 * MIN;
-  let p = 0.5, poc = 0.9, tpoc = 0.4, pos = 0.35, tpos = 0.5, thick = 1.1, single = 0.25, price = 16_400_000;
+  let poc = 0.9, tpoc = 0.4, pos = 0.35, tpos = 0.5, thick = 1.1, single = 0.25, price = 16_400_000;
   const minutes = [];
   for (let i = 0; i < 60; i++) {
-    p = Math.min(0.85, Math.max(0.15, p + 0.0025 * (i - 20) / 40 + gauss(r) * 0.018));
     poc += gauss(r) * 0.06 - 0.008; tpoc += gauss(r) * 0.05; pos += gauss(r) * 0.03; tpos += gauss(r) * 0.03;
     thick = Math.max(0.2, thick + gauss(r) * 0.08); single = Math.min(1, Math.max(0, single + gauss(r) * 0.05));
     price *= Math.exp(gauss(r) * 0.0006);
-    minutes.push({ t: t0 + i * MIN, p_up: +p.toFixed(3), price: Math.round(price), vp_poc_dist: +poc.toFixed(3),
+    minutes.push({ t: t0 + i * MIN, price: Math.round(price), sigma: 0.0042, vp_poc_dist: +poc.toFixed(3),
       vp_va_pos: +pos.toFixed(3), vp_at_price: +thick.toFixed(3), tpo_poc_dist: +tpoc.toFixed(3),
       tpo_va_pos: +tpos.toFixed(3), tpo_single_up: +single.toFixed(3) });
   }
-  const ps = minutes.map((m) => m.p_up);
-  const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
-  const m = mean(ps), sd = Math.sqrt(mean(ps.map((x) => (x - m) ** 2)));
-  const summary = { B_mean: m, B_last: ps[59], B_slope: ps[59] - ps[0], B_std: sd, B_mean_recent: mean(ps.slice(45)) };
-  const lastHour = Math.floor(now / H) * H;
-  const history = [];
-  for (let k = 8; k >= 1; k--) {
-    const pu = +(0.5 + gauss(r) * 0.05).toFixed(3);
-    history.push({ t: lastHour - k * H, p_up: pu, action: pu >= 0.6 ? "buy" : "hold", r: k === 1 ? null : +(gauss(r) * 0.003).toFixed(5) });
-  }
-  return {
-    now_ms: now, horizon_min: 60, threshold: 0.6, next_decision_ms: lastHour + H, minutes, summary,
-    decision: { t: lastHour, p_up: 0.57, action: "hold" }, history,
-    model: { trained_to: "2023-12-31", test_auc: null },
-  };
+  return { now_ms: now, window_min: 60, keys: ["vp_poc_dist", "vp_va_pos", "vp_at_price", "tpo_poc_dist", "tpo_va_pos", "tpo_single_up"], minutes };
 }

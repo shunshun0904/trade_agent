@@ -79,6 +79,12 @@ Resources:
             RestApiId: !Ref DashboardApi
             Path: /api/profile
             Method: GET
+        Signals:
+          Type: Api
+          Properties:
+            RestApiId: !Ref DashboardApi
+            Path: /api/signals
+            Method: GET
 
   DashboardLogs:
     Type: AWS::Logs::LogGroup

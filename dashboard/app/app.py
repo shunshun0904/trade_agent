@@ -2,6 +2,7 @@
 
 - GET /             画面（page.html）
 - GET /api/profile  直近 24 時間の価格帯別出来高・TPO・15 分足（JSON）
+- GET /api/signals  直近 60 分の 1 分ごとの水準（POC までの距離など。JSON）。分ごとの結果は実行環境の中に残し、新しい分だけ計算する
 
 画面が REFRESH_SECONDS（既定 10 秒）ごとに /api/profile を呼ぶ。タブが裏にある間は呼ばない。約定は bitbank の公開 REST API（認証不要）から取り、S3 に保存して
 次回は差分だけ取る。σ の計算に 24 時間より前の足も要るので、直近 49 時間分を保持する。
@@ -22,7 +23,7 @@ import urllib.request
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from profile_core import compute
+from profile_core import compute, signals
 
 PAIR = os.environ.get("PAIR", "btc_jpy")
 BUCKET = os.environ.get("CACHE_BUCKET", "")
@@ -116,7 +117,8 @@ def _resp(status: int, body: str, ctype: str) -> dict:
 
 def handler(event, context, store=None, get=http_get_json, now_ms: int | None = None):
     path = (event or {}).get("path") or "/"
-    if not path.rstrip("/").endswith("/api/profile"):
+    which = path.rstrip("/").rsplit("/", 1)[-1]
+    if which not in ("profile", "signals"):
         return _resp(200, PAGE, "text/html; charset=utf-8")
     now_ms = now_ms or int(time.time() * 1000)
     mem = _MEM if store is None else {}
@@ -128,7 +130,13 @@ def handler(event, context, store=None, get=http_get_json, now_ms: int | None = 
         if cache is not before and now_ms - mem.get("saved_ms", 0) >= SAVE_INTERVAL * 1000:
             store.save(cache)
             mem["saved_ms"] = now_ms
-        res = compute([(r[1], r[2], r[3]) for r in cache["rows"]], now_ms)
+        trades = [(r[1], r[2], r[3]) for r in cache["rows"]]
+        if which == "signals":
+            res = signals(trades, now_ms, known=mem.setdefault("signals", {}))
+            if not res["minutes"]:
+                res["error"] = "σ を計算するデータが足りない"
+        else:
+            res = compute(trades, now_ms)
         if "error" in res:
             return _resp(502, json.dumps(res), "application/json")
         res["pair"] = PAIR

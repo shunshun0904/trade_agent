@@ -3,7 +3,8 @@
 直近 24 時間の BTC/JPY の価格帯別出来高と TPO を、10 秒ごとに更新して表示する。bitbank の公開データだけを使い、API キーは使わない。
 
 - 構成: API Gateway（REST API。許可した IP アドレスからだけ受け付ける）→ Lambda（呼ばれたときだけ計算）→ S3（約定の一時保存、非公開）
-- 画面: 15 分足と POC・VAH・VAL の線、価格帯別出来高、TPO。タブが裏にある間は更新しない
+- 画面（React、`web/`）: 左に 15 分足と POC・VAH・VAL の線、価格帯別出来高、TPO。右に直近 60 分の 1 分ごとの水準（POC までの距離、バリューエリア内の位置、価格帯の厚さ、シングルプリントの割合）の推移。タブが裏にある間は更新しない
+- API: `/api/profile`（左の列）と `/api/signals`（右の列）。どちらも標準ライブラリだけで計算する。分ごとの水準は実行環境の中に残し、新しい分だけ計算する（初回 60 分で約 1.4 秒、以後 0.1 秒）
 - 計算の定義は `bbresearch/profile.py` と同じ（`tests/test_dashboard.py` で照合）。σ だけは表示用に直近 96 本の標準偏差を使う
 
 ## デプロイ（AWS CloudShell、ap-northeast-1）
@@ -16,23 +17,20 @@ curl -fsSL https://raw.githubusercontent.com/shunshun0904/trade_agent/claude/bit
 IP アドレスが変わったら、同じコマンドをもう一度実行する。更新間隔を変えるには `sam deploy` の
 `--parameter-overrides` に `RefreshSeconds=30` などを足す（最小 5 秒）。
 
-## React 版の画面（`web/`）
+## 画面の変更（`web/`）
 
-TPO・価格帯別出来高に、1 分ごとのシグナル（モデル B の上げ確率と生の水準）の直近 60 分の推移と、毎正時の判断を
-並べる画面。2026-09-26 オーナー指示。今の Lambda の `/api/profile` にそのままつながる。
+React（Vite）で書いてある。ビルドした 1 ファイルを `app/page.html` に置き、Lambda がそれを返す。`app/page.html` は生成物だが
+コミットする（CloudShell でのデプロイに Node.js を要らなくするため）。画面を変えたら次を実行してコミットする。
 
 ```bash
-cd dashboard/web
-npm install
-VITE_API_BASE=https://<api-id>.execute-api.ap-northeast-1.amazonaws.com/prod npm run dev   # 手元で見る（/api を転送）
-npm run build            # dist/ に静的ファイル
-npm run build:preview    # dist-preview/index.html に 1 ファイル。ダミーデータで動く（プレビュー用）
+dashboard/web/build.sh                 # npm ci → build → app/page.html に置く
+cd dashboard/web && VITE_API_BASE=https://<api-id>.execute-api.ap-northeast-1.amazonaws.com/prod npm run dev   # 手元で見る
+cd dashboard/web && npm run build:preview    # dist-preview/index.html にダミーデータ版（API に接続しない）
 ```
 
-- `/api/signals` の形は `web/src/api.js` の冒頭に書いた。Lambda にモデルを載せるまでは 404 を返すので、画面は「未接続」と出す。
-- 右の列の 5 つの要約（平均・最新・変化・ばらつき・直近 15 分）は `bbresearch/direction.py` の `stack_features` と同じ定義。
-- タブが裏にある間は取得しない。更新間隔は `VITE_REFRESH_SECONDS`（既定 10 秒）。
-- 配信は未定（S3 + CloudFront か、Lambda から `dist/index.html` を返す）。決まったら `deploy.sh` に足す。
+- API の形は `web/src/api.js` の冒頭に書いた。
+- モデルの予測は載せない（2026-09-26 オーナー決定。方向の予測は費用を超えなかった。`docs/SPEC.md` §1.3）。
+- 更新間隔は Lambda の `REFRESH_SECONDS`（既定 10 秒）。画面は 1 回の更新で `/api/profile` と `/api/signals` を 1 回ずつ呼ぶ。
 
 ## 削除
 

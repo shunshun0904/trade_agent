@@ -4,13 +4,13 @@ import ProfileChart from "./ProfileChart.jsx";
 import SignalPanel from "./SignalPanel.jsx";
 import { yen, hms } from "./format.js";
 
-const REFRESH_MS = Number(import.meta.env.VITE_REFRESH_SECONDS || 10) * 1000;
+// Lambda が配信するとき "__REFRESH_SECONDS__" を設定値に置き換える（プレビューでは置き換わらず 10 秒）
+const REFRESH_MS = (Number("__REFRESH_SECONDS__") || 10) * 1000;
 
 export default function App() {
   const [profile, setProfile] = useState(null);
   const [signals, setSignals] = useState(null);
   const [err, setErr] = useState(null);
-  const [now, setNow] = useState(Date.now());
 
   // タブが裏にある間は取得しない（呼び出し回数＝費用を増やさない）。表に戻ったらすぐ取得する
   useEffect(() => {
@@ -31,7 +31,6 @@ export default function App() {
     if (!document.hidden) start();
     return () => { alive = false; stop(); document.removeEventListener("visibilitychange", onVis); };
   }, []);
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
 
   const vl = profile?.vp_levels, tl = profile?.tpo_levels;
   return (
@@ -75,7 +74,7 @@ export default function App() {
             </div>
           )}
         </section>
-        <SignalPanel s={signals} now={now} />
+        <SignalPanel s={signals} />
       </div>
     </div>
   );

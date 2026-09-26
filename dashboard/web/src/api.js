@@ -1,19 +1,16 @@
-/* API の形。
+/* API の形（どちらも dashboard/app/app.py が返す）。
 
-/api/profile（実装済み、dashboard/app/app.py）
+/api/profile
   { now_ms, price, sigma, bin_width, window_h, n_trades_window, data_fetched_ms,
     vp_levels: {poc, vah, val}, vp: [{lo, hi, v}],      // v は BTC
     tpo_levels: {poc, vah, val}, tpo: [{lo, hi, n}],    // n は 30 分区間の数
     candles: [[t_ms, o, h, l, c]] }
 
-/api/signals（この画面のために決めた形。Lambda にモデルを載せるまでは未実装で、画面は「未接続」と出す）
-  { now_ms, horizon_min: 60, threshold: 0.6, next_decision_ms,
-    minutes: [{ t, p_up, price, vp_poc_dist, vp_va_pos, vp_at_price, tpo_poc_dist, tpo_va_pos, tpo_single_up }],
-      // 直近 60 分。t は分の開始（ms）。p_up はモデル B の「60 分後に上がる確率」。距離は σ 単位
-    summary: { B_mean, B_last, B_slope, B_std, B_mean_recent },   // モデル A に渡す要約（bbresearch/direction.py と同じ定義）
-    decision: { t, p_up, action: "buy" | "hold" } | null,         // 直近の正時の A の判断
-    history: [{ t, p_up, action, r }],                             // 過去の判断と 1 時間後の対数リターン（r は未確定なら null）
-    model: { trained_to, test_auc } }
+/api/signals（直近 60 分の 1 分ごとの水準。dashboard/app/profile_core.py の signals）
+  { now_ms, window_min: 60, keys: [...],
+    minutes: [{ t, price, sigma, vp_poc_dist, vp_va_pos, vp_at_price, tpo_poc_dist, tpo_va_pos, tpo_single_up }] }
+      // t は分の開始（ms）。各行は t より前の約定と t 以前に確定した足だけから計算する。距離は σ 単位
+  モデルの予測は載せない（2026-09-26 オーナー決定。方向の予測は費用を超えなかった。docs/SPEC.md §1.3）。
 */
 import { mockProfile, mockSignals } from "./mock.js";
 
@@ -37,11 +34,5 @@ export async function fetchProfile() {
 
 export async function fetchSignals() {
   if (isMock) return mockSignals(Date.now());
-  try {
-    return await getJson("api/signals");
-  } catch (e) {
-    // 404 は「まだ載せていない」。それ以外は本当の失敗
-    if (/HTTP 404|403/.test(e.message)) return { unavailable: true };
-    throw e;
-  }
+  return getJson("api/signals");
 }

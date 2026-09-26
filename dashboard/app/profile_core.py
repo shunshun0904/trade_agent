@@ -124,3 +124,85 @@ def compute(trades: list[tuple[int, float, float]], now_ms: int, window_h: float
             "vp_levels": vp_lv, "vp": vp, "tpo_levels": tpo_lv, "tpo": tpo,
             "candles": [[b["t"], b["o"], b["h"], b["l"], b["c"]] for b in shown],
             "n_trades_window": sum(1 for t in past if t[0] >= now_ms - window_ms)}
+
+
+# ---------------------------------------------------------------- 1 分ごとの水準（画面の右の列）
+
+MIN_MS = 60_000
+SIGNAL_KEYS = ("vp_poc_dist", "vp_va_pos", "vp_at_price", "tpo_poc_dist", "tpo_va_pos", "tpo_single_up")
+
+
+def level_features(levels: dict, rows: list[dict], key: str, ref: float, sigma: float, w: float, prefix: str) -> dict:
+    """水準を現在値からの相対値にする（bbresearch/direction.py の _levels_feats と同じ定義）。
+
+    poc_dist: (POC − 現在値) / (σ × 現在値)。va_pos: バリューエリア内の位置（0 = VAL、1 = VAH）。
+    at_price: 現在値の価格帯の量 / 量のある価格帯の平均。single_up: 現在値から上 1σ（4 価格帯）のうち TPO が 1 以下の割合。
+    """
+    out: dict = {}
+    if not levels or not rows:
+        return out
+    s = sigma * ref
+    out[f"{prefix}_poc_dist"] = (levels["poc"] - ref) / s
+    span = levels["vah"] - levels["val"]
+    out[f"{prefix}_va_pos"] = (ref - levels["val"]) / span if span > 0 else None
+    occ = [r[key] for r in rows if r[key] > 0]
+    here = next((r[key] for r in rows if r["lo"] <= ref < r["hi"]), 0.0)
+    out[f"{prefix}_at_price"] = here / (sum(occ) / len(occ)) if occ else 0.0
+    if prefix == "tpo":
+        nb = round(1.0 / (w / s))  # 1σ = 4 価格帯
+        up = [r[key] for r in rows if ref <= r["lo"] < ref + nb * w]
+        out["tpo_single_up"] = (sum(1 for n in up if n <= 1) + (nb - len(up))) / nb
+    return out
+
+
+def signal_at(trades: list[tuple[int, float, float]], bars: list[dict], t_ms: int, window_h: float = 24.0,
+              bin_sigma: float = 0.25) -> dict | None:
+    """時刻 t の水準（t より前の約定と、t 以前に確定した足だけを使う）。bars は t を含む十分な範囲の 15 分足。"""
+    window_ms = int(window_h * 3_600_000)
+    lo = _bisect_ts(trades, t_ms - window_ms)
+    hi = _bisect_ts(trades, t_ms)
+    if hi == 0:
+        return None
+    ref = trades[hi - 1][1]
+    sigma = sigma_from_bars([b for b in bars if b["t"] + BAR_MS <= t_ms])
+    if sigma is None:
+        return None
+    w = bin_sigma * sigma * ref
+    vp_lv, vp = volume_profile(trades[lo:hi], t_ms, ref, w, window_ms)
+    tpo_lv, tpo = tpo_profile(bars, t_ms, ref, w, window_ms)
+    row = {"t": t_ms, "price": ref, "sigma": sigma}
+    row.update(level_features(vp_lv, vp, "v", ref, sigma, w, "vp"))
+    row.update(level_features(tpo_lv, tpo, "n", ref, sigma, w, "tpo"))
+    return row
+
+
+def _bisect_ts(trades, t_ms: int) -> int:
+    """時刻順の trades で、ts >= t_ms となる最初の位置。"""
+    lo, hi = 0, len(trades)
+    while lo < hi:
+        mid = (lo + hi) // 2
+        if trades[mid][0] < t_ms:
+            lo = mid + 1
+        else:
+            hi = mid
+    return lo
+
+
+def signals(trades: list[tuple[int, float, float]], now_ms: int, n_min: int = 60, known: dict | None = None,
+            window_h: float = 24.0) -> dict:
+    """直近 n_min 分（分の開始時刻ごと）の水準。known に計算済みの {t: row} を渡すと、その分は計算しない。"""
+    t_last = now_ms // MIN_MS * MIN_MS
+    ts = [t_last - k * MIN_MS for k in range(n_min - 1, -1, -1)]
+    window_ms = int(window_h * 3_600_000)
+    end = t_last + BAR_MS
+    bars = bars_15m(trades, end - 2 * window_ms - 2 * BAR_MS - n_min * MIN_MS, end)
+    known = known if known is not None else {}
+    out = []
+    for t in ts:
+        if t not in known:
+            known[t] = signal_at(trades, bars, t, window_h)
+        if known[t] is not None:
+            out.append(known[t])
+    for t in [k for k in known if k < ts[0]]:  # 窓の外は捨てる
+        del known[t]
+    return {"now_ms": now_ms, "window_min": n_min, "keys": list(SIGNAL_KEYS), "minutes": out}
