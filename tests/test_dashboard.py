@@ -41,7 +41,7 @@ def test_profile_matches_research_implementation():
     ts, px, amt = synth()
     now = int(ts[0] + 49 * H) // core.BAR_MS * core.BAR_MS  # 足の境界
     trades = list(zip(ts.tolist(), px.tolist(), amt.tolist()))
-    res = core.compute(trades, now, window_h=24.0, candle_ms=core.BAR_MS, tpo_block=2)  # 研究用と同じ定義
+    res = core.compute(trades, now, window_h=24.0, candle_ms=core.BAR_MS, tpo_block=2, sigma_n=96)  # 研究用と同じ定義
     ref, sigma = res["price"], res["sigma"]
     # 研究用の実装に同じ σ と基準価格を渡して比べる（研究用は σ 単位の距離を返す）
     idx = pd.date_range(pd.Timestamp(ts[0] // core.BAR_MS * core.BAR_MS, unit="ms", tz="UTC"),
@@ -63,7 +63,15 @@ def test_compute_three_hours_matches_brute_force():
     now = int(ts[0] + 49 * H) + 37_000
     trades = list(zip(ts.tolist(), px.tolist(), amt.tolist()))
     res = core.compute(trades, now)
-    assert res["window_h"] == 3.0 and res["candle_ms"] == 60_000 and res["tpo_block_min"] == 5
+    assert res["window_h"] == 3.0 and res["candle_ms"] == 60_000 and res["tpo_block_min"] == 5 and res["sigma_n"] == 180
+    # σ は直近 180 本の 1 分足の対数リターンの標準偏差
+    m1 = now // 60_000 * 60_000
+    closes = []
+    for k in range(181, 0, -1):
+        sel = [p for t, p, a in trades if m1 - k * 60_000 <= t < m1 - (k - 1) * 60_000]
+        closes.append(sel[-1] if sel else closes[-1])
+    r = np.diff(np.log(closes))
+    assert res["sigma"] == pytest.approx(r.std(ddof=1), rel=1e-9)
     assert 180 <= len(res["candles"]) <= 181 and res["candles"][0][0] >= now - 3 * H  # 3 時間 + 形成中の 1 分
     w, ref = res["bin_width"], res["price"]
     # 価格帯別出来高: 3 時間の約定を刻みで数え直す
@@ -205,9 +213,8 @@ def test_signal_at_matches_profile_definitions():
     now = int(ts[-1]) + 1
     t = now // core.MIN_MS * core.MIN_MS - 7 * core.MIN_MS
     end = now // core.BAR_MS * core.BAR_MS + core.BAR_MS
-    bars15 = core.bars_15m(trades, end - 3 * 24 * H, end)
     bars1 = core.bars_at(trades, t - 4 * H, t + core.MIN_MS, core.CANDLE_MS)
-    row = core.signal_at(trades, bars15, bars1, t)
+    row = core.signal_at(trades, bars1, t)
     # 同じ時刻の compute（画面の左の列）と同じ水準になる
     ref = core.compute(trades, t)
     assert row["price"] == ref["price"] and abs(row["sigma"] - ref["sigma"]) < 1e-12

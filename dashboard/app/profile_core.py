@@ -6,7 +6,7 @@
 - バリューエリアは POC から隣の多い側へ広げて全体の 70% に達するまで（同量なら上側）。
 - TPO は足を now から過去へ block 本ずつまとめた区間ごとに、安値〜高値にかかる価格帯へ 1 を数える。
   画面は 1 分足を 5 本ずつ（5 分区間）。研究用は 15 分足を 2 本ずつ（30 分区間）。
-σ は直近 96 本の 15 分足の対数リターンの標準偏差（研究用の EWMA とは異なる。表示用の近似）。
+σ は直近 180 本の 1 分足の対数リターンの標準偏差（2026-09-26 オーナー決定。研究用の 15 分足の EWMA とは異なる。表示用）。
 """
 from __future__ import annotations
 
@@ -112,29 +112,32 @@ def tpo_profile(bars: list[dict], now_ms: int, ref: float, w: float, window_ms: 
 WINDOW_H = 3.0        # 画面の窓（2026-09-26 オーナー決定）
 CANDLE_MS = 60_000    # 画面のローソク足は 1 分足
 TPO_BLOCK = 5         # TPO は 1 分足 5 本 = 5 分区間
-SIGMA_H = 49.0        # σ（15 分足 96 本）のために遡る時間
+SIGMA_N = 180         # σ は直近 180 本の 1 分足のリターンの標準偏差（2026-09-26 オーナー決定）
 
 
 def compute(trades: list[tuple[int, float, float]], now_ms: int, window_h: float = WINDOW_H,
-            bin_sigma: float = 0.25, candle_ms: int = CANDLE_MS, tpo_block: int = TPO_BLOCK) -> dict:
-    """ダッシュボードに渡す一式。trades は (ts, price, amount) の時刻順で、σ の計算に 24 時間以上前から含むこと。"""
+            bin_sigma: float = 0.25, candle_ms: int = CANDLE_MS, tpo_block: int = TPO_BLOCK,
+            sigma_n: int = SIGMA_N) -> dict:
+    """ダッシュボードに渡す一式。trades は (ts, price, amount) の時刻順で、σ の計算に十分前から含むこと。
+
+    σ は candle_ms の足の対数リターン直近 sigma_n 本の標準偏差。価格帯の刻みは bin_sigma × σ × 基準価格。
+    """
     window_ms = int(window_h * 3_600_000)
     past = [t for t in trades if t[0] < now_ms]
     if not past:
         return {"error": "約定がない"}
     ref = past[-1][1]
-    end15 = now_ms // BAR_MS * BAR_MS + BAR_MS
-    bars15 = bars_15m(past, end15 - int(SIGMA_H * 3_600_000), end15)
-    sigma = sigma_from_bars([b for b in bars15 if b["t"] + BAR_MS <= now_ms])
+    end = now_ms // candle_ms * candle_ms + candle_ms  # 形成中の足まで（表示用）
+    back = max(window_ms + candle_ms * tpo_block, candle_ms * (sigma_n + 2))
+    bars = bars_at(past, end - back, end, candle_ms)
+    sigma = sigma_from_bars([b for b in bars if b["t"] + candle_ms <= now_ms], sigma_n)
     if sigma is None:
         return {"error": "σ を計算するデータが足りない"}
     w = bin_sigma * sigma * ref
-    end = now_ms // candle_ms * candle_ms + candle_ms  # 形成中の足まで（表示用）
-    bars = bars_at(past, end - window_ms - candle_ms * tpo_block, end, candle_ms)
     vp_lv, vp = volume_profile(past, now_ms, ref, w, window_ms)
     tpo_lv, tpo = tpo_profile(bars, now_ms, ref, w, window_ms, candle_ms, tpo_block)
     shown = [b for b in bars if b["t"] >= now_ms - window_ms and b["c"] is not None]
-    return {"now_ms": now_ms, "price": ref, "sigma": sigma, "bin_width": w, "window_h": window_h,
+    return {"now_ms": now_ms, "price": ref, "sigma": sigma, "sigma_n": sigma_n, "bin_width": w, "window_h": window_h,
             "candle_ms": candle_ms, "tpo_block_min": candle_ms * tpo_block // 60_000,
             "vp_levels": vp_lv, "vp": vp, "tpo_levels": tpo_lv, "tpo": tpo,
             "candles": [[b["t"], b["o"], b["h"], b["l"], b["c"]] for b in shown],
@@ -170,11 +173,11 @@ def level_features(levels: dict, rows: list[dict], key: str, ref: float, sigma: 
     return out
 
 
-def signal_at(trades: list[tuple[int, float, float]], bars15: list[dict], bars1: list[dict], t_ms: int,
+def signal_at(trades: list[tuple[int, float, float]], bars1: list[dict], t_ms: int,
               window_h: float = WINDOW_H, bin_sigma: float = 0.25) -> dict | None:
     """時刻 t の水準（t より前の約定と、t 以前に確定した足だけを使う。compute と同じ定義）。
 
-    bars15 は σ 用の 15 分足、bars1 は TPO 用の 1 分足。どちらも t を含む十分な範囲。
+    bars1 は σ と TPO に使う 1 分足。t を含む十分な範囲（t − 3 時間 − 5 分より前から）。
     """
     window_ms = int(window_h * 3_600_000)
     lo = _bisect_ts(trades, t_ms - window_ms)
@@ -182,7 +185,8 @@ def signal_at(trades: list[tuple[int, float, float]], bars15: list[dict], bars1:
     if hi == 0:
         return None
     ref = trades[hi - 1][1]
-    sigma = sigma_from_bars([b for b in bars15 if b["t"] + BAR_MS <= t_ms])
+    done = [b for b in bars1 if b["t"] + CANDLE_MS <= t_ms]
+    sigma = sigma_from_bars(done[-(SIGMA_N + 1):], SIGMA_N)
     if sigma is None:
         return None
     w = bin_sigma * sigma * ref
@@ -212,14 +216,13 @@ def signals(trades: list[tuple[int, float, float]], now_ms: int, n_min: int = 60
     t_last = now_ms // MIN_MS * MIN_MS
     ts = [t_last - k * MIN_MS for k in range(n_min - 1, -1, -1)]
     window_ms = int(window_h * 3_600_000)
-    end15 = t_last // BAR_MS * BAR_MS + BAR_MS
-    bars15 = bars_15m(trades, end15 - int(SIGMA_H * 3_600_000) - n_min * MIN_MS, end15)
-    bars1 = bars_at(trades, ts[0] - window_ms - CANDLE_MS * TPO_BLOCK, t_last + CANDLE_MS, CANDLE_MS)
+    back = max(window_ms + CANDLE_MS * TPO_BLOCK, CANDLE_MS * (SIGMA_N + 2))
+    bars1 = bars_at(trades, ts[0] - back, t_last + CANDLE_MS, CANDLE_MS)
     known = known if known is not None else {}
     out = []
     for t in ts:
         if t not in known:
-            known[t] = signal_at(trades, bars15, bars1, t, window_h)
+            known[t] = signal_at(trades, bars1, t, window_h)
         if known[t] is not None:
             out.append(known[t])
     for t in [k for k in known if k < ts[0]]:  # 窓の外は捨てる

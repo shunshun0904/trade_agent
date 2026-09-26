@@ -38,7 +38,7 @@ export function mockProfile(now) {
   const r = rng(20260926);
   const candles = candlesFrom(now, r, 16_400_000);
   const price = candles[candles.length - 1][4];
-  const sigma = 0.0042;
+  const sigma = 0.0011;
   const w = 0.25 * sigma * price;
   const lows = candles.map((c) => c[3]), highs = candles.map((c) => c[2]);
   const pmin = Math.min(...lows) - w, pmax = Math.max(...highs) + w;
@@ -77,7 +77,7 @@ export function mockSignals(now) {
     poc += gauss(r) * 0.06 - 0.008; tpoc += gauss(r) * 0.05; pos += gauss(r) * 0.03; tpos += gauss(r) * 0.03;
     thick = Math.max(0.2, thick + gauss(r) * 0.08); single = Math.min(1, Math.max(0, single + gauss(r) * 0.05));
     price *= Math.exp(gauss(r) * 0.0006);
-    minutes.push({ t: t0 + i * MIN, price: Math.round(price), sigma: 0.0042, vp_poc_dist: +poc.toFixed(3),
+    minutes.push({ t: t0 + i * MIN, price: Math.round(price), sigma: 0.0011, vp_poc_dist: +poc.toFixed(3),
       vp_va_pos: +pos.toFixed(3), vp_at_price: +thick.toFixed(3), tpo_poc_dist: +tpoc.toFixed(3),
       tpo_va_pos: +tpos.toFixed(3), tpo_single_up: +single.toFixed(3) });
   }
