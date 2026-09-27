@@ -1,0 +1,56 @@
+# スイング（4 時間足で判断し 1〜3 日保有）の方向の研究（公開 API のみ、認証不要）。2026-09-28 オーナー決定。
+# 実行方法: API の workflow_dispatch（ref にブランチを指定）で mode を選ぶ。
+#   check: データの確認（4 時間足の境界、ペアごとの期間・抜け・出来高、今のスプレッド）。損益は出さない。
+#   eval:  事前登録した 45 通りを全期間で 1 回評価する（configs/swing.yaml の owner_approved が必要）。
+# 事前登録を守るため、push では起動しない。
+name: swing
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "check（データの確認）/ eval（事前登録どおりに 1 回評価）"
+        required: true
+        default: check
+        type: choice
+        options: [check, eval]
+permissions:
+  contents: write
+concurrency:
+  group: research-${{ github.ref }}
+jobs:
+  swing:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/swing
+          key: swing-candles-${{ github.run_id }}
+          restore-keys: swing-candles-
+      - name: Count experiment log lines
+        id: pre
+        run: echo "n=$( [ -f reports/experiments.jsonl ] && wc -l < reports/experiments.jsonl || echo 0 )" >> "$GITHUB_OUTPUT"
+      - name: Run
+        env:
+          PYTHONPATH: .
+        run: python scripts/swing.py --mode ${{ inputs.mode }}
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .cache/swing
+          key: swing-candles-${{ github.run_id }}
+      - name: Summary and commit
+        run: |
+          if [ "${{ inputs.mode }}" = check ]; then
+            files="reports/swing/check.md reports/swing/check.json"; md=reports/swing/check.md
+          else
+            files="reports/swing/report.md reports/swing/metrics.json"; md=reports/swing/report.md
+          fi
+          cat "$md" >> "$GITHUB_STEP_SUMMARY"
+          scripts/commit_report.sh "${{ steps.pre.outputs.n }}" "Swing ${{ inputs.mode }} from run ${{ github.run_id }}" $files

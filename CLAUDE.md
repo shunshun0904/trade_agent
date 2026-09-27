@@ -25,11 +25,13 @@
   - `dist.yml`: 1 時間足のテクニカル指標（373 個。`bbresearch/indicators.py`、部品は `bbresearch/ta.py`）と約定フローの特徴量（34 個。`bbresearch/tradeflow.py`、約定履歴は Actions のキャッシュ）から 4 時間後までの収益率の条件付き分布を分位点回帰フォレストで推定し、無条件・直近 n 本の経験分布と精度を比べ、群ごとの寄与も出す（`scripts/dist_forecast.py`、`configs/dist.yaml`、`reports/dist/`）
   - `vol_daily.yml`: ポートフォリオの JPY 比率を日次で調整する案の前向き検証（BTC 1 時間足のフォレストによる翌日ボラ予測 ÷ 長期平均を推定ボラに掛ける。`scripts/vol_daily.py`、`configs/vol_daily.yaml`、`reports/vol_daily/`）
   - `auth-check.yml`: 認証付き API の疎通確認（参照系のみ）。キーは Secrets `bitbank_API` / `bitbank_secret` から読む
+  - `swing.yml`: スイング（4 時間足で判断し 1〜3 日保有）の方向の研究。mode `check`（データの確認。損益は出さない）と `eval`（事前登録した 45 通りを全期間で 1 回。`configs/swing.yaml` の `owner_approved` が必要）。workflow_dispatch だけで起動する（`scripts/swing.py`、`bbresearch/swing.py`、`reports/swing/`）
 - `dashboard/`: TPO・価格帯別出来高のダッシュボード（AWS: API Gateway + Lambda + S3、SAM）。`dashboard/deploy.sh` を AWS CloudShell で実行してデプロイする。Lambda は標準ライブラリだけで書き、計算が `bbresearch/profile.py` と一致することを `tests/test_dashboard.py` で照合している。画面は `dashboard/web/`（React、Vite）で書き、`dashboard/web/build.sh` でビルドして `dashboard/app/page.html`（生成物、コミットする）に置く。左に直近 24 時間・15 分足の TPO・価格帯別出来高（ダーク配色、5 分ごとに更新）、右に 1 分ごとの水準の 60 分の推移（`/api/signals`）。モデルの予測は載せない
 - リポジトリは公開（2026-09-27 に非公開へ切り替え、2026-09-28 に公開へ戻した）。ログやレポートに残高・注文の内容・キーを出さない（例外: `docs/monitor/` の記録は金額を残す。公開のまま記録する。2026-09-28 オーナー決定）。
 - 上げ下げの予測モデル（`direction*.yml`）は 2026-09-26 に研究を区切った（目的変数 3 通り・ホライズン 2 通りとも費用を超えない。SPEC §1.3）。自動売買には使わない。
 - 収益率の分布推定（`dist.yml`、`vol_daily.yml`）は 2026-09-27 に研究を区切った（幅の推定はフォレストが最良だが、向きは指標 373 個にも約定履歴にもなく、幅を日次の JPY 調整に使っても改善しない。SPEC の該当節）。自動売買には使わない。
-- 次の作業: オーナーが `dashboard/deploy.sh` でデプロイし、React 版の画面と `/api/signals` を実機で確認する。Phase 7 は保留。
+- 2026-09-28 オーナー決定: 方向の研究をスイング（4 時間足で判断し 1〜3 日保有、JPY の現物ペアすべて）で続ける。仮説はトレンド（時系列・横断モメンタム）と急落後の反発。数値は `configs/swing.yaml` に事前に固定し、全期間で 1 回だけ評価する（SPEC の「スイング」の節）。
+- 次の作業: スイングの研究のデータ確認（`swing.yml` の check）→ オーナーの承認 → 評価（eval）を 1 回。オーナーが `dashboard/deploy.sh` でデプロイし、React 版の画面と `/api/signals` を実機で確認する。Phase 7 は保留。
 
 ## コマンド
 

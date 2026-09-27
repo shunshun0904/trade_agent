@@ -25,6 +25,17 @@ python -m bbresearch search --config configs/research.yaml --grid configs/search
 `configs/search.yaml` を変更して push すると GitHub Actions（`search.yml`）で実行し、`reports/search/`
 （`report.md`、`screen.csv`、`selected.yaml`）をコミットする。
 
+### スイング（4 時間足で判断し 1〜3 日保有）の方向の研究
+
+```bash
+PYTHONPATH=. python scripts/swing.py --mode check   # データの確認（損益は出さない）
+PYTHONPATH=. python scripts/swing.py --mode eval    # 事前登録した 45 通りを全期間で 1 回評価
+```
+
+JPY の現物ペアで、時系列モメンタム・横断モメンタム・急落後の反発を、同じ配分を常に保有した場合に対する
+アルファで評価する。数値は `configs/swing.yaml` に事前に固定してあり、`owner_approved` に日付が入るまで
+eval は動かない。GitHub Actions（`swing.yml`、workflow_dispatch だけ）で実行し、`reports/swing/` をコミットする。
+
 ### 15 分後の上げ下げの予測（二段構え）
 
 ```bash
