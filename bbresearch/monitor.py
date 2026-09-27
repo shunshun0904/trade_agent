@@ -3,7 +3,7 @@
 - 記録: docs/monitor/daily.jsonl（1 日 1 行。評価額、保有の内訳、目標の重み、BTC 価格）と
   docs/monitor/rebalances.jsonl（リバランスの計画。scripts/rebalance.py が追記）。
 - 画面: docs/monitor/index.html を記録から生成する（データを埋め込んだ 1 ファイル。GitHub Pages か手元で開く）。
-  オーナー決定: 少額なので金額は伏せない（そのうちリポジトリを非公開にする）。
+  オーナー決定: 少額なので金額は伏せない（リポジトリは公開。2026-09-28 に公開のまま記録すると決定）。
 """
 from __future__ import annotations
 

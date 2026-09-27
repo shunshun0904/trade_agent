@@ -573,13 +573,13 @@ bitbank の JPY ペアで、組み合わせ最適化により分散を抑えた�
 
 - 目標の重み（2026-09-27 オーナー決定で週次とトレンドフィルタを追加）: 毎月 1 日（monthly）は `bbresearch.portfolio.current_weights` で銘柄と相対の重みを選び直す（直前 365 日、5 銘柄以内、BTC 60%・他 40% まで）。毎週月曜（weekly）は直近の monthly の相対の重み（`docs/monitor/rebalances.jsonl` の `relative`）をそのまま使い、`bbresearch.portfolio.scale_weights` で JPY の割合だけ見直す: 目標ボラ 30% に縮め、BTC の終値が 200 日移動平均を下回っていれば暗号資産を 0 倍（全額 JPY）にする。判定は最後の終値までのデータだけを使う。`scripts/rebalance.py --mode auto|monthly|weekly`（auto は UTC の 1 日なら monthly、他は weekly）。`scripts/snapshot.py` の目標も同じ規則（weekly）で出す。
 - 計画: `bbresearch.rebalance.plan_orders`。総額の 1% 未満の差は動かさない。売りを先に出し、その JPY で買う。買いは手数料と滑りのぶん（0.3%）少なめ。数量は `amount_digits` で切り捨て、`unit_amount` 未満は出さず、`market_max_amount` を超えない。
-- 出力はログに割合（%）だけ。数量・金額・残高は出さない（作成時はリポジトリが公開だったため。2026-09-27 に非公開へ切り替えたが、ログの方針は変えていない）。`tests/test_rebalance.py` で確かめる。
+- 出力はログに割合（%）だけ。数量・金額・残高は出さない（リポジトリが公開のため。2026-09-27 に非公開へ切り替えたが、2026-09-28 に公開へ戻した）。`tests/test_rebalance.py` で確かめる。
 - ワークフロー `rebalance.yml`: `schedule`（毎月 1 日 00:10 UTC に monthly、毎週月曜 00:10 UTC に weekly）と手動（mode を選べる）。2026-09-27 にこのブランチを既定ブランチにしたので、schedule が自動で動く（それまでは手動）。
 - 【未決】実際に発注するコード（`PrivateClient` への注文メソッドの追加と、それを呼ぶ経路）は入れていない。追加はオーナーの明示的な承認のもとで行う。追加する場合は、既定を不可にした明示的な許可フラグ、設定ファイルと環境変数の両方での有効化、注文結果をログに出さないことを要件とする。
 
 #### モニタリング（`bbresearch/monitor.py`、`scripts/snapshot.py`、`monitor.yml`、2026-09-27 オーナー指示）
 
-オーナー決定: 見るものは「現在の保有と目標の重み」「資産の推移とリスク」「リバランスの履歴」。記録は GitHub Actions で 1 日 1 回とり、リポジトリにコミットする。少額なので金額は伏せない（リポジトリは 2026-09-27 に非公開へ切り替えた）。
+オーナー決定: 見るものは「現在の保有と目標の重み」「資産の推移とリスク」「リバランスの履歴」。記録は GitHub Actions で 1 日 1 回とり、リポジトリにコミットする。少額なので金額は伏せない（リポジトリは 2026-09-27 に非公開へ切り替えたが、2026-09-28 に公開へ戻した。2026-09-28 オーナー決定: 公開のまま金額も記録する）。
 
 - 記録: `docs/monitor/daily.jsonl`（1 日 1 行。評価額、JPY、銘柄ごとの評価額と割合、その日の目標の重み、推定ボラ、BTC 価格）。同じ日に複数回動いたら画面では最後の行を使う。`docs/monitor/rebalances.jsonl` には `scripts/rebalance.py` が計画を追記する（目標、現在の割合、計画した売買の割合、ドライランか）。
 - 画面: `docs/monitor/index.html`。記録から生成する 1 ファイル（データ埋め込み、外部読み込みなし）。評価額・開始からの騰落・実現ボラ（直近 30 日の日次対数リターンの標準偏差 × √365。目標の 1.2 倍を超えると赤）・ドローダウン（現在 / 最大）・JPY の割合、指数（開始 = 100）と BTC 単独の比較、JPY 割合と目標の推移、保有 vs 目標の表、リバランスの履歴。GitHub 上でファイルを開くか、手元に取り出して開く（GitHub Pages を `docs/` で有効にすれば URL で見られる）。
@@ -702,7 +702,7 @@ Phase 6 の結果をオーナーが確認してから着手する。
 
 API キーとシークレットは環境変数またはシークレット管理サービスから読み込む。ログには出力しない。リポジトリにはコミットしない。API キーには出金権限を付けない。
 
-現状（2026-09-23）: GitHub Actions ではリポジトリの Secrets `bitbank_API`（API キー）と `bitbank_secret`（API シークレット）を環境変数 `BITBANK_API_KEY` / `BITBANK_API_SECRET` として渡す（`.github/workflows/auth-check.yml`）。既存システムは同じ口座のキーを AWS SSM Parameter Store（`/trade-agent/bitbank/*`）に置いている。作成時はリポジトリが公開だったので、ワークフローのログやコミットするレポートに残高・注文の内容を出さない方針にした（2026-09-27 に非公開へ切り替え。モニターの記録 `docs/monitor/` だけは金額を残す。オーナー決定）。Secrets を使うワークフローは `push`（このリポジトリへの書き込み権限が必要）と `workflow_dispatch` だけで起動し、フォークからのプルリクエストでは起動しない。
+現状（2026-09-23）: GitHub Actions ではリポジトリの Secrets `bitbank_API`（API キー）と `bitbank_secret`（API シークレット）を環境変数 `BITBANK_API_KEY` / `BITBANK_API_SECRET` として渡す（`.github/workflows/auth-check.yml`）。既存システムは同じ口座のキーを AWS SSM Parameter Store（`/trade-agent/bitbank/*`）に置いている。作成時はリポジトリが公開だったので、ワークフローのログやコミットするレポートに残高・注文の内容を出さない方針にした（2026-09-27 に非公開へ切り替え、2026-09-28 に公開へ戻した。モニターの記録 `docs/monitor/` だけは公開のまま金額を残す。オーナー決定）。Secrets を使うワークフローは `push`（このリポジトリへの書き込み権限が必要）と `workflow_dispatch` だけで起動し、フォークからのプルリクエストでは起動しない。
 
 既存システムと同じキー・同じ口座を使う。2026-09-23 時点で既存システムはペーパートレード（`paper_trading: true`、発注 API に到達しない設定）で、最後の tick は 2026-09-03 と稼働していないため、オーナーの判断でキーはそのまま使ってよい。既存システムを実取引で動かす場合は、同じ口座で2つのシステムが発注しないよう統合の設計（U7）で排他を決める。
 
