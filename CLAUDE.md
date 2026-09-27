@@ -22,6 +22,7 @@
   - `recorder.yml`: 板・約定の記録。約 5 時間 45 分ごとに次のジョブを自分で起動して連続させ、成果物（90 日）に保存する。止めるには `configs/recorder.yaml` の `enabled: false`
   - `monitor.yml`: 毎日 00:20 UTC に残高・評価額・目標の重みを `docs/monitor/daily.jsonl` に記録し、`docs/monitor/index.html`（モニター画面）を作り直してコミットする（`scripts/snapshot.py`、`bbresearch/monitor.py`）。`rebalance.yml` は計画を `docs/monitor/rebalances.jsonl` に追記する
   - `margin.yml`: 信用取引の対応ペアと条件（建玉金利・手数料・保証金率）を `/spot/pairs` から一覧にする（`reports/margin/`）
+  - `dist.yml`: 1 時間足のテクニカル指標から 4 時間後までの収益率の条件付き分布を分位点回帰フォレストで推定し、無条件・直近 n 本の経験分布と精度を比べる（`scripts/dist_forecast.py`、`configs/dist.yaml`、`reports/dist/`）
   - `auth-check.yml`: 認証付き API の疎通確認（参照系のみ）。キーは Secrets `bitbank_API` / `bitbank_secret` から読む
 - `dashboard/`: TPO・価格帯別出来高のダッシュボード（AWS: API Gateway + Lambda + S3、SAM）。`dashboard/deploy.sh` を AWS CloudShell で実行してデプロイする。Lambda は標準ライブラリだけで書き、計算が `bbresearch/profile.py` と一致することを `tests/test_dashboard.py` で照合している。画面は `dashboard/web/`（React、Vite）で書き、`dashboard/web/build.sh` でビルドして `dashboard/app/page.html`（生成物、コミットする）に置く。左に直近 24 時間・15 分足の TPO・価格帯別出来高（ダーク配色、5 分ごとに更新）、右に 1 分ごとの水準の 60 分の推移（`/api/signals`）。モデルの予測は載せない
 - リポジトリは 2026-09-27 に非公開へ切り替えた。それでもログやレポートに残高・注文の内容・キーを出さない（例外: `docs/monitor/` の記録は金額を残す。オーナー決定）。
