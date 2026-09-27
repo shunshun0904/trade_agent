@@ -37,6 +37,14 @@ JPY の現物ペアで、時系列モメンタム・横断モメンタム・急�
 eval は動かない。GitHub Actions（`swing.yml`）で実行し、`reports/swing/` をコミットする。eval は workflow_dispatch で mode を
 指定したときだけ動き、`scripts/swing.py` の変更の push では check だけが動く。
 
+評価の結果（2026-09-28）は `reports/swing/report.md`。時系列モメンタム（H1）の 24 通りは、前向きのドライランで2026-09-28 から 12 か月記録する（発注しない）:
+
+```bash
+PYTHONPATH=. python scripts/swing_forward.py   # 2026-09-28 00:00 UTC 以降の足だけで成績と今の保有を出す
+```
+
+`configs/swing_forward.yaml` に判定日と、評価に使ったファイルの SHA-256 を固定してある。GitHub Actions（`swing_forward.yml`）が毎月 1 日に実行し、`reports/swing_forward/` をコミットする。
+
 ### 15 分後の上げ下げの予測（二段構え）
 
 ```bash

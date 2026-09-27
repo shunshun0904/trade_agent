@@ -26,13 +26,14 @@
   - `vol_daily.yml`: ポートフォリオの JPY 比率を日次で調整する案の前向き検証（BTC 1 時間足のフォレストによる翌日ボラ予測 ÷ 長期平均を推定ボラに掛ける。`scripts/vol_daily.py`、`configs/vol_daily.yaml`、`reports/vol_daily/`）
   - `auth-check.yml`: 認証付き API の疎通確認（参照系のみ）。キーは Secrets `bitbank_API` / `bitbank_secret` から読む
   - `swing.yml`: スイング（4 時間足で判断し 1〜3 日保有）の方向の研究。mode `check`（データの確認。損益は出さない）と `eval`（事前登録した 45 通りを全期間で 1 回。`configs/swing.yaml` の `owner_approved` が必要）。eval は workflow_dispatch だけで動き、`scripts/swing.py` かワークフローの変更の push では check だけが動く（`scripts/swing.py`、`bbresearch/swing.py`、`reports/swing/`）。workflow_dispatch だけのワークフローは既定ブランチにないと API から起動できない（404、2026-09-28 に確認）
+  - `swing_forward.yml`: スイングの研究の H1（時系列モメンタム 24 通り）の前向きのドライラン（発注しない）。毎月 1 日 00:40 UTC に、2026-09-28 00:00 UTC 以降の足だけで成績と今の保有を `reports/swing_forward/` に記録する。2027-09-28 に「24 通りの超過リターンの平均が正か」で判定（`scripts/swing_forward.py`、`configs/swing_forward.yaml`）。評価に使った `bbresearch/swing.py`・`configs/swing.yaml` の SHA-256 が変わると止まる（変えるなら前向きの検証は別物になる。オーナーに確認する）
 - `dashboard/`: TPO・価格帯別出来高のダッシュボード（AWS: API Gateway + Lambda + S3、SAM）。`dashboard/deploy.sh` を AWS CloudShell で実行してデプロイする。Lambda は標準ライブラリだけで書き、計算が `bbresearch/profile.py` と一致することを `tests/test_dashboard.py` で照合している。画面は `dashboard/web/`（React、Vite）で書き、`dashboard/web/build.sh` でビルドして `dashboard/app/page.html`（生成物、コミットする）に置く。左に直近 24 時間・15 分足の TPO・価格帯別出来高（ダーク配色、5 分ごとに更新）、右に 1 分ごとの水準の 60 分の推移（`/api/signals`）。モデルの予測は載せない
 - リポジトリは公開（2026-09-27 に非公開へ切り替え、2026-09-28 に公開へ戻した）。ログやレポートに残高・注文の内容・キーを出さない（例外: `docs/monitor/` の記録は金額を残す。公開のまま記録する。2026-09-28 オーナー決定）。
 - 上げ下げの予測モデル（`direction*.yml`）は 2026-09-26 に研究を区切った（目的変数 3 通り・ホライズン 2 通りとも費用を超えない。SPEC §1.3）。自動売買には使わない。
 - 収益率の分布推定（`dist.yml`、`vol_daily.yml`）は 2026-09-27 に研究を区切った（幅の推定はフォレストが最良だが、向きは指標 373 個にも約定履歴にもなく、幅を日次の JPY 調整に使っても改善しない。SPEC の該当節）。自動売買には使わない。
 - 2026-09-28 オーナー決定: 方向の研究をスイング（4 時間足で判断し 1〜3 日保有、JPY の現物ペアすべて）で続ける。仮説はトレンド（時系列・横断モメンタム）と急落後の反発。数値は `configs/swing.yaml` に事前に固定し、全期間で 1 回だけ評価する（SPEC の「スイング」の節）。
 - スイングの研究の結果（2026-09-28、run 36341530578、`reports/swing/report.md`）: 事前登録の判定では 3 つとも「支持しない」。時系列モメンタムは 24 通りすべてでアルファが正（t 1.65〜3.28、費用 2 倍でも正、アクティブが正の年 75%）だが、45 試行のデフレートシャープが 0.717（基準 0.95）。横断モメンタムは費用に負ける。急落後の反発は保有率 1% で割引後に届かない。評価に使った数値は変えない（変えた実行は新しい試行として数える）。
-- 次の作業: スイングの研究の次の扱いをオーナーが決める。オーナーが `dashboard/deploy.sh` でデプロイし、React 版の画面と `/api/signals` を実機で確認する。Phase 7 は保留。
+- 次の作業: H1 の前向きのドライランを 2027-09-28 まで続ける（月 1 回、`swing_forward.yml`）。作業ブランチを既定ブランチに取り込む PR をオーナーがマージしてから定時で動く。オーナーが `dashboard/deploy.sh` でデプロイし、React 版の画面と `/api/signals` を実機で確認する。Phase 7 は保留。
 
 ## コマンド
 
