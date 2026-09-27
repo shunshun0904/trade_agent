@@ -20,7 +20,7 @@ import pandas as pd
 import yaml
 
 from bbdata.client import BitbankAPIError, PublicClient
-from bbresearch.indicators import forward_return, indicator_table
+from bbresearch.indicators import GROUPS, forward_return, indicator_table
 from bbresearch.qrf import (QuantileForest, crps_weighted, evaluate_quantiles, prob_exceed, reliability,
                             rolling_empirical)
 
@@ -133,6 +133,16 @@ def main(argv: list[str] | None = None) -> int:
         rolling_q[n] = q_r
         results[f"rolling{n}"] = evaluate_quantiles(yte, q_r, qs)
         results[f"rolling{n}"]["crps"] = float(np.nanmean(crps_rolling(tail, yte, n, horizon)))
+    # 特徴量の群ごと（どの群が効くか。葉の最小は全体で選んだ値を使う）
+    subset_rows = []
+    for name, prefixes in (cfg.get("subsets") or {}).items():
+        use = [i for i, col in enumerate(cols) if prefixes is None or any(col.startswith(pfx) for pfx in prefixes)]
+        if not use or len(use) == len(cols):
+            continue
+        qf_s = QuantileForest(fp["n_estimators"], best_leaf, fp["max_features"], fp["max_samples"]).fit(Xtr[:, use], ytr)
+        ev = evaluate_quantiles(yte, qf_s.predict_quantiles(Xte[:, use], qs), qs)
+        subset_rows.append({"name": name, "n_features": len(use), "pinball_mean": ev["pinball_mean"], "interval90": ev["interval90"]})
+        print(f"群 {name}: {len(use)} 個、ピンボール {ev['pinball_mean']:.6f}")
     # 年ごとのピンボール損失（フォレスト vs 直近 720 本）
     years = test.index.year
     by_year = []
@@ -164,8 +174,7 @@ def main(argv: list[str] | None = None) -> int:
           f"- データ: 公式 1 時間足 {df.index[0].date()} 〜 {df.index[-1].date()}（{len(df):,} 本、欠けた足 {gaps}）。"
           f"学習 {train.index[0].date()} 〜 {train.index[-1].date()}（{len(train):,} 行）、評価 {test.index[0].date()} 〜 {test.index[-1].date()}（{len(test):,} 行）",
           f"- 目的変数: 足 t の終値で買い {horizon} 本後の終値で売った対数収益率（費用は引いていない）。費用 {cost:.2%} を超える確率も出す",
-          f"- 特徴量 {len(cols)} 個（トレンド系 {sum(c.startswith('t_') for c in cols)}、オシレーター系 {sum(c.startswith('o_') for c in cols)}、"
-          f"ボラ・出来高 {sum(c.startswith('v_') for c in cols)}、時刻 {sum(c.startswith('c_') for c in cols)}）。すべて足 t までのデータで計算（`tests/test_indicators.py`）",
+          f"- 特徴量 {len(cols)} 個（" + "、".join(f"{GROUPS[g]} {sum(c.startswith(g + '_') for c in cols)}" for g in GROUPS) + "）。すべて足 t までのデータで計算（`tests/test_indicators.py`）。一覧は metrics.json の features",
           f"- フォレスト: 木 {fp['n_estimators']}、葉の最小 {best_leaf}（検証で選択: " + "、".join(f"{k}: {v:.6f}" for k, v in val_scores.items()) + f"）、特徴量の割合 {fp['max_features']}、標本 {fp['max_samples']}",
           "- 比較: 無条件 = 学習期間全体の経験分布。直近 n = その時点で確定している直近 n 本の収益率の経験分布（ボラの変化を追う基準）\n",
           "## 分布の精度（評価期間、値が小さいほど良い。CRPS と損失の単位は対数収益率）\n",
@@ -180,6 +189,12 @@ def main(argv: list[str] | None = None) -> int:
     md.append("|---|" + "---|" * len(qs))
     for k, r in results.items():
         md.append(f"| {labels.get(k, '直近 ' + k[7:] + ' 本')} | " + " | ".join(f"{r['coverage'][q]:.1%}" for q in qs) + " |")
+    if subset_rows:
+        md.append("\n## 特徴量の群ごとの精度（その群だけで学習。値が小さいほど良い）\n")
+        md.append("| 群 | 特徴量の数 | ピンボール損失の平均 | 90% 区間の的中率 | 直近 720 本に対する改善 |\n|---|---|---|---|---|")
+        md.append(f"| 全部 | {len(cols)} | {results['forest']['pinball_mean']:.6f} | {results['forest']['interval90']:.1%} | {1 - results['forest']['pinball_mean'] / base:+.1%} |")
+        for r in subset_rows:
+            md.append(f"| {r['name']} | {r['n_features']} | {r['pinball_mean']:.6f} | {r['interval90']:.1%} | {1 - r['pinball_mean'] / base:+.1%} |")
     md.append("\n## 年ごとのピンボール損失の平均\n")
     md.append("| 年 | 行数 | フォレスト | 直近 720 本 | 無条件 | 改善（対 720 本） |\n|---|---|---|---|---|---|")
     for r in by_year:
@@ -192,7 +207,7 @@ def main(argv: list[str] | None = None) -> int:
     md.append("| 特徴量 | 重要度 |\n|---|---|")
     for k, v in imp.head(20).items():
         md.append(f"| {k} | {v:.3f} |")
-    md.append("\n群ごとの和: " + "、".join(f"{ {'t': 'トレンド', 'o': 'オシレーター', 'v': 'ボラ・出来高', 'c': '時刻'}[g]} {v:.2f}" for g, v in group.items()))
+    md.append("\n群ごとの和: " + "、".join(f"{GROUPS.get(g, g)} {v:.2f}" for g, v in group.items()))
     md.append(f"\n## 今の推定（全期間で学習し直し、最新の足 {last_feats.index[0]} の終値で買った場合）\n")
     md.append("| | " + " | ".join(f"{q:.0%}" for q in qs) + f" | P(収益率 > 0) | P(収益率 > {cost:.2%}) |")
     md.append("|---|" + "---|" * (len(qs) + 2))
@@ -206,6 +221,7 @@ def main(argv: list[str] | None = None) -> int:
     (out / "metrics.json").write_text(json.dumps({
         "results": {k: {kk: ({str(q): v for q, v in vv.items()} if isinstance(vv, dict) else vv) for kk, vv in r.items()} for k, r in results.items()},
         "by_year": by_year, "best_leaf": best_leaf, "val_scores": val_scores, "importance": imp.round(5).to_dict(),
+        "subsets": subset_rows, "features": cols,
         "reliability": rel.to_dict("records"),
         "now": {"as_of": str(last_feats.index[0]), "quantiles": dict(zip([str(q) for q in qs], q_now.tolist())),
                 "p_up": p_now_up, "p_exceed_cost": p_now}}, ensure_ascii=False, indent=1))
