@@ -1,8 +1,10 @@
 # スイング（4 時間足で判断し 1〜3 日保有）の方向の研究（公開 API のみ、認証不要）。2026-09-28 オーナー決定。
-# 実行方法: API の workflow_dispatch（ref にブランチを指定）で mode を選ぶ。
+# 実行方法:
 #   check: データの確認（4 時間足の境界、ペアごとの期間・抜け・出来高、今のスプレッド）。損益は出さない。
+#          scripts/swing.py かこのファイルを変更して push すると、この mode で動く。
 #   eval:  事前登録した 45 通りを全期間で 1 回評価する（configs/swing.yaml の owner_approved が必要）。
-# 事前登録を守るため、push では起動しない。
+#          事前登録を守るため、API の workflow_dispatch で mode: eval を指定したときだけ動く。
+# workflow_dispatch だけのワークフローは既定ブランチにないと API から起動できない（404）ので、push でも登録されるようにしてある。
 name: swing
 on:
   workflow_dispatch:
@@ -13,10 +15,16 @@ on:
         default: check
         type: choice
         options: [check, eval]
+  push:
+    paths:
+      - scripts/swing.py
+      - .github/workflows/swing.yml
 permissions:
   contents: write
 concurrency:
   group: research-${{ github.ref }}
+env:
+  MODE: ${{ inputs.mode || 'check' }}
 jobs:
   swing:
     runs-on: ubuntu-latest
@@ -39,7 +47,7 @@ jobs:
       - name: Run
         env:
           PYTHONPATH: .
-        run: python scripts/swing.py --mode ${{ inputs.mode }}
+        run: python scripts/swing.py --mode "$MODE"
       - uses: actions/cache/save@v4
         if: always()
         with:
@@ -47,10 +55,10 @@ jobs:
           key: swing-candles-${{ github.run_id }}
       - name: Summary and commit
         run: |
-          if [ "${{ inputs.mode }}" = check ]; then
+          if [ "$MODE" = check ]; then
             files="reports/swing/check.md reports/swing/check.json"; md=reports/swing/check.md
           else
             files="reports/swing/report.md reports/swing/metrics.json"; md=reports/swing/report.md
           fi
           cat "$md" >> "$GITHUB_STEP_SUMMARY"
-          scripts/commit_report.sh "${{ steps.pre.outputs.n }}" "Swing ${{ inputs.mode }} from run ${{ github.run_id }}" $files
+          scripts/commit_report.sh "${{ steps.pre.outputs.n }}" "Swing $MODE from run ${{ github.run_id }}" $files

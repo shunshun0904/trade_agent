@@ -7,7 +7,7 @@
 - Phase 1（`bbdata/`）、Phase 0（`scripts/phase0.py`、結果は SPEC.md §9）、Phase 2〜6（`bbresearch/`）は実装済み。
 - このブランチは 2026-09-27 に既定ブランチになった（schedule 付きワークフローが自動で動く。60 日間 push がないと GitHub が schedule を止める）。
 - 実 API へのアクセスは GitHub Actions で行う。開発環境からは行わない。
-  - どのワークフローも、API の workflow_dispatch でこのブランチを ref に指定して実行できる（既定ブランチになくてもよいことを 2026-09-23 に確認）
+  - どのワークフローも、API の workflow_dispatch でこのブランチを ref に指定して実行できる（既定ブランチになくてもよいことを 2026-09-23 に確認）。ただし workflow_dispatch だけで push のきっかけを持たないワークフローは、既定ブランチにないと API が 404 を返した（`swing.yml`、2026-09-28）。push のきっかけも付けておく
   - `phase0.yml`: `scripts/phase0.py` の変更を push すると実行し、`reports/phase0/` をコミットする
   - `research.yml`: `configs/research.yaml` の変更を push すると（`run_on_actions: true` のとき）実行し、`reports/research/` をコミットする
   - `search.yml`: `configs/search.yaml` の変更を push すると（`run_on_actions: true` のとき）パラメータ探索を実行し、`reports/search/` をコミットする（開発期間のみ。ホールドアウトは評価しない）
@@ -25,7 +25,7 @@
   - `dist.yml`: 1 時間足のテクニカル指標（373 個。`bbresearch/indicators.py`、部品は `bbresearch/ta.py`）と約定フローの特徴量（34 個。`bbresearch/tradeflow.py`、約定履歴は Actions のキャッシュ）から 4 時間後までの収益率の条件付き分布を分位点回帰フォレストで推定し、無条件・直近 n 本の経験分布と精度を比べ、群ごとの寄与も出す（`scripts/dist_forecast.py`、`configs/dist.yaml`、`reports/dist/`）
   - `vol_daily.yml`: ポートフォリオの JPY 比率を日次で調整する案の前向き検証（BTC 1 時間足のフォレストによる翌日ボラ予測 ÷ 長期平均を推定ボラに掛ける。`scripts/vol_daily.py`、`configs/vol_daily.yaml`、`reports/vol_daily/`）
   - `auth-check.yml`: 認証付き API の疎通確認（参照系のみ）。キーは Secrets `bitbank_API` / `bitbank_secret` から読む
-  - `swing.yml`: スイング（4 時間足で判断し 1〜3 日保有）の方向の研究。mode `check`（データの確認。損益は出さない）と `eval`（事前登録した 45 通りを全期間で 1 回。`configs/swing.yaml` の `owner_approved` が必要）。workflow_dispatch だけで起動する（`scripts/swing.py`、`bbresearch/swing.py`、`reports/swing/`）
+  - `swing.yml`: スイング（4 時間足で判断し 1〜3 日保有）の方向の研究。mode `check`（データの確認。損益は出さない）と `eval`（事前登録した 45 通りを全期間で 1 回。`configs/swing.yaml` の `owner_approved` が必要）。eval は workflow_dispatch だけで動き、`scripts/swing.py` かワークフローの変更の push では check だけが動く（`scripts/swing.py`、`bbresearch/swing.py`、`reports/swing/`）。workflow_dispatch だけのワークフローは既定ブランチにないと API から起動できない（404、2026-09-28 に確認）
 - `dashboard/`: TPO・価格帯別出来高のダッシュボード（AWS: API Gateway + Lambda + S3、SAM）。`dashboard/deploy.sh` を AWS CloudShell で実行してデプロイする。Lambda は標準ライブラリだけで書き、計算が `bbresearch/profile.py` と一致することを `tests/test_dashboard.py` で照合している。画面は `dashboard/web/`（React、Vite）で書き、`dashboard/web/build.sh` でビルドして `dashboard/app/page.html`（生成物、コミットする）に置く。左に直近 24 時間・15 分足の TPO・価格帯別出来高（ダーク配色、5 分ごとに更新）、右に 1 分ごとの水準の 60 分の推移（`/api/signals`）。モデルの予測は載せない
 - リポジトリは公開（2026-09-27 に非公開へ切り替え、2026-09-28 に公開へ戻した）。ログやレポートに残高・注文の内容・キーを出さない（例外: `docs/monitor/` の記録は金額を残す。公開のまま記録する。2026-09-28 オーナー決定）。
 - 上げ下げの予測モデル（`direction*.yml`）は 2026-09-26 に研究を区切った（目的変数 3 通り・ホライズン 2 通りとも費用を超えない。SPEC §1.3）。自動売買には使わない。

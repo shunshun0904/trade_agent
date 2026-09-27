@@ -34,7 +34,8 @@ PYTHONPATH=. python scripts/swing.py --mode eval    # 事前登録した 45 通�
 
 JPY の現物ペアで、時系列モメンタム・横断モメンタム・急落後の反発を、同じ配分を常に保有した場合に対する
 アルファで評価する。数値は `configs/swing.yaml` に事前に固定してあり、`owner_approved` に日付が入るまで
-eval は動かない。GitHub Actions（`swing.yml`、workflow_dispatch だけ）で実行し、`reports/swing/` をコミットする。
+eval は動かない。GitHub Actions（`swing.yml`）で実行し、`reports/swing/` をコミットする。eval は workflow_dispatch で mode を
+指定したときだけ動き、`scripts/swing.py` の変更の push では check だけが動く。
 
 ### 15 分後の上げ下げの予測（二段構え）
 
