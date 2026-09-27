@@ -13,7 +13,8 @@ PAIRS = {"btc_jpy": "0.001", "eth_jpy": "0.0012", "xrp_jpy": "0.0012"}
 class FakeAPI:
     """1 時間足の合成データから 4 時間足（UTC 0 時起点）を作って返す。"""
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, base_url="https://public.bitbank.cc", **kwargs):
+        self.base_url = base_url
         idx = pd.date_range("2019-06-01", "2021-01-01", freq="1h", tz="UTC", inclusive="left")
         rng = np.random.default_rng(0)
         self.h1 = {}
@@ -25,7 +26,7 @@ class FakeAPI:
             self.h1[p] = df[["open", "high", "low", "close", "volume"]]
 
     def get(self, path):
-        assert path == "/spot/pairs"
+        assert path == "/spot/pairs" and self.base_url == "https://api.bitbank.cc/v1"  # public.bitbank.cc では 404
         return {"pairs": [{"name": p, "taker_fee_rate_quote": f, "is_enabled": True} for p, f in PAIRS.items()]}
 
     @staticmethod
@@ -35,6 +36,7 @@ class FakeAPI:
                 zip(df[["open", "high", "low", "close", "volume"]].to_numpy(), ts)]
 
     def candlestick(self, pair, candle_type, period):
+        assert self.base_url == "https://public.bitbank.cc"
         h1 = self.h1[pair]
         if candle_type == "1hour":
             day = pd.Timestamp(period, tz="UTC")
@@ -44,6 +46,7 @@ class FakeAPI:
         return self._rows(h4[h4.index.year == int(period)])
 
     def depth(self, pair):
+        assert self.base_url == "https://public.bitbank.cc"
         return {"asks": [["100.1", "1"]], "bids": [["99.9", "1"]]}
 
 

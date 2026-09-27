@@ -28,12 +28,15 @@ from bbdata.download import download_candles, load_candles
 from bbresearch.swing import (BARS_PER_DAY, BARS_PER_YEAR, bar_sigma, crash_events, daily, deflate, eligible, evaluate,
                               event_study, judge, panel, risk_parity, simulate, stats)
 
+PAIRS_BASE_URL = "https://api.bitbank.cc/v1"
 CACHE = Path(".cache/swing")
 OUT = Path("reports/swing")
 CHECK_DAYS = ("2026-09-14", "2026-09-21")  # 4 時間足の境界を 1 時間足と照合する期間（UTC、終わりは含まない）
 
 
-def jpy_pairs(api: PublicClient) -> list[dict]:
+def jpy_pairs() -> list[dict]:
+    """JPY ペアの一覧と手数料率。/spot/pairs は public.bitbank.cc ではなく api.bitbank.cc/v1 にある（scripts/activity.py と同じ）。"""
+    api = PublicClient(base_url=PAIRS_BASE_URL, min_interval=0.5)
     return [p for p in api.get("/spot/pairs")["pairs"] if p["name"].endswith("_jpy")]
 
 
@@ -103,7 +106,7 @@ def spreads(api: PublicClient, names: list[str], rounds: int = 5) -> dict[str, f
 
 def main_check(cfg: dict) -> None:
     api = PublicClient(min_interval=0.5)
-    pairs = jpy_pairs(api)
+    pairs = jpy_pairs()
     names = [p["name"] for p in pairs]
     candles = load_4h(api, names, cfg["data"]["start"], cfg["data"]["end"])
     boundary = check_boundary(api)
@@ -175,7 +178,7 @@ def main_eval(cfg: dict) -> None:
     if not cfg.get("owner_approved"):
         sys.exit("configs/swing.yaml の owner_approved が空。オーナーの承認の前は評価しない。")
     api = PublicClient(min_interval=0.5)
-    pairs = [p for p in jpy_pairs(api) if p["name"] not in set(cfg["data"]["exclude"])]
+    pairs = [p for p in jpy_pairs() if p["name"] not in set(cfg["data"]["exclude"])]
     names = [p["name"] for p in pairs]
     fee = {p["name"]: float(p["taker_fee_rate_quote"]) for p in pairs}
     cost = {n: fee[n] + cfg["cost"]["slippage"] for n in names}
