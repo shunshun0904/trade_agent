@@ -31,6 +31,7 @@ jobs:
         # 同時に動いた別の実行が push した記録を取り込んでから追記・描画する（古い記録で画面を上書きしない）
         run: git fetch -q origin "$GITHUB_REF_NAME" && (git checkout "origin/$GITHUB_REF_NAME" -- docs/monitor || true)
       - name: Snapshot
+        shell: bash
         env:
           PYTHONPATH: .
           BITBANK_API_KEY: ${{ secrets.bitbank_API }}
