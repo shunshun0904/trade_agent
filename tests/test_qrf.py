@@ -1,7 +1,7 @@
 import numpy as np
 
-from bbresearch.qrf import (QUANTILES, QuantileForest, crps_weighted, evaluate_quantiles, prob_exceed, rolling_empirical,
-                            weighted_quantiles)
+from bbresearch.qrf import (QUANTILES, QuantileForest, crps_weighted, evaluate_quantiles, prob_exceed, prob_exceed_rows,
+                            rolling_empirical, weighted_quantiles)
 
 
 def _hetero(n, seed):
@@ -66,3 +66,18 @@ def test_rolling_empirical_uses_only_settled_returns():
     # 行 0 の時点で確定しているのは学習末尾の 100 − 4 = 96 個目まで → 窓は [46, 96) の中央値 70.5
     assert abs(q[0, 0] - np.quantile(np.arange(46, 96), 0.5)) < 1e-9
     assert abs(q[10, 0] - np.quantile(np.arange(56, 106), 0.5)) < 1e-9
+
+
+def test_bins_split_and_rowwise_exceed_probability():
+    X, y, scale_t = _hetero(4000, 4)
+    qf = QuantileForest(n_estimators=60, min_samples_leaf=40, max_features=1.0, random_state=0, n_jobs=1,
+                        split_target="bins", n_bins=6).fit(X, y)
+    q = qf.predict_quantiles(X[:500])
+    assert (np.diff(q, axis=1) >= 0).all()
+    width = q[:, -1] - q[:, 0]
+    assert width[scale_t[:500] > 1].mean() > 2.0 * width[scale_t[:500] < 1].mean()   # 区間割合の分割でも散らばりを捉える
+    zs, w = next(qf.predict_distribution(X[:5]))
+    c = np.array([-1.0, 0.0, 0.5, 100.0, -100.0])
+    p = prob_exceed_rows(zs, w, c)
+    for i in range(5):
+        assert abs(p[i] - (w[i] * (zs > c[i])).sum()) < 1e-12

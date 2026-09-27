@@ -21,10 +21,15 @@ QUANTILES = (0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95)
 
 class QuantileForest:
     def __init__(self, n_estimators: int = 300, min_samples_leaf: int = 50, max_features: float | str = 0.33,
-                 max_samples: float | None = 0.5, random_state: int = 0, n_jobs: int = -1):
+                 max_samples: float | None = 0.5, random_state: int = 0, n_jobs: int = -1,
+                 split_target: str = "mean", n_bins: int = 8):
+        """split_target: "mean" は普通の回帰木（平均の差で分割）。"bins" は目的変数を分位点で n_bins 個の区間に分け、
+        その one-hot を多出力にして学習する（区間の割合 = 分布の形が違う領域を分ける。GRF の分位点フォレストの分割規則の近似。
+        2026-09-27 オーナー決定）。葉の分布は元の y から作るので、予測の仕組みは同じ。"""
         self.rf = RandomForestRegressor(n_estimators=n_estimators, min_samples_leaf=min_samples_leaf,
                                         max_features=max_features, max_samples=max_samples, bootstrap=True,
                                         random_state=random_state, n_jobs=n_jobs)
+        self.split_target, self.n_bins = split_target, n_bins
         self._y: np.ndarray | None = None
         self._order: np.ndarray | None = None
         self._leaf_mats: list[sparse.csr_matrix] = []
@@ -32,7 +37,12 @@ class QuantileForest:
     def fit(self, X: np.ndarray, y: np.ndarray) -> "QuantileForest":
         X = np.asarray(X, dtype=float)
         y = np.asarray(y, dtype=float)
-        self.rf.fit(X, y)
+        if self.split_target == "bins":
+            edges = np.quantile(y, np.linspace(0, 1, self.n_bins + 1)[1:-1])
+            target = np.eye(self.n_bins)[np.digitize(y, edges)]
+        else:
+            target = y
+        self.rf.fit(X, target)
         self._order = np.argsort(y, kind="stable")
         self._y = y[self._order]
         leaves = self.rf.apply(X)  # (n_train, n_trees)
@@ -99,6 +109,15 @@ def prob_exceed(y_sorted: np.ndarray, w: np.ndarray, c: float) -> np.ndarray:
     """P(Y > c)（各行）。"""
     w = w / w.sum(axis=1, keepdims=True)
     return w[:, y_sorted > c].sum(axis=1)
+
+
+def prob_exceed_rows(y_sorted: np.ndarray, w: np.ndarray, c: np.ndarray) -> np.ndarray:
+    """P(Y > c_i)（行ごとに違うしきい値）。"""
+    w = w / w.sum(axis=1, keepdims=True)
+    cw = np.cumsum(w, axis=1)
+    idx = np.searchsorted(y_sorted, np.asarray(c, dtype=float), side="right")   # y_sorted[:idx] <= c
+    below = np.where(idx > 0, cw[np.arange(len(c)), np.maximum(idx - 1, 0)], 0.0)
+    return 1.0 - below
 
 
 def pinball(obs: np.ndarray, q_pred: np.ndarray, q: float) -> float:

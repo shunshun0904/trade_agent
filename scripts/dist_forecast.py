@@ -21,8 +21,10 @@ import yaml
 
 from bbdata.client import BitbankAPIError, PublicClient
 from bbresearch.indicators import GROUPS, forward_return, indicator_table
-from bbresearch.qrf import (QuantileForest, crps_weighted, evaluate_quantiles, prob_exceed, reliability,
-                            rolling_empirical)
+from sklearn.metrics import roc_auc_score
+
+from bbresearch.qrf import (QuantileForest, crps_weighted, evaluate_quantiles, prob_exceed, prob_exceed_rows,
+                            reliability, rolling_empirical)
 
 CACHE = Path(".cache/candles")
 
@@ -78,6 +80,28 @@ def crps_rolling(y_train_tail: np.ndarray, y_test: np.ndarray, n: int, horizon: 
     return out
 
 
+def fit_variant(Xtr, ytr, Xte, yte, sig_tr, sig_te, standardize: bool, split: str, leaf: int, mf, fp: dict, qs, cost: float,
+                n_bins: int = 8) -> dict:
+    """目的変数の標準化（y / σ_t）と分割規則（mean / bins）を選べる学習と評価。分位点・CRPS・確率は σ_t を掛け戻して元の尺度で出す。"""
+    ztr = ytr / sig_tr if standardize else ytr
+    qf = QuantileForest(fp["n_estimators"], leaf, mf, fp["max_samples"], split_target=split, n_bins=n_bins).fit(Xtr, ztr)
+    scale = sig_te if standardize else np.ones(len(Xte))
+    q = qf.predict_quantiles(Xte, qs) * scale[:, None]
+    crps, p_cost, p_up = [], [], []
+    for s, (zs, w) in zip(range(0, len(Xte), 512), qf.predict_distribution(Xte, 512)):
+        sc = scale[s:s + len(w)]
+        crps.append(crps_weighted(zs, w, yte[s:s + len(w)] / sc) * sc)
+        p_cost.append(prob_exceed_rows(zs, w, cost / sc))
+        p_up.append(prob_exceed_rows(zs, w, np.zeros(len(w))))
+    ev = evaluate_quantiles(yte, q, qs)
+    ev["crps"] = float(np.nanmean(np.concatenate(crps)))
+    p_cost, p_up = np.concatenate(p_cost), np.concatenate(p_up)
+    ev["auc_up"] = float(roc_auc_score(yte > 0, p_up))
+    ev["auc_cost"] = float(roc_auc_score(yte > cost, p_cost))
+    ev["pinball50"] = ev["pinball"][0.5]
+    return {"eval": ev, "q": q, "p_cost": p_cost, "p_up": p_up, "qf": qf}
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", default="configs/dist.yaml")
@@ -101,6 +125,9 @@ def main(argv: list[str] | None = None) -> int:
     test = data[data.index >= split]
     cols = list(feats.columns)
     Xtr, ytr, Xte, yte = train[cols].to_numpy(), train["y"].to_numpy(), test[cols].to_numpy(), test["y"].to_numpy()
+    # 標準化に使う σ_t: 足 t までの 1 時間の対数リターンの直近 24 本の標準偏差 × √horizon（先読みなし）
+    sig_all = (np.log(df["close"]).diff().rolling(24, min_periods=24).std() * np.sqrt(horizon)).clip(lower=1e-4)
+    sig_tr, sig_te = sig_all.reindex(train.index).to_numpy(), sig_all.reindex(test.index).to_numpy()
     print(f"学習 {len(train):,} 行（{train.index[0].date()} 〜 {train.index[-1].date()}）、評価 {len(test):,} 行、特徴量 {len(cols)}")
 
     # ---- 葉の最小サンプル数と特徴量の割合を、学習期間の末尾を時系列順に区切ったローリング検証で選ぶ（2026-09-27 オーナー決定）
@@ -131,6 +158,18 @@ def main(argv: list[str] | None = None) -> int:
     p_model = np.concatenate([prob_exceed(ys, w, cost) for ys, w in qf.predict_distribution(Xte, 512)])
     results = {"forest": evaluate_quantiles(yte, q_model, qs)}
     results["forest"]["crps"] = float(np.nanmean(crps_model))
+    p_up_model = np.concatenate([prob_exceed(ys, w, 0.0) for ys, w in qf.predict_distribution(Xte, 512)])
+    results["forest"]["auc_up"] = float(roc_auc_score(yte > 0, p_up_model))
+    results["forest"]["auc_cost"] = float(roc_auc_score(yte > cost, p_model))
+    results["forest"]["pinball50"] = results["forest"]["pinball"][0.5]
+    # 手法の変種（2026-09-27 オーナー決定: 目的変数の標準化、分位点向けの分割規則）
+    variants = {}
+    for v in cfg.get("variants") or []:
+        r = fit_variant(Xtr, ytr, Xte, yte, sig_tr, sig_te, bool(v.get("standardize")), v.get("split", "mean"), best_leaf,
+                        fp["max_features"], fp, qs, cost, int(cfg.get("n_bins", 8)))
+        variants[v["name"]] = r
+        results["v:" + v["name"]] = r["eval"]
+        print(f"変種 {v['name']}: ピンボール {r['eval']['pinball_mean']:.6f}、CRPS {r['eval']['crps']:.6f}、AUC(>0) {r['eval']['auc_up']:.3f}")
     ytr_sorted = np.sort(ytr)
     q_unc = np.tile(np.quantile(ytr, qs), (len(yte), 1))
     results["unconditional"] = evaluate_quantiles(yte, q_unc, qs)
@@ -191,9 +230,17 @@ def main(argv: list[str] | None = None) -> int:
           "| 分布 | ピンボール損失の平均 | CRPS | 90% 区間の的中率（目標 90%） | 90% 区間の幅の中央値 | 直近 720 本に対する改善 |", "|---|---|---|---|---|---|"]
     base = results[f"rolling{cfg['baselines']['rolling_n'][-1]}"]["pinball_mean"]
     labels = {"forest": "フォレスト（指標で条件付け）", "unconditional": "無条件"}
+    label = lambda k: labels.get(k, k[2:] if k.startswith("v:") else f"直近 {k[7:]} 本")  # noqa: E731
     for k, r in results.items():
-        name = labels.get(k, f"直近 {k[7:]} 本")
+        name = label(k)
         md.append(f"| {name} | {r['pinball_mean']:.6f} | {r['crps']:.6f} | {r['interval90']:.1%} | {r['width90_median'] * 100:.2f}% | {1 - r['pinball_mean'] / base:+.1%} |")
+    md.append("\n## 向きの情報（フォレストの変種。AUC は 0.5 が情報なし。50% の損失は中央値の精度）\n")
+    md.append("| 手法 | 目的変数 | 分割の基準 | ピンボール損失の平均 | 50% のピンボール損失 | CRPS | AUC P(収益率 > 0) | AUC P(収益率 > 費用) |\n|---|---|---|---|---|---|---|---|")
+    md.append(f"| フォレスト（基準） | 収益率 | 平均 | {results['forest']['pinball_mean']:.6f} | {results['forest']['pinball50']:.6f} | {results['forest']['crps']:.6f} | {results['forest']['auc_up']:.3f} | {results['forest']['auc_cost']:.3f} |")
+    for v in cfg.get("variants") or []:
+        r = results["v:" + v["name"]]
+        md.append(f"| {v['name']} | {'収益率 / σ_t' if v.get('standardize') else '収益率'} | {'分位点の区間の割合' if v.get('split') == 'bins' else '平均'} | "
+                  f"{r['pinball_mean']:.6f} | {r['pinball50']:.6f} | {r['crps']:.6f} | {r['auc_up']:.3f} | {r['auc_cost']:.3f} |")
     md.append(f"\n## ハイパーパラメータのローリング検証（学習期間の末尾を {n_folds} 区間 × {frac:.0%} に区切り、各区間をそれより前で学習して評価。ピンボール損失の平均）\n")
     md.append("| 葉の最小 | 特徴量の割合 | " + " | ".join(f"区間 {k + 1}（{train.index[a].date()}〜）" for k, (a, _) in enumerate(folds)) + " | 平均 |")
     md.append("|---|---|" + "---|" * (n_folds + 1))
@@ -203,7 +250,7 @@ def main(argv: list[str] | None = None) -> int:
     md.append("| 分布 | " + " | ".join(f"{q:.0%}" for q in qs) + " |")
     md.append("|---|" + "---|" * len(qs))
     for k, r in results.items():
-        md.append(f"| {labels.get(k, '直近 ' + k[7:] + ' 本')} | " + " | ".join(f"{r['coverage'][q]:.1%}" for q in qs) + " |")
+        md.append(f"| {label(k)} | " + " | ".join(f"{r['coverage'][q]:.1%}" for q in qs) + " |")
     if subset_rows:
         md.append("\n## 特徴量の群ごとの精度（その群だけで学習。値が小さいほど良い）\n")
         md.append("| 群 | 特徴量の数 | ピンボール損失の平均 | 90% 区間の的中率 | 直近 720 本に対する改善 |\n|---|---|---|---|---|")
@@ -226,7 +273,16 @@ def main(argv: list[str] | None = None) -> int:
     md.append(f"\n## 今の推定（全期間で学習し直し、最新の足 {last_feats.index[0]} の終値で買った場合）\n")
     md.append("| | " + " | ".join(f"{q:.0%}" for q in qs) + f" | P(収益率 > 0) | P(収益率 > {cost:.2%}) |")
     md.append("|---|" + "---|" * (len(qs) + 2))
-    md.append("| 条件付き | " + " | ".join(pct(v) for v in q_now) + f" | {p_now_up:.1%} | {p_now:.1%} |")
+    md.append("| 条件付き（基準） | " + " | ".join(pct(v) for v in q_now) + f" | {p_now_up:.1%} | {p_now:.1%} |")
+    sig_now = float(sig_all.reindex(last_feats.index).iloc[0])
+    for v in cfg.get("variants") or []:
+        std = bool(v.get("standardize"))
+        qf_v = QuantileForest(fp["n_estimators"], best_leaf, fp["max_features"], fp["max_samples"], split_target=v.get("split", "mean"),
+                              n_bins=int(cfg.get("n_bins", 8))).fit(data[cols].to_numpy(), (data["y"] / sig_all.reindex(data.index)).to_numpy() if std else data["y"].to_numpy())
+        sc = sig_now if std else 1.0
+        qv = qf_v.predict_quantiles(last_feats.to_numpy(), qs)[0] * sc
+        zs, w = next(qf_v.predict_distribution(last_feats.to_numpy()))
+        md.append(f"| {v['name']} | " + " | ".join(pct(x) for x in qv) + f" | {prob_exceed(zs, w, 0.0)[0]:.1%} | {prob_exceed(zs, w, cost / sc)[0]:.1%} |")
     md.append("| 無条件（全期間） | " + " | ".join(pct(v) for v in q_now_unc) + f" | {float(np.mean(data['y'] > 0)):.1%} | {float(np.mean(data['y'] > cost)):.1%} |")
     md.append("\n注意: 評価は 2024 年以降の 1 回だけ。年ごとの改善が安定しているかを見る。分布の改善が費用を超える売買につながるかは別の検証（売買規則）が要る。")
     text = "\n".join(md) + "\n"
