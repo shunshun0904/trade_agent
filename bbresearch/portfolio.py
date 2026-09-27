@@ -108,10 +108,11 @@ def _month_starts(index: pd.DatetimeIndex, start) -> list[pd.Timestamp]:
     return [d for i, d in enumerate(idx) if i == 0 or d.month != idx[i - 1].month]
 
 
-def strategy_name(m, v, vd=None, cf=None, tr=None) -> str:
+def strategy_name(m, v, vd=None, cf=None, tr=None, vr=None) -> str:
     return (("minvar" if m is None else f"minvar_x{m}") + ("" if v is None else f"_vt{int(round(v * 100))}")
             + ("" if vd is None or v is None else f"_w{vd}") + ("" if cf is None or v is None else f"_c{cf}")
-            + ("" if tr is None or v is None else f"_t{tr[0]}s{int(round(tr[1] * 100))}"))
+            + ("" if tr is None or v is None else f"_t{tr[0]}s{int(round(tr[1] * 100))}")
+            + ("" if vr is None or v is None else f"_r{vr}"))
 
 
 def trend_on(close: pd.Series, t0, days: int) -> bool | None:
@@ -135,7 +136,8 @@ def walk_forward(close: pd.DataFrame, start, k_max: int = 5, w_max: float = 0.4,
                  target_mults: tuple = (None, 1.0, 1.5), est_days: int = 365, cost: float = 0.0015,
                  benchmark: str = "btc_jpy", caps: dict[str, float] | None = None,
                  vol_targets: tuple = (None,), vol_days: tuple = (None,),
-                 cash_freq_days: tuple = (None,), trends: tuple = (None,)) -> WalkForwardResult:
+                 cash_freq_days: tuple = (None,), trends: tuple = (None,),
+                 vol_ratios: dict | None = None) -> WalkForwardResult:
     """close は日足の終値（列 = ペア、index = 日付）。毎月初に直前 est_days 日で推定し、翌月を保有する。
 
     vol_targets の各 v（年率）について、推定ボラが v を超えるときは暗号資産の比率を v / 推定ボラ に落とし、残りを JPY で持つ。
@@ -144,13 +146,17 @@ def walk_forward(close: pd.DataFrame, start, k_max: int = 5, w_max: float = 0.4,
     trends の各要素は None か (days, scale)。(days, scale) は、区切りの開始時点で benchmark（BTC）の終値が days 日移動平均を
     下回っていれば暗号資産の重みを scale 倍にする（残りは JPY。scale=0 で全額 JPY）。判定は開始日より前の終値だけを使う。
     目標ボラ付きの戦略にだけ掛ける（2026-09-27 オーナー指示のトレンドフィルタ）。
+    vol_ratios は {名前: 日付 → 倍率} の辞書（None の要素は倍率なし）。区切りの開始日 s0 で、推定ボラに「その日の倍率」
+    （例: 翌日のボラ予測 ÷ 長期ボラ）を掛けてから目標に縮める。日次の JPY 調整（cash_freq_days に 1）と組み合わせて、
+    ボラ予測で JPY の割合を毎日動かす（2026-09-27 オーナー決定）。倍率は s0 より前のデータだけで作ること。
     """
     ret = np.log(close).diff()
     starts = _month_starts(close.index, start)
     names = {f"minvar_x{m}" if m is not None else "minvar": m for m in target_mults}
-    combos = [(m, v, vd, cf, tr) for m in target_mults for v in vol_targets
+    ratios = vol_ratios or {None: None}
+    combos = [(m, v, vd, cf, tr, vr) for m in target_mults for v in vol_targets
               for vd in (vol_days if v is not None else (None,)) for cf in (cash_freq_days if v is not None else (None,))
-              for tr in (trends if v is not None else (None,))]
+              for tr in (trends if v is not None else (None,)) for vr in (ratios if v is not None else {None: None})]
     strategies = list(dict.fromkeys(strategy_name(*c) for c in combos)) + ["equal", benchmark]
     daily = {s: pd.Series(0.0, index=close.index[close.index >= starts[0]]) for s in strategies}
     weights = {s: [] for s in strategies}
@@ -170,12 +176,16 @@ def walk_forward(close: pd.DataFrame, start, k_max: int = 5, w_max: float = 0.4,
                            "cash": round(float(max(0.0, 1.0 - w.sum())), 4)})
         prev_w[s] = w
 
-    def vol_scale(wv: np.ndarray, avail: list[str], t0, v: float, vd, cov_full: np.ndarray) -> float:
-        """t0 より前の直近 vd 日（None なら est_days 日）で推定した年率ボラに対する縮め率。"""
+    def vol_scale(wv: np.ndarray, avail: list[str], t0, v: float, vd, cov_full: np.ndarray, ratio: pd.Series | None = None) -> float:
+        """t0 より前の直近 vd 日（None なら est_days 日）で推定した年率ボラ（× その日の倍率）に対する縮め率。"""
         days = est_days if vd is None else min(vd, est_days)
         win = ret[(ret.index < t0) & (ret.index >= t0 - pd.Timedelta(days=days))][avail].dropna()
         cov_v = shrunk_cov(win.to_numpy()) if len(win) >= 20 else cov_full
         est_vol = float(np.sqrt(wv @ cov_v @ wv * DAYS_PER_YEAR))
+        if ratio is not None:
+            past = ratio[ratio.index <= t0]
+            if len(past) and np.isfinite(past.iloc[-1]):
+                est_vol *= float(past.iloc[-1])
         return 1.0 if est_vol <= v else v / est_vol
 
     for j, d0 in enumerate(starts):
@@ -202,12 +212,13 @@ def walk_forward(close: pd.DataFrame, start, k_max: int = 5, w_max: float = 0.4,
                 for vd in vol_days:
                     for cf in cash_freq_days:
                         for tr in trends:
-                            name = strategy_name(m, v, vd, cf, tr)
-                            for s0, s1 in _segments(d0, d1, close.index, cf):
-                                sc = vol_scale(wv, avail, s0, v, vd, cov)
-                                if tr is not None and trend_on(close[benchmark], s0, tr[0]) is False:
-                                    sc *= tr[1]
-                                apply(name, w_r * sc, s0, s1)  # 残りは JPY
+                            for vr, rs in ratios.items():
+                                name = strategy_name(m, v, vd, cf, tr, vr)
+                                for s0, s1 in _segments(d0, d1, close.index, cf):
+                                    sc = vol_scale(wv, avail, s0, v, vd, cov, rs)
+                                    if tr is not None and trend_on(close[benchmark], s0, tr[0]) is False:
+                                        sc *= tr[1]
+                                    apply(name, w_r * sc, s0, s1)  # 残りは JPY
         apply("equal", pd.Series(1.0 / len(avail), index=avail), d0, d1)
         apply(benchmark, pd.Series({benchmark: 1.0}), d0, d1)
     return WalkForwardResult(daily=pd.DataFrame(daily), weights=weights)

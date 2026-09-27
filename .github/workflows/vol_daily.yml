@@ -1,0 +1,46 @@
+# ポートフォリオの JPY 比率の日次調整（ボラ予測）の前向き検証。公式日足（全ペア）と BTC の 1 時間足（キャッシュ）を使う。公開 API のみ。
+# 実行方法: API の workflow_dispatch か、scripts/vol_daily.py / configs/vol_daily.yaml を変更して push する。
+name: vol-daily
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/bitbank-trade-agent-7ers55]
+    paths:
+      - scripts/vol_daily.py
+      - configs/vol_daily.yaml
+      - .github/workflows/vol_daily.yml
+permissions:
+  contents: write
+concurrency:
+  group: research-${{ github.ref }}
+jobs:
+  vol_daily:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/candles
+          key: candles-1hour-${{ github.run_id }}
+          restore-keys: candles-1hour-
+      - name: Walk-forward
+        shell: bash
+        env:
+          PYTHONPATH: .
+        run: python scripts/vol_daily.py --config configs/vol_daily.yaml --out reports/vol_daily
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .cache/candles
+          key: candles-1hour-${{ github.run_id }}
+      - run: cat reports/vol_daily/report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Commit report
+        run: >-
+          scripts/commit_report.sh "$( [ -f reports/experiments.jsonl ] && wc -l < reports/experiments.jsonl || echo 0 )"
+          "Daily vol-targeting report from run ${{ github.run_id }}" reports/vol_daily/report.md reports/vol_daily/metrics.json

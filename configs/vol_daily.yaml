@@ -1,0 +1,19 @@
+# ポートフォリオの JPY 比率を日次で調整する（scripts/vol_daily.py）。2026-09-27 オーナー決定。
+# 幅（ボラ）の推定だけを使う。向きは使わない。BTC の 1 時間足の指標から翌日（24 本）のボラを分位点回帰フォレストで予測し、
+# 長期（365 日）ボラとの比を推定ボラに掛けて目標ボラ 30% に縮める。銘柄と相対の重みは月 1 回のまま。
+pool: [btc_jpy, xrp_jpy, eth_jpy, doge_jpy, sol_jpy, xlm_jpy, link_jpy, ada_jpy, bcc_jpy, ltc_jpy, avax_jpy,
+       trx_jpy, bnb_jpy, dot_jpy, pol_jpy]
+start: "2022-01-01"          # 前向き検証の開始（フォレストの学習に 2021 年を使う）
+hourly_start: "2021-01-01"
+history_from_year: 2019
+k_max: 5
+w_max: 0.4
+caps: {btc_jpy: 0.6}
+est_days: 365
+cost: 0.0015
+target_vol: 0.30
+horizon_hours: 24
+refit_months: 3
+forest: {n_estimators: 150, min_samples_leaf: 25, max_features: sqrt, split_target: bins}
+realized_windows: [24, 168]  # フォレストなしの基準（直近 n 本の実現ボラ）
+trend: [200, 0.0]            # 採用済みのトレンドフィルタ（BTC が 200 日線を下回る間は全額 JPY）

@@ -76,6 +76,17 @@ class QuantileForest:
             out[s:s + chunk] = weighted_quantiles(self._y, w, qs)
         return out
 
+    def predict_std(self, X: np.ndarray, chunk: int = 512) -> np.ndarray:
+        """条件付き分布の標準偏差（重み付き経験分布の 2 次モーメントから）。ボラ予測に使う。"""
+        X = np.asarray(X, dtype=float)
+        out = np.empty(len(X))
+        for s in range(0, len(X), chunk):
+            w = self.weights(X[s:s + chunk])
+            m1 = w @ self._y
+            m2 = w @ (self._y**2)
+            out[s:s + chunk] = np.sqrt(np.clip(m2 - m1**2, 0, None))
+        return out
+
     def predict_distribution(self, X: np.ndarray, chunk: int = 512):
         """(sorted_y, weights) を chunk ごとに返すジェネレータ。CRPS や P(r > c) の計算に使う。"""
         X = np.asarray(X, dtype=float)
