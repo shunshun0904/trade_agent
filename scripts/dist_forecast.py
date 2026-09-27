@@ -103,15 +103,25 @@ def main(argv: list[str] | None = None) -> int:
     Xtr, ytr, Xte, yte = train[cols].to_numpy(), train["y"].to_numpy(), test[cols].to_numpy(), test["y"].to_numpy()
     print(f"学習 {len(train):,} 行（{train.index[0].date()} 〜 {train.index[-1].date()}）、評価 {len(test):,} 行、特徴量 {len(cols)}")
 
-    # ---- 葉の最小サンプル数を学習期間の末尾 20% で選ぶ
-    n_val = len(train) // 5
-    val_scores = {}
+    # ---- 葉の最小サンプル数と特徴量の割合を、学習期間の末尾を時系列順に区切ったローリング検証で選ぶ（2026-09-27 オーナー決定）
+    n_folds, frac = int(cfg["validation"]["n_folds"]), float(cfg["validation"]["block_frac"])
+    n_block = int(len(train) * frac)
+    folds = [(len(train) - (n_folds - k) * n_block, len(train) - (n_folds - k - 1) * n_block) for k in range(n_folds)]
+    mf_grid = fp.get("max_features_grid") or [fp["max_features"]]
+    val_scores: dict[str, dict] = {}
     for leaf in fp["min_samples_leaf_grid"]:
-        qf = QuantileForest(fp["n_estimators"] // 2, leaf, fp["max_features"], fp["max_samples"]).fit(
-            Xtr[:-n_val - horizon], ytr[:-n_val - horizon])
-        val_scores[leaf] = evaluate_quantiles(ytr[-n_val:], qf.predict_quantiles(Xtr[-n_val:], qs), qs)["pinball_mean"]
-    best_leaf = min(val_scores, key=val_scores.get)
-    print("検証（ピンボール損失の平均）: " + "、".join(f"葉 {k}: {v:.6f}" for k, v in val_scores.items()) + f" → 葉 {best_leaf}")
+        for mf in mf_grid:
+            losses = []
+            for a, b in folds:
+                qf = QuantileForest(max(50, fp["n_estimators"] // 3), leaf, mf, fp["max_samples"]).fit(Xtr[:a - horizon], ytr[:a - horizon])
+                losses.append(evaluate_quantiles(ytr[a:b], qf.predict_quantiles(Xtr[a:b], qs), qs)["pinball_mean"])
+            key = f"leaf={leaf},mf={mf}"
+            val_scores[key] = {"leaf": leaf, "max_features": mf, "folds": losses, "mean": float(np.mean(losses))}
+            print(f"検証 {key}: " + "、".join(f"{x:.6f}" for x in losses) + f" → 平均 {np.mean(losses):.6f}")
+    best_key = min(val_scores, key=lambda k: val_scores[k]["mean"])
+    best_leaf, best_mf = val_scores[best_key]["leaf"], val_scores[best_key]["max_features"]
+    print(f"選択: {best_key}")
+    fp["max_features"] = best_mf   # 以降の学習（全部・群ごと・今の推定）で使う
 
     # ---- 学習と評価
     qf = QuantileForest(fp["n_estimators"], best_leaf, fp["max_features"], fp["max_samples"]).fit(Xtr, ytr)
@@ -175,7 +185,7 @@ def main(argv: list[str] | None = None) -> int:
           f"学習 {train.index[0].date()} 〜 {train.index[-1].date()}（{len(train):,} 行）、評価 {test.index[0].date()} 〜 {test.index[-1].date()}（{len(test):,} 行）",
           f"- 目的変数: 足 t の終値で買い {horizon} 本後の終値で売った対数収益率（費用は引いていない）。費用 {cost:.2%} を超える確率も出す",
           f"- 特徴量 {len(cols)} 個（" + "、".join(f"{GROUPS[g]} {sum(c.startswith(g + '_') for c in cols)}" for g in GROUPS) + "）。すべて足 t までのデータで計算（`tests/test_indicators.py`）。一覧は metrics.json の features",
-          f"- フォレスト: 木 {fp['n_estimators']}、葉の最小 {best_leaf}（検証で選択: " + "、".join(f"{k}: {v:.6f}" for k, v in val_scores.items()) + f"）、特徴量の割合 {fp['max_features']}、標本 {fp['max_samples']}",
+          f"- フォレスト: 木 {fp['n_estimators']}、葉の最小 {best_leaf}、分割に使う特徴量の割合 {fp['max_features']}（下のローリング検証で選択）、木ごとの標本 {fp['max_samples']}、深さの制限なし、分割の基準は二乗誤差",
           "- 比較: 無条件 = 学習期間全体の経験分布。直近 n = その時点で確定している直近 n 本の収益率の経験分布（ボラの変化を追う基準）\n",
           "## 分布の精度（評価期間、値が小さいほど良い。CRPS と損失の単位は対数収益率）\n",
           "| 分布 | ピンボール損失の平均 | CRPS | 90% 区間の的中率（目標 90%） | 90% 区間の幅の中央値 | 直近 720 本に対する改善 |", "|---|---|---|---|---|---|"]
@@ -184,6 +194,11 @@ def main(argv: list[str] | None = None) -> int:
     for k, r in results.items():
         name = labels.get(k, f"直近 {k[7:]} 本")
         md.append(f"| {name} | {r['pinball_mean']:.6f} | {r['crps']:.6f} | {r['interval90']:.1%} | {r['width90_median'] * 100:.2f}% | {1 - r['pinball_mean'] / base:+.1%} |")
+    md.append(f"\n## ハイパーパラメータのローリング検証（学習期間の末尾を {n_folds} 区間 × {frac:.0%} に区切り、各区間をそれより前で学習して評価。ピンボール損失の平均）\n")
+    md.append("| 葉の最小 | 特徴量の割合 | " + " | ".join(f"区間 {k + 1}（{train.index[a].date()}〜）" for k, (a, _) in enumerate(folds)) + " | 平均 |")
+    md.append("|---|---|" + "---|" * (n_folds + 1))
+    for k, r in sorted(val_scores.items(), key=lambda kv: kv[1]["mean"]):
+        md.append(f"| {r['leaf']} | {r['max_features']} | " + " | ".join(f"{x:.6f}" for x in r["folds"]) + f" | {r['mean']:.6f}{' ←選択' if k == best_key else ''} |")
     md.append("\n## 較正（予測した分位点を実際の収益率が下回った割合。目標は分位点そのもの）\n")
     md.append("| 分布 | " + " | ".join(f"{q:.0%}" for q in qs) + " |")
     md.append("|---|" + "---|" * len(qs))
@@ -220,7 +235,7 @@ def main(argv: list[str] | None = None) -> int:
     (out / "report.md").write_text(text)
     (out / "metrics.json").write_text(json.dumps({
         "results": {k: {kk: ({str(q): v for q, v in vv.items()} if isinstance(vv, dict) else vv) for kk, vv in r.items()} for k, r in results.items()},
-        "by_year": by_year, "best_leaf": best_leaf, "val_scores": val_scores, "importance": imp.round(5).to_dict(),
+        "by_year": by_year, "best_leaf": best_leaf, "best_max_features": best_mf, "val_scores": val_scores, "importance": imp.round(5).to_dict(),
         "subsets": subset_rows, "features": cols,
         "reliability": rel.to_dict("records"),
         "now": {"as_of": str(last_feats.index[0]), "quantiles": dict(zip([str(q) for q in qs], q_now.tolist())),

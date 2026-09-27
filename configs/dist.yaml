@@ -7,9 +7,13 @@ horizon: 4                 # 足 t の終値で買い、4 本後の終値で売�
 cost: 0.003                # 成行往復の費用（手数料 0.12% × 2 + 滑り）。P(収益率 > cost) を出す
 forest:
   n_estimators: 300
-  max_features: 0.33
+  max_features: 0.33                      # max_features_grid がないときの値
   max_samples: 0.5
-  min_samples_leaf_grid: [25, 50, 100, 200]   # 学習期間の末尾 20% で選ぶ
+  min_samples_leaf_grid: [5, 10, 25, 50]  # 2026-09-27 オーナー決定: 葉と特徴量の割合をローリング検証で選ぶ（1 回目は 25 が端だった）
+  max_features_grid: [0.1, 0.33, sqrt]
+validation:
+  n_folds: 3          # 学習期間の末尾を時系列順に 3 区間に区切り、各区間をそれより前のデータで学習して評価する
+  block_frac: 0.15    # 1 区間 = 学習行数の 15%
 baselines:
   rolling_n: [168, 720]    # 直近 7 日 / 30 日の経験分布（ボラの変化を追う基準）
 quantiles: [0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95]
