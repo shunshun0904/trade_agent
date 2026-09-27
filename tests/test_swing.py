@@ -84,6 +84,10 @@ def test_eligibility_needs_history_and_turnover():
     first = elig.idxmax()
     # 24 時間の出来高が閾値を超えた足が 30 本の中央値を占めるまでは対象にならない
     assert close.index[200] < first <= close.index[200 + 5 * BARS_PER_DAY]
+    # 取引が止まったら（直近 24 時間の出来高 0）、中央値が下がるのを待たずに外れる
+    vol.iloc[350:] = 0.0
+    elig = eligible(close, vol, min_bars=60, turnover_days=5, min_turnover=1e6)["a"]
+    assert elig.iloc[349] and not elig.iloc[350 + BARS_PER_DAY - 1:].any()
 
 
 def test_panel_marks_unlisted_and_fills_gaps():

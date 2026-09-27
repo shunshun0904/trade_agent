@@ -52,12 +52,13 @@ def panel(candles: dict[str, pd.DataFrame], start, end) -> tuple[pd.DataFrame, p
 
 def eligible(close: pd.DataFrame, vol_jpy: pd.DataFrame, min_bars: int, turnover_days: int,
              min_turnover: float) -> pd.DataFrame:
-    """時点ごとの対象ペア。履歴 min_bars 本以上、直近 turnover_days 日の 24 時間出来高（JPY）の中央値 ≥ min_turnover。"""
+    """時点ごとの対象ペア。履歴 min_bars 本以上、直近 turnover_days 日の 24 時間出来高（JPY）の中央値 ≥ min_turnover、
+    直近 24 時間に約定がある（改名などで取引が止まったペアは、中央値が下がるのを待たずにその時点で外す）。"""
     hist = close.notna().cumsum()
     v24 = vol_jpy.rolling(BARS_PER_DAY, min_periods=BARS_PER_DAY).sum()
     w = turnover_days * BARS_PER_DAY
     med = v24.rolling(w, min_periods=int(w * 0.8)).median()
-    return (hist >= min_bars) & (med >= min_turnover) & close.notna()
+    return (hist >= min_bars) & (med >= min_turnover) & (v24 > 0) & close.notna()
 
 
 def bar_sigma(close: pd.DataFrame, days: int) -> pd.DataFrame:
