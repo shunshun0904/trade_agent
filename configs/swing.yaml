@@ -1,7 +1,7 @@
 # スイング（4 時間足で判断し 1〜3 日保有）の方向の研究。2026-09-28 オーナー決定（docs/SPEC.md の該当節）。
 # ここの数値は評価の前に固定したもの（事前登録）。評価（--mode eval）は owner_approved に日付が入ってから 1 回だけ行う。
 # 評価の後に数値を変えて走らせたら、それは新しい試行として reports/experiments.jsonl に残り、デフレートシャープの試行数に入る。
-owner_approved: null          # オーナーが承認した日付（YYYY-MM-DD）。null の間は評価を実行しない
+owner_approved: "2026-09-28"  # オーナーが承認した日付（YYYY-MM-DD、JST）。null の間は評価を実行しない
 
 data:
   start: "2017-02-14"         # bitbank の最古日（SPEC §9 V3）
