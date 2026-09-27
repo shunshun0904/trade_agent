@@ -17,7 +17,7 @@ concurrency:
 jobs:
   dist:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 420
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -30,6 +30,19 @@ jobs:
           path: .cache/candles
           key: candles-1hour-${{ github.run_id }}
           restore-keys: candles-1hour-
+      - uses: actions/cache/restore@v4
+        with:
+          path: data/raw
+          key: bbdata-raw-btc_jpy-${{ github.run_id }}
+          restore-keys: bbdata-raw-btc_jpy-
+      - name: Download transactions (skips days already cached)
+        timeout-minutes: 300
+        run: python -m bbdata download --pairs btc_jpy --start 2021-01-01 --end $(date -u +%Y-%m-%d)
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: data/raw
+          key: bbdata-raw-btc_jpy-${{ github.run_id }}
       - name: Fit and evaluate
         shell: bash
         env:

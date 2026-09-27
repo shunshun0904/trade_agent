@@ -21,6 +21,7 @@ import yaml
 
 from bbdata.client import BitbankAPIError, PublicClient
 from bbresearch.indicators import GROUPS, forward_return, indicator_table
+from bbresearch.tradeflow import flow_table
 from sklearn.metrics import roc_auc_score
 
 from bbresearch.qrf import (QuantileForest, crps_weighted, evaluate_quantiles, prob_exceed, prob_exceed_rows,
@@ -118,6 +119,16 @@ def main(argv: list[str] | None = None) -> int:
     full_idx = pd.date_range(df.index[0], df.index[-1], freq="h")
     gaps = len(full_idx) - len(df)
     feats = indicator_table(df)
+    tcfg = cfg.get("trades") or {}
+    if tcfg.get("enabled"):
+        # 約定フローの特徴量（2026-09-27 オーナー決定: 向きの情報源として約定を試す）。列名は f_
+        from bbresearch.labeling import TradeTape
+        tape = TradeTape.load(tcfg.get("root", "data"), pair, tcfg.get("start", cfg["start"]), today.strftime("%Y-%m-%d"))
+        flow = flow_table(tape, df.index, df["close"])
+        print(f"約定 {len(tape.ts):,} 件 → フローの特徴量 {flow.shape[1]} 個（{flow.index[0].date()} 〜）")
+        feats = feats.join(flow)
+        GROUPS.setdefault("f", "約定フロー")
+        del tape
     y = forward_return(df["close"], horizon)
     data = feats.join(y.rename("y")).dropna()
     split = pd.Timestamp(cfg["split"], tz="UTC")

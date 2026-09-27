@@ -17,12 +17,17 @@ validation:
 baselines:
   rolling_n: [168, 720]    # 直近 7 日 / 30 日の経験分布（ボラの変化を追う基準）
 quantiles: [0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95]
-variants:                  # 2026-09-27 オーナー決定: 手法の変種。標準化 = 目的変数を σ_t（直近 24 本の実現ボラ × √4）で割って学習し掛け戻す。
-  - {name: 標準化, standardize: true, split: mean}                   # bins = 目的変数を分位点で 8 区間に分けた one-hot を多出力にして分割（GRF の近似）
+variants:                  # 手法の変種（4 回目で分位点ビン分割が最良）。この実行では分位点ビン分割だけを並べる
   - {name: 分位点ビン分割, standardize: false, split: bins}
-  - {name: 標準化 + 分位点ビン分割, standardize: true, split: bins}
 n_bins: 8
-subsets: {}                # 群ごとの学習は 2 回目で済んだので、この実行では省く
+trades:                    # 2026-09-27 オーナー決定: 約定の履歴から作る約定フローの特徴量（bbresearch/tradeflow.py）を加える
+  enabled: true
+  root: data
+  start: "2021-01-01"
+subsets:                   # 指標だけ / 約定フローだけ を、全部と比べる（向きの情報が約定にあるか）
+  指標だけ（約定なし）: [t_, o_, v_, p_, r_, c_]
+  約定フローだけ: [f_]
+  ボラ・出来高 + 約定フロー: [v_, f_]
 subsets_reference:         # 群ごとに学習して、どの群が分布を改善するかを見る（列名の接頭辞。2026-09-27 に指標を 373 個へ拡充）
   トレンド系だけ: [t_]
   オシレーター系だけ: [o_]
