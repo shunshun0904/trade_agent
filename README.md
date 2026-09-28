@@ -52,7 +52,8 @@ btc_jpy の 4 時間・24 時間先の収益率の分布で、分位点回帰フ
 比べる。幅の改善と、向きの上乗せ（位置を固定したフォレスト、符号と大きさの分解）を測る。期待リターン 0 の合成データで同じ手順を
 走らせる帰無の監査（GARCH-t、2 状態のボラ、実データの符号の入れ替え）を先に行う。数値は `configs/dist_base.yaml` に事前に固定してあり、`owner_approved` に日付が入り、同じ設定の
 帰無の監査がそろうまで eval は動かない。GitHub Actions（`dist_base.yml`）で実行し、`reports/dist_base/` をコミットする。
-null と eval は workflow_dispatch で mode を指定したときだけ動き、`scripts/dist_base.py` の変更の push では check だけが動く。
+null と eval は workflow_dispatch で mode を指定したときだけ動き、`scripts/dist_base.py`・`bbresearch/distbase.py`・`nullsim.py`・`fcompare.py`・`configs/dist_base.yaml` の変更の push では check だけが動く。
+評価の結果（2026-09-28、`reports/dist_base/report.md`）: 事前登録の判定では向きの上乗せはなく、幅は HAR 型がフォレストより良かった（CRPS で 4 時間 0.43%、24 時間 0.88%）。
 
 ### 15 分後の上げ下げの予測（二段構え）
 
