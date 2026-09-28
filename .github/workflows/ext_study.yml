@@ -1,0 +1,70 @@
+# 候補 2（24 時間の新しい情報源）: 外部データ（Binance のアーカイブ、BitMEX、Deribit、Dukascopy、FRED。認証なし、発注なし）と
+# bitbank の公式 1 時間足。2026-09-28 オーナー決定。
+# 実行方法: scripts/ext_study.py・bbresearch/extdata.py・configs/ext_study.yaml かこのファイルを変更して push すると check が動く。
+# API の workflow_dispatch（ref にこのブランチ）でも動かせる。
+# 外部データは .cache/ext（確定した月・日は取り直さない）、1 時間足は .cache/candles（dist.yml と同じキャッシュ）にためる。
+name: ext-study
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "check（データの確認。先の収益率は出さない）"
+        required: true
+        default: check
+        type: choice
+        options: [check]
+  push:
+    paths:
+      - scripts/ext_study.py
+      - bbresearch/extdata.py
+      - configs/ext_study.yaml
+      - .github/workflows/ext_study.yml
+permissions:
+  contents: write
+concurrency:
+  group: ext-study-${{ github.ref }}
+env:
+  MODE: ${{ inputs.mode || 'check' }}
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/candles
+          key: candles-1hour-${{ github.run_id }}
+          restore-keys: candles-1hour-
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/ext
+          key: ext-data-${{ github.run_id }}
+          restore-keys: ext-data-
+      - name: Count experiment log lines
+        id: pre
+        run: echo "n=$( [ -f reports/experiments.jsonl ] && wc -l < reports/experiments.jsonl || echo 0 )" >> "$GITHUB_OUTPUT"
+      - name: Run
+        env:
+          PYTHONPATH: .
+        run: python scripts/ext_study.py --mode "$MODE"
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .cache/candles
+          key: candles-1hour-${{ github.run_id }}
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .cache/ext
+          key: ext-data-${{ github.run_id }}
+      - name: Summary and commit
+        run: |
+          cat reports/ext_study/check.md >> "$GITHUB_STEP_SUMMARY"
+          scripts/commit_report.sh "${{ steps.pre.outputs.n }}" "External data study $MODE from run ${{ github.run_id }}" \
+            reports/ext_study/check.md reports/ext_study/check.json

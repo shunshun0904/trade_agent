@@ -55,6 +55,18 @@ btc_jpy の 4 時間・24 時間先の収益率の分布で、分位点回帰フ
 null と eval は workflow_dispatch で mode を指定したときだけ動き、`scripts/dist_base.py`・`bbresearch/distbase.py`・`nullsim.py`・`fcompare.py`・`configs/dist_base.yaml` の変更の push では check だけが動く。
 評価の結果（2026-09-28、`reports/dist_base/report.md`）: 事前登録の判定では向きの上乗せはなく、幅は HAR 型がフォレストより良かった（CRPS で 4 時間 0.43%、24 時間 0.88%）。
 
+### 24 時間の新しい情報源（候補 2）
+
+```bash
+PYTHONPATH=. python scripts/ext_study.py --mode check   # データの確認（期間・抜け・書式、事象の数。先の収益率は出さない）
+```
+
+資金調達率（Binance・BitMEX・Deribit）の極端な状態、JPY の内外価格差（bitbank 対 Binance 現物 × ドル円）、キャリー・建玉の急増が、
+btc_jpy の 24 時間先の収益率の分布に HAR 型を超える情報を持つかを調べる。外部データは認証なしの公開の窓口とアーカイブだけ
+（`bbresearch/extdata.py`。Binance のアーカイブ、BitMEX、Deribit、Dukascopy のドル円、FRED）で、`.cache/ext` にためる。
+GitHub Actions（`ext_study.yml`）で実行し、`reports/ext_study/` をコミットする。事前登録の数値は check の後に `configs/ext_study.yaml` に
+固定し、オーナーの承認後に 1 回だけ評価する。
+
 ### 15 分後の上げ下げの予測（二段構え）
 
 ```bash
