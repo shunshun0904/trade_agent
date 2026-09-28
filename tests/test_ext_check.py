@@ -44,6 +44,8 @@ class FakeSession:
         if "dukascopy" in url:
             raw = struct.pack(">5if", 0, 108610, 108700, 108500, 108750, 1.5) * 3
             return FakeResp(200, content=lzma.compress(raw, format=lzma.FORMAT_ALONE))
+        if any(h in url for h in ("deribit.com", "okx.com", "kraken.com", "bitmex.com")):
+            return FakeResp(200, content=b"{}")
         if "fred" in url:
             return FakeResp(200, content=b"observation_date,DEXJPUS\n1971-01-04,357.73\n2026-09-25,149.10\n")
         raise AssertionError(url)

@@ -3,7 +3,8 @@
     python scripts/ext_check.py [--out reports/ext]
 
 Binance・Bybit の公開 API とアーカイブ、ドル円の候補（Dukascopy、FRED）に GitHub Actions から届くか、履歴がどこまであるかを調べる。
-認証は使わず、発注もしない。リクエストは 30 件ほど（公開 API に大量のリクエストを送らない）。
+認証は使わず、発注もしない。リクエストは 40 件ほど（公開 API に大量のリクエストを送らない）。
+2 回目（2026-09-28）: Binance のアーカイブの始まりの月と、代わりの取引所（Deribit、OKX、Kraken Futures、BitMEX）に届くかだけを加えた。
 結果は reports/ext/check.md・check.json。
 """
 from __future__ import annotations
@@ -69,6 +70,22 @@ PROBES = [
      "dukascopy", "Dukascopy のドル円: 2020-01-02 の 1 分足の日次ファイル"),
     ("fred_dexjpus", "GET", "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DEXJPUS", "fred",
      "FRED のドル円（DEXJPUS、日次。ニューヨーク正午の値）"),
+    # 2 回目（2026-09-28）: Binance のアーカイブがどの月からあるか。Binance の窓口と Bybit は Actions から届かなかった（451・403）ので、
+    # 代わりをオーナーと相談するために、他の取引所の公開 API に届くかだけを確かめる（データは研究に使わない）
+] + [(f"vision_funding_{m}", "HEAD", f"https://data.binance.vision/data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-{m}.zip",
+      "head", f"Binance のアーカイブ: 資金調達率（{m}）") for m in ("2019-09", "2019-12", "2020-01", "2020-06", "2021-01", "2022-01", "2024-01")] + [
+    (f"vision_um_klines_{m}", "HEAD", f"https://data.binance.vision/data/futures/um/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-{m}.zip",
+     "head", f"Binance のアーカイブ: 永久先物の 1 時間足（{m}）") for m in ("2019-12", "2020-01")] + [
+    (f"vision_premium_{m}", "HEAD", f"https://data.binance.vision/data/futures/um/monthly/premiumIndexKlines/BTCUSDT/1h/BTCUSDT-1h-{m}.zip",
+     "head", f"Binance のアーカイブ: プレミアム指数の 1 時間足（{m}）") for m in ("2019-09", "2019-12")] + [
+    ("deribit_funding", "GET", "https://www.deribit.com/api/v2/public/get_funding_rate_history?instrument_name=BTC-PERPETUAL"
+     "&start_timestamp=1577836800000&end_timestamp=1577840400000", "reach", "Deribit の資金調達率（届くかだけ）"),
+    ("okx_funding", "GET", "https://www.okx.com/api/v5/public/funding-rate-history?instId=BTC-USDT-SWAP&limit=1", "reach",
+     "OKX の資金調達率（届くかだけ）"),
+    ("kraken_futures_funding", "GET", "https://futures.kraken.com/derivatives/api/v4/historicalfundingrates?symbol=PF_XBTUSD", "reach",
+     "Kraken Futures の資金調達率（届くかだけ）"),
+    ("bitmex_funding", "GET", "https://www.bitmex.com/api/v1/funding?symbol=XBTUSD&count=1&reverse=false", "reach",
+     "BitMEX の資金調達率（届くかだけ）"),
 ]
 
 
@@ -117,6 +134,8 @@ def summarize(kind: str, resp: requests.Response) -> str:
             return f"{len(resp.content):,} バイト、足 0 本"
         t, o, c, lo, hi, v = recs[0]
         return f"{len(resp.content):,} バイト、足 {len(recs)} 本、最初の足: ずれ {t} 秒、始値 {o:.3f}、高値 {hi:.3f}、安値 {lo:.3f}、終値 {c:.3f}"
+    if kind == "reach":
+        return f"{len(resp.content):,} バイト"
     if kind == "fred":
         lines = [x for x in resp.text.strip().splitlines() if x]
         return f"{len(lines) - 1:,} 行、最初 {lines[1]}、最後 {lines[-1]}" if len(lines) > 1 else "空"

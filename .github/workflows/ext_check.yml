@@ -1,4 +1,4 @@
-# 候補 2 の外部データの確認（Binance・Bybit の公開 API とアーカイブ、ドル円の候補）。認証なし、発注なし、リクエストは 30 件ほど。
+# 候補 2 の外部データの確認（Binance・Bybit の公開 API とアーカイブ、ドル円の候補、代わりの取引所に届くか）。認証なし、発注なし、リクエストは 40 件ほど。
 # 2026-09-28 オーナー決定。実行方法: API の workflow_dispatch（ref にこのブランチ）か、scripts/ext_check.py かこのファイルを変更して push する。
 name: ext-check
 on:
