@@ -1,6 +1,6 @@
 # 候補 2: 外部データの確認（GitHub Actions から届くか、履歴がどこまであるか）
 
-- 実行 2026-09-28T14:32:36+00:00（UTC）。認証なしの公開 API とアーカイブだけ。発注はしない。
+- 実行 2026-09-28T14:34:47+00:00（UTC）。認証なしの公開 API とアーカイブだけ。発注はしない。
 - 状態 200 以外（451・403 など）は、その場所（Actions の機械の国）からは使えないことを示す。
 
 | 名前 | 内容 | 状態 | 結果 |
@@ -23,6 +23,21 @@
 | bybit_oi_2021 | Bybit の建玉の 1 時間ごとの履歴（2021-01-01 の分） | 403 | {     error:The Amazon CloudFront distribution is configured to block access from your country } |
 | bybit_kline_2020 | Bybit 永久先物の 1 時間足（2020-04-01 の分） | 403 | {     error:The Amazon CloudFront distribution is configured to block access from your country } |
 | bybit_archive | Bybit の約定のアーカイブ（一覧のページ） | 200 | 173,921 バイト |
-| dukascopy_hour_2020_01 | Dukascopy のドル円（USDJPY）: 2020 年 1 月の 1 時間足の月次ファイル | 200 | 6,012 バイト、足 744 本、最初の足: ずれ 0 秒、始値 108.631、高値 108.631、安値 108.631、終値 108.631 |
+| dukascopy_hour_2020_01 | Dukascopy のドル円（USDJPY）: 2020 年 1 月の 1 時間足の月次ファイル | 503 | <html><body><h1>503 Service Unavailable</h1> No server is available to handle this request. </body></html>  |
 | dukascopy_min_2020_01_02 | Dukascopy のドル円: 2020-01-02 の 1 分足の日次ファイル | 503 | <html><body><h1>503 Service Unavailable</h1> No server is available to handle this request. </body></html>  |
 | fred_dexjpus | FRED のドル円（DEXJPUS、日次。ニューヨーク正午の値） | 200 | 14,535 行、最初 1971-01-04,357.73、最後 2026-09-18,156.87 |
+| vision_funding_2019-09 | Binance のアーカイブ: 資金調達率（2019-09） | 404 | - |
+| vision_funding_2019-12 | Binance のアーカイブ: 資金調達率（2019-12） | 404 | - |
+| vision_funding_2020-01 | Binance のアーカイブ: 資金調達率（2020-01） | 200 | 825 バイト |
+| vision_funding_2020-06 | Binance のアーカイブ: 資金調達率（2020-06） | 200 | 791 バイト |
+| vision_funding_2021-01 | Binance のアーカイブ: 資金調達率（2021-01） | 200 | 981 バイト |
+| vision_funding_2022-01 | Binance のアーカイブ: 資金調達率（2022-01） | 200 | 906 バイト |
+| vision_funding_2024-01 | Binance のアーカイブ: 資金調達率（2024-01） | 200 | 696 バイト |
+| vision_um_klines_2019-12 | Binance のアーカイブ: 永久先物の 1 時間足（2019-12） | 404 | - |
+| vision_um_klines_2020-01 | Binance のアーカイブ: 永久先物の 1 時間足（2020-01） | 200 | 37,271 バイト |
+| vision_premium_2019-09 | Binance のアーカイブ: プレミアム指数の 1 時間足（2019-09） | 404 | - |
+| vision_premium_2019-12 | Binance のアーカイブ: プレミアム指数の 1 時間足（2019-12） | 404 | - |
+| deribit_funding | Deribit の資金調達率（届くかだけ） | 200 | 256 バイト |
+| okx_funding | OKX の資金調達率（届くかだけ） | 200 | 229 バイト |
+| kraken_futures_funding | Kraken Futures の資金調達率（届くかだけ） | 200 | 1,020,013 バイト |
+| bitmex_funding | BitMEX の資金調達率（届くかだけ） | 200 | 182 バイト |
