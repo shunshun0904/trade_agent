@@ -8,7 +8,7 @@
 - このブランチは 2026-09-27 に既定ブランチになった（schedule 付きワークフローが自動で動く。60 日間 push がないと GitHub が schedule を止める）。
 - GitHub の schedule は当てにならない（9 月 27 日は 5 時間遅れ、28 日は動かず）。2026-09-28 から Claude の Routine が毎日 09:50 JST に GitHub API で monitor を起動し、月曜は rebalance（weekly）、1 日は rebalance（monthly）も起動する。schedule は予備として残す。
 - 実 API へのアクセスは GitHub Actions で行う。開発環境からは行わない。
-  - どのワークフローも、API の workflow_dispatch でこのブランチを ref に指定して実行できる（既定ブランチになくてもよいことを 2026-09-23 に確認）
+  - どのワークフローも、API の workflow_dispatch でこのブランチを ref に指定して実行できる（既定ブランチになくてもよいことを 2026-09-23 に確認）。ただし workflow_dispatch だけで push のきっかけを持たないワークフローは、既定ブランチにないと API が 404 を返した（`swing.yml`、2026-09-28）。push のきっかけも付けておく
   - `phase0.yml`: `scripts/phase0.py` の変更を push すると実行し、`reports/phase0/` をコミットする
   - `research.yml`: `configs/research.yaml` の変更を push すると（`run_on_actions: true` のとき）実行し、`reports/research/` をコミットする
   - `search.yml`: `configs/search.yaml` の変更を push すると（`run_on_actions: true` のとき）パラメータ探索を実行し、`reports/search/` をコミットする（開発期間のみ。ホールドアウトは評価しない）
@@ -25,12 +25,33 @@
   - `margin.yml`: 信用取引の対応ペアと条件（建玉金利・手数料・保証金率）を `/spot/pairs` から一覧にする（`reports/margin/`）
   - `dist.yml`: 1 時間足のテクニカル指標（373 個。`bbresearch/indicators.py`、部品は `bbresearch/ta.py`）と約定フローの特徴量（34 個。`bbresearch/tradeflow.py`、約定履歴は Actions のキャッシュ）から 4 時間後までの収益率の条件付き分布を分位点回帰フォレストで推定し、無条件・直近 n 本の経験分布と精度を比べ、群ごとの寄与も出す（`scripts/dist_forecast.py`、`configs/dist.yaml`、`reports/dist/`）
   - `vol_daily.yml`: ポートフォリオの JPY 比率を日次で調整する案の前向き検証（BTC 1 時間足のフォレストによる翌日ボラ予測 ÷ 長期平均を推定ボラに掛ける。`scripts/vol_daily.py`、`configs/vol_daily.yaml`、`reports/vol_daily/`）
+  - `dist_base.yml`: 評価の土台（候補 1）。ボラだけの基準（HAR 型・GARCH-t 型）に対する、分位点回帰フォレストの幅と向きの上乗せ（btc_jpy の 4・24 時間）。mode `check`（データの確認と学習期間での当てはめ。評価期間の成績は出さない）、`null`（期待リターン 0 の合成データによる帰無の監査。20 個のジョブで並列）、`eval`（事前登録どおりに 1 回。`configs/dist_base.yaml` の `owner_approved` と、同じ設定の帰無の監査が必要）。null と eval は workflow_dispatch だけ、`scripts/dist_base.py`・`bbresearch/distbase.py`・`nullsim.py`・`fcompare.py`・`configs/dist_base.yaml`・ワークフローの変更の push では check だけが動く（`bbresearch/distbase.py`、`fcompare.py`、`nullsim.py`、`reports/dist_base/`）
   - `auth-check.yml`: 認証付き API の疎通確認（参照系のみ）。キーは Secrets `bitbank_API` / `bitbank_secret` から読む
+  - `swing.yml`: スイング（4 時間足で判断し 1〜3 日保有）の方向の研究。mode `check`（データの確認。損益は出さない）と `eval`（事前登録した 45 通りを全期間で 1 回。`configs/swing.yaml` の `owner_approved` が必要）。eval は workflow_dispatch だけで動き、`scripts/swing.py` かワークフローの変更の push では check だけが動く（`scripts/swing.py`、`bbresearch/swing.py`、`reports/swing/`）。workflow_dispatch だけのワークフローは既定ブランチにないと API から起動できない（404、2026-09-28 に確認）
+  - `ext_check.yml`: 候補 2 の外部データに Actions から届くか、履歴がどこまであるかの確認（`scripts/ext_check.py`、`reports/ext/`）
+  - `ext_forward.yml`: 候補 2 の H2a の前向きのドライラン（発注しない）。毎月 5 日 04:23 UTC に確定した月まで評価と同じ計算をする（`scripts/ext_study.py --mode forward`、`reports/ext_study/forward.md`）
+  - `ext_quotes.yml`: 0・8・16 時 UTC（2 分）に bitbank の気配を `reports/ext_study/quotes.jsonl` に追記する（`scripts/ext_quotes.py`）。push では記録しない
+  - `ext_study.yml`: 候補 2（24 時間の新しい情報源）の研究。mode `check`（外部データ（Binance のアーカイブ、BitMEX、Deribit、Dukascopy のドル円、FRED）と bitbank の 1 時間足・約定の期間・抜け・書式、信号ごとの事象の数。先の収益率は出さない）と `eval`（事前登録どおりに 1 回。`configs/ext_study.yaml` の `owner_approved` が必要。workflow_dispatch だけ）。外部データは `.cache/ext` にため、確定した月・日は取り直さない。約定は 2020-01 から取る（`scripts/ext_study.py`、`bbresearch/extdata.py`、`bbresearch/eventstudy.py`、`configs/ext_study.yaml`、`reports/ext_study/`）
 - `dashboard/`: TPO・価格帯別出来高のダッシュボード（AWS: API Gateway + Lambda + S3、SAM）。`dashboard/deploy.sh` を AWS CloudShell で実行してデプロイする。Lambda は標準ライブラリだけで書き、計算が `bbresearch/profile.py` と一致することを `tests/test_dashboard.py` で照合している。画面は `dashboard/web/`（React、Vite）で書き、`dashboard/web/build.sh` でビルドして `dashboard/app/page.html`（生成物、コミットする）に置く。左に直近 24 時間・15 分足の TPO・価格帯別出来高（ダーク配色、5 分ごとに更新）、右に 1 分ごとの水準の 60 分の推移（`/api/signals`）。モデルの予測は載せない
-- リポジトリは 2026-09-27 に非公開へ切り替えた。それでもログやレポートに残高・注文の内容・キーを出さない（例外: `docs/monitor/` の記録は金額を残す。オーナー決定）。
+- リポジトリは公開（2026-09-27 に非公開へ切り替え、2026-09-28 に公開へ戻した）。ログやレポートに残高・注文の内容・キーを出さない（例外: `docs/monitor/` の記録は金額を残す。公開のまま記録する。2026-09-28 オーナー決定）。
 - 上げ下げの予測モデル（`direction*.yml`）は 2026-09-26 に研究を区切った（目的変数 3 通り・ホライズン 2 通りとも費用を超えない。SPEC §1.3）。自動売買には使わない。
 - 収益率の分布推定（`dist.yml`、`vol_daily.yml`）は 2026-09-27 に研究を区切った（幅の推定はフォレストが最良だが、向きは指標 373 個にも約定履歴にもなく、幅を日次の JPY 調整に使っても改善しない。SPEC の該当節）。自動売買には使わない。
-- 次の作業: オーナーが `dashboard/deploy.sh` でデプロイし、React 版の画面と `/api/signals` を実機で確認する。Phase 7 は保留。
+- 2026-09-28 オーナー決定: 方向の研究をスイング（4 時間足で判断し 1〜3 日保有、JPY の現物ペアすべて）で続ける。仮説はトレンド（時系列・横断モメンタム）と急落後の反発。数値は `configs/swing.yaml` に事前に固定し、全期間で 1 回だけ評価する（SPEC の「スイング」の節）。
+- スイングの研究の結果（2026-09-28、run 36341530578、`reports/swing/report.md`）: 事前登録の判定では 3 つとも「支持しない」。時系列モメンタムは 24 通りすべてでアルファが正（t 1.65〜3.28、費用 2 倍でも正、アクティブが正の年 75%）だが、45 試行のデフレートシャープが 0.717（基準 0.95）。横断モメンタムは費用に負ける。急落後の反発は保有率 1% で割引後に届かない。評価に使った数値は変えない（変えた実行は新しい試行として数える）。時系列モメンタムの超過リターンは 2017〜2021 年に集中し、2022〜2026 年は 24 通りの平均で +5.9%（正は 12/24）で、直近 5 年はほぼ効いていない。2026-09-28 オーナー決定で不支持を確定し、前向きのドライランは行わない（研究を区切った）。自動売買には使わない。
+- 2026-09-28 オーナー指示で、期待収益率の分布推定の先行研究を調べた（Notion のページ https://app.notion.com/p/3e9036495bee81d2971cfbe20a527d17 と付録 A〜E、SPEC の「分布推定の先行研究の調査」の節）。文献の結論はこれまでの結果と同じ（幅は予測でき、向きは費用に届かない）。次の研究の候補は 3 つ（評価の土台、24 時間の新しい情報源、分布から配分への変換）。
+- 2026-09-28 オーナー決定: 候補 1（評価の土台）だけを進める。評価は 2024 年以降で 1 回（6 回目の使用なので診断として扱い、売買の判断には使わない。向きの上乗せが見えたときだけ前向きの期間で確かめる）、btc_jpy の 4・24 時間、帰無の監査は 3 モデル × 20 回（GARCH-t、2 状態のボラ、実データの符号の入れ替え。符号の入れ替えは check の後に追加）、学習は 2023 年末までで 1 回（SPEC の「評価の土台」の節）。
+- 評価の土台の結果（2026-09-28、run 36433733989、`reports/dist_base/report.md`）: 事前登録の判定では、向きの上乗せは 4 つの比較（フォレスト対位置を固定、符号と大きさ対 HAR 型 × 4・24 時間）すべてで「なし」。幅は HAR 型（1 分の実現分散と時刻・曜日）が 373 指標のフォレストより良い（CRPS で 4 時間 0.43%、24 時間 0.88%、どちらも有意）。副指標（判定外）では 4 時間のフォレストの位置が +0.3% を超える上げの予測を少し改善したが、評価期間は上昇相場で、費用 0.3% の水準では売買にならない。帰無の監査（60 回）では判定の偽陽性は 2 / 60。以後の基準（物差し）は HAR 型が妥当。自動売買には使わない。
+- 2026-09-28 オーナー決定: 次は候補 2（24 時間の新しい情報源: 資金調達率の極端な状態、JPY の内外価格差など）。基準は HAR 型。4 時間の上側の兆候は追わない。タスクマップ（Notion）に候補 1 の結果を追記した。
+- 2026-09-28 オーナー決定（候補 2 の設計）: Binance と Bybit の公開データを使う（認証なし、発注・口座は使わない）。仮説は資金調達率の極端な状態、JPY の内外価格差、キャリー・建玉の急増（下側の裾）の 3 つ。評価は資金調達率の履歴がある期間の全体で 1 回、上乗せが見えたら前向きで確かめる（SPEC の「24 時間の新しい情報源」の節）。
+- 候補 2 の外部データの確認（2026-09-28、run 36436612034・36436921106、`reports/ext/check.md`。SPEC §9 E1）: Binance の窓口（api・fapi）は 451、Bybit は 403 で Actions（米国）から届かない。Binance の市場データ専用の窓口（data-api.binance.vision、現物の足）とアーカイブ（data.binance.vision。資金調達率・永久先物の足・プレミアム指数は 2020-01 から、建玉などの記録は 2020-09 以前から）は届く。Dukascopy のドル円の 1 時間足（月ごとのファイル）と FRED の日次、Deribit・OKX・Kraken Futures・BitMEX の窓口も届く。
+- 2026-09-28 オーナー決定: Bybit の代わりに BitMEX と Deribit で資金調達率の効果を確かめる。ドル円は Dukascopy の 1 時間足（FRED の日次で照合）。評価の期間は Binance のアーカイブがある 2020-01 から。
+- 候補 2 のデータの確認（2026-09-28、run 36448539811、`reports/ext_study/check.md`。SPEC §9 E2）: 2020-01〜2026-08 のすべての系列がそろった（BitMEX・Deribit の資金調達率も 2020-01 から欠けなし。建玉などの記録は 2020-09 から）。信号は 2020-03-31 から。事象の数は下位・上位 10% で、24 時間より離れたものだけ数えて 89〜417 回。
+- 2026-09-28 オーナー決定（候補 2 の事前登録の設計、8 項目とも推奨の案）: 下位・上位 10%、0・8・16 時 UTC で 24 時間は重ねない、上げ下げは統制との差が有意 かつ 費用 0.3% を超える、資金調達率は Binance で判定し BitMEX・Deribit は同じ向きが条件、下側の裾の物差しは HAR 型（1 分の実現分散）、下側の裾は差が有意 かつ 統制の 2 倍以上、帰無は循環シフト 999 回（Holm 法）、前向きは支持した仮説だけ 6 か月。数値は `configs/ext_study.yaml` の `eval`、SPEC の「24 時間の新しい情報源」の節。
+- 2020 年の約定の確認（2026-09-28、run 36458233866。SPEC §9 E3）: 約定のない日はなく、約定から作った 1 時間の終値は公式足と 100% 一致（約定のある分は 87.1%）。
+- 2026-09-28 オーナー承認: 候補 2 の事前登録（`configs/ext_study.yaml` の `owner_approved`）。eval を 1 回だけ実行する（workflow_dispatch、mode eval）。
+- 候補 2 の結果（2026-09-28、run 36458705172、`reports/ext_study/report.md`）: 6 つのうち H2a（JPY の内外価格差が下位 10%、bitbank が割安 → 24 時間後が高い）だけ支持（事象 473 回の後の平均 +0.53%、統制との差 +0.63%、Holm 後 p 0.006）。ただし年ごとの平均は 2020〜2024 年 0.38〜1.48%、2025 年 −0.00%、2026 年 0.15% で、直近は費用に届かない。H2b は有意だが費用の条件を満たさない。資金調達率（H1）とキャリー・建玉（H3）は支持しない。自動売買には使わない。
+- 2026-09-28 オーナー決定（H2a の前向きのドライラン、発注しない）: 6 か月（2026-09〜2027-02）。毎月 5 日に確定した月まで評価と同じ計算をし（`ext_forward.yml`、`reports/ext_study/forward.md`）、2027-03 に判定する（統制との差が正 かつ 事象の後の平均が +0.3% 超。有意は求めない）。0・8・16 時 UTC に bitbank の気配を記録する（`ext_quotes.yml`、`reports/ext_study/quotes.jsonl`）。どちらの schedule も既定のブランチにあるときだけ動くので、PR #1 のマージ後から。約定から測る実際の価格は 2026-09-01 から出す。
+- 次の作業: PR #1 のマージ後、`ext_quotes.yml` と `ext_forward.yml` の schedule が動いていることを確かめる。2026-10-05 に 2026-09 の途中経過が出る。オーナーが `dashboard/deploy.sh` でデプロイし、React 版の画面と `/api/signals` を実機で確認する。Phase 7 は保留。
 
 ## コマンド
 

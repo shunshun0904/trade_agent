@@ -1,0 +1,52 @@
+# 候補 2 の H2a の前向きのドライラン: 判断の時刻（0・8・16 時 UTC）に bitbank の気配（公開の ticker）を記録し、
+# reports/ext_study/quotes.jsonl に 1 行ずつ追記する。発注はしない。2026-09-28 オーナー決定。
+# schedule は既定のブランチ（claude/bitbank-trade-agent-7ers55）にあるときだけ動く（このブランチからは PR #1 のマージ後）。
+# 正時ちょうどは schedule が遅れやすいので 2 分にした。遅れは記録の delay_min に残し、ext_study の forward は 60 分以内のものだけ使う。
+# 手動の実行は API の workflow_dispatch（ref にブランチ）。push では記録しない（workflow_dispatch で起動できるようにするためだけの設定）。
+name: ext-quotes
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "2 0,8,16 * * *"
+  push:
+    paths:
+      - .github/workflows/ext_quotes.yml
+permissions:
+  contents: write
+concurrency:
+  group: ext-quotes-${{ github.ref }}
+jobs:
+  record:
+    if: ${{ github.event_name != 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Record the ticker
+        env:
+          PYTHONPATH: .
+        run: python scripts/ext_quotes.py > "$RUNNER_TEMP/quote.json" && cat "$RUNNER_TEMP/quote.json" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Append and commit
+        # 別の実行の追記を消さないよう、ブランチの最新に 1 行足してから push する
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          f=reports/ext_study/quotes.jsonl
+          slot=$(python -c "import json,sys; print(json.load(open(sys.argv[1]))['slot'])" "$RUNNER_TEMP/quote.json")
+          for attempt in 1 2 3; do
+            git fetch -q origin "$GITHUB_REF_NAME"
+            git checkout -q -B quotes "origin/$GITHUB_REF_NAME"
+            mkdir -p reports/ext_study
+            cat "$RUNNER_TEMP/quote.json" >> "$f"
+            git add "$f"
+            git commit -q -m "Quote for $slot"
+            if git push -q origin "HEAD:$GITHUB_REF_NAME"; then exit 0; fi
+            git reset -q --hard "origin/$GITHUB_REF_NAME"
+            sleep $(( attempt * 5 ))
+          done
+          exit 1

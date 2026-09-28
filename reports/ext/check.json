@@ -1,0 +1,365 @@
+{
+ "run_at": "2026-09-28T14:47:02+00:00",
+ "probes": [
+  {
+   "name": "binance_spot_klines",
+   "status": 451,
+   "ok": false,
+   "detail": "{   \"code\": 0,   \"msg\": \"Service unavailable from a restricted location according to 'b. Eligibility' in https://www.bin",
+   "seconds": 0.33,
+   "url": "https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&startTime=0&limit=2",
+   "description": "Binance 現物 BTCUSDT の 1 時間足（最も古い足）"
+  },
+  {
+   "name": "binance_data_api_klines",
+   "status": 200,
+   "ok": true,
+   "detail": "最も古い足 2017-08-17 04:00（UTC）",
+   "seconds": 0.79,
+   "url": "https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=1h&startTime=0&limit=2",
+   "description": "Binance の市場データ専用の窓口（同じ現物の足）"
+  },
+  {
+   "name": "binance_fut_funding",
+   "status": 451,
+   "ok": false,
+   "detail": "{   \"code\": 0,   \"msg\": \"Service unavailable from a restricted location according to 'b. Eligibility' in https://www.bin",
+   "seconds": 0.2,
+   "url": "https://fapi.binance.com/fapi/v1/fundingRate?symbol=BTCUSDT&startTime=0&limit=2",
+   "description": "Binance 永久先物 BTCUSDT の資金調達率（最も古い値）"
+  },
+  {
+   "name": "binance_fut_klines",
+   "status": 451,
+   "ok": false,
+   "detail": "{   \"code\": 0,   \"msg\": \"Service unavailable from a restricted location according to 'b. Eligibility' in https://www.bin",
+   "seconds": 0.0,
+   "url": "https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=1h&startTime=0&limit=2",
+   "description": "Binance 永久先物の 1 時間足"
+  },
+  {
+   "name": "binance_fut_premium",
+   "status": 451,
+   "ok": false,
+   "detail": "{   \"code\": 0,   \"msg\": \"Service unavailable from a restricted location according to 'b. Eligibility' in https://www.bin",
+   "seconds": 0.0,
+   "url": "https://fapi.binance.com/fapi/v1/premiumIndexKlines?symbol=BTCUSDT&interval=1h&startTime=0&limit=2",
+   "description": "Binance 永久先物のプレミアム指数（先物と現物の価格差）の 1 時間足"
+  },
+  {
+   "name": "binance_fut_oi_hist",
+   "status": 451,
+   "ok": false,
+   "detail": "{   \"code\": 0,   \"msg\": \"Service unavailable from a restricted location according to 'b. Eligibility' in https://www.bin",
+   "seconds": 0.0,
+   "url": "https://fapi.binance.com/futures/data/openInterestHist?symbol=BTCUSDT&period=1h&limit=2",
+   "description": "Binance 永久先物の建玉の履歴（直近の分だけの窓口）"
+  },
+  {
+   "name": "vision_funding",
+   "status": 404,
+   "ok": false,
+   "detail": "-",
+   "seconds": 0.58,
+   "url": "https://data.binance.vision/data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2019-10.zip",
+   "description": "Binance のアーカイブ: 資金調達率（2019-10 の月次ファイル）"
+  },
+  {
+   "name": "vision_um_klines",
+   "status": 404,
+   "ok": false,
+   "detail": "-",
+   "seconds": 0.16,
+   "url": "https://data.binance.vision/data/futures/um/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2019-10.zip",
+   "description": "Binance のアーカイブ: 永久先物の 1 時間足（2019-10）"
+  },
+  {
+   "name": "vision_spot_klines",
+   "status": 200,
+   "ok": true,
+   "detail": "43,434 バイト",
+   "seconds": 0.16,
+   "url": "https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2019-10.zip",
+   "description": "Binance のアーカイブ: 現物の 1 時間足（2019-10）"
+  },
+  {
+   "name": "vision_premium",
+   "status": 200,
+   "ok": true,
+   "detail": "16,478 バイト",
+   "seconds": 0.16,
+   "url": "https://data.binance.vision/data/futures/um/monthly/premiumIndexKlines/BTCUSDT/1h/BTCUSDT-1h-2020-01.zip",
+   "description": "Binance のアーカイブ: プレミアム指数の 1 時間足（2020-01）"
+  },
+  {
+   "name": "vision_metrics_2020",
+   "status": 200,
+   "ok": true,
+   "detail": "12,191 バイト",
+   "seconds": 0.16,
+   "url": "https://data.binance.vision/data/futures/um/daily/metrics/BTCUSDT/BTCUSDT-metrics-2020-09-01.zip",
+   "description": "Binance のアーカイブ: 建玉などの 5 分ごとの記録（2020-09-01）"
+  },
+  {
+   "name": "vision_metrics_2021",
+   "status": 200,
+   "ok": true,
+   "detail": "14,792 バイト",
+   "seconds": 0.17,
+   "url": "https://data.binance.vision/data/futures/um/daily/metrics/BTCUSDT/BTCUSDT-metrics-2021-12-01.zip",
+   "description": "Binance のアーカイブ: 建玉などの 5 分ごとの記録（2021-12-01）"
+  },
+  {
+   "name": "vision_metrics_2023",
+   "status": 200,
+   "ok": true,
+   "detail": "14,337 バイト",
+   "seconds": 0.46,
+   "url": "https://data.binance.vision/data/futures/um/daily/metrics/BTCUSDT/BTCUSDT-metrics-2023-01-01.zip",
+   "description": "Binance のアーカイブ: 建玉などの 5 分ごとの記録（2023-01-01）"
+  },
+  {
+   "name": "bybit_funding_2020",
+   "status": 403,
+   "ok": false,
+   "detail": "{     error:The Amazon CloudFront distribution is configured to block access from your country }",
+   "seconds": 0.15,
+   "url": "https://api.bybit.com/v5/market/funding/history?category=linear&symbol=BTCUSDT&startTime=1585699200000&endTime=1585785600000&limit=10",
+   "description": "Bybit 永久先物 BTCUSDT の資金調達率（2020-04-01 の分）"
+  },
+  {
+   "name": "bybit_funding_latest",
+   "status": 403,
+   "ok": false,
+   "detail": "{     error:The Amazon CloudFront distribution is configured to block access from your country }",
+   "seconds": 0.0,
+   "url": "https://api.bybit.com/v5/market/funding/history?category=linear&symbol=BTCUSDT&limit=2",
+   "description": "Bybit の資金調達率（最新）"
+  },
+  {
+   "name": "bybit_oi_2021",
+   "status": 403,
+   "ok": false,
+   "detail": "{     error:The Amazon CloudFront distribution is configured to block access from your country }",
+   "seconds": 0.0,
+   "url": "https://api.bybit.com/v5/market/open-interest?category=linear&symbol=BTCUSDT&intervalTime=1h&startTime=1609459200000&endTime=1609545600000&limit=5",
+   "description": "Bybit の建玉の 1 時間ごとの履歴（2021-01-01 の分）"
+  },
+  {
+   "name": "bybit_kline_2020",
+   "status": 403,
+   "ok": false,
+   "detail": "{     error:The Amazon CloudFront distribution is configured to block access from your country }",
+   "seconds": 0.0,
+   "url": "https://api.bybit.com/v5/market/kline?category=linear&symbol=BTCUSDT&interval=60&start=1585699200000&end=1585785600000&limit=5",
+   "description": "Bybit 永久先物の 1 時間足（2020-04-01 の分）"
+  },
+  {
+   "name": "bybit_archive",
+   "status": 200,
+   "ok": true,
+   "detail": "173,921 バイト",
+   "seconds": 0.38,
+   "url": "https://public.bybit.com/trading/BTCUSDT/",
+   "description": "Bybit の約定のアーカイブ（一覧のページ）"
+  },
+  {
+   "name": "dukascopy_hour_2020_01",
+   "status": 200,
+   "ok": true,
+   "detail": "6,012 バイト、足 744 本、最初の足: ずれ 0 秒、始値 108.631、高値 108.631、安値 108.631、終値 108.631",
+   "seconds": 17.14,
+   "url": "https://datafeed.dukascopy.com/datafeed/USDJPY/2020/00/BID_candles_hour_1.bi5",
+   "description": "Dukascopy のドル円（USDJPY）: 2020 年 1 月の 1 時間足の月次ファイル"
+  },
+  {
+   "name": "dukascopy_min_2020_01_02",
+   "status": 200,
+   "ok": true,
+   "detail": "11,175 バイト、足 1440 本、最初の足: ずれ 0 秒、始値 108.722、高値 108.735、安値 108.708、終値 108.709",
+   "seconds": 12.33,
+   "url": "https://datafeed.dukascopy.com/datafeed/USDJPY/2020/00/02/BID_candles_min_1.bi5",
+   "description": "Dukascopy のドル円: 2020-01-02 の 1 分足の日次ファイル"
+  },
+  {
+   "name": "fred_dexjpus",
+   "status": 200,
+   "ok": true,
+   "detail": "14,535 行、最初 1971-01-04,357.73、最後 2026-09-18,156.87",
+   "seconds": 0.37,
+   "url": "https://fred.stlouisfed.org/graph/fredgraph.csv?id=DEXJPUS",
+   "description": "FRED のドル円（DEXJPUS、日次。ニューヨーク正午の値）"
+  },
+  {
+   "name": "vision_funding_2019-09",
+   "status": 404,
+   "ok": false,
+   "detail": "-",
+   "seconds": 0.2,
+   "url": "https://data.binance.vision/data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2019-09.zip",
+   "description": "Binance のアーカイブ: 資金調達率（2019-09）"
+  },
+  {
+   "name": "vision_funding_2019-12",
+   "status": 404,
+   "ok": false,
+   "detail": "-",
+   "seconds": 0.16,
+   "url": "https://data.binance.vision/data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2019-12.zip",
+   "description": "Binance のアーカイブ: 資金調達率（2019-12）"
+  },
+  {
+   "name": "vision_funding_2020-01",
+   "status": 200,
+   "ok": true,
+   "detail": "825 バイト",
+   "seconds": 0.16,
+   "url": "https://data.binance.vision/data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2020-01.zip",
+   "description": "Binance のアーカイブ: 資金調達率（2020-01）"
+  },
+  {
+   "name": "vision_funding_2020-06",
+   "status": 200,
+   "ok": true,
+   "detail": "791 バイト",
+   "seconds": 0.16,
+   "url": "https://data.binance.vision/data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2020-06.zip",
+   "description": "Binance のアーカイブ: 資金調達率（2020-06）"
+  },
+  {
+   "name": "vision_funding_2021-01",
+   "status": 200,
+   "ok": true,
+   "detail": "981 バイト",
+   "seconds": 0.17,
+   "url": "https://data.binance.vision/data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2021-01.zip",
+   "description": "Binance のアーカイブ: 資金調達率（2021-01）"
+  },
+  {
+   "name": "vision_funding_2022-01",
+   "status": 200,
+   "ok": true,
+   "detail": "906 バイト",
+   "seconds": 0.47,
+   "url": "https://data.binance.vision/data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2022-01.zip",
+   "description": "Binance のアーカイブ: 資金調達率（2022-01）"
+  },
+  {
+   "name": "vision_funding_2024-01",
+   "status": 200,
+   "ok": true,
+   "detail": "696 バイト",
+   "seconds": 0.17,
+   "url": "https://data.binance.vision/data/futures/um/monthly/fundingRate/BTCUSDT/BTCUSDT-fundingRate-2024-01.zip",
+   "description": "Binance のアーカイブ: 資金調達率（2024-01）"
+  },
+  {
+   "name": "vision_um_klines_2019-12",
+   "status": 404,
+   "ok": false,
+   "detail": "-",
+   "seconds": 0.46,
+   "url": "https://data.binance.vision/data/futures/um/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2019-12.zip",
+   "description": "Binance のアーカイブ: 永久先物の 1 時間足（2019-12）"
+  },
+  {
+   "name": "vision_um_klines_2020-01",
+   "status": 200,
+   "ok": true,
+   "detail": "37,271 バイト",
+   "seconds": 0.16,
+   "url": "https://data.binance.vision/data/futures/um/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2020-01.zip",
+   "description": "Binance のアーカイブ: 永久先物の 1 時間足（2020-01）"
+  },
+  {
+   "name": "vision_premium_2019-09",
+   "status": 404,
+   "ok": false,
+   "detail": "-",
+   "seconds": 0.16,
+   "url": "https://data.binance.vision/data/futures/um/monthly/premiumIndexKlines/BTCUSDT/1h/BTCUSDT-1h-2019-09.zip",
+   "description": "Binance のアーカイブ: プレミアム指数の 1 時間足（2019-09）"
+  },
+  {
+   "name": "vision_premium_2019-12",
+   "status": 404,
+   "ok": false,
+   "detail": "-",
+   "seconds": 0.16,
+   "url": "https://data.binance.vision/data/futures/um/monthly/premiumIndexKlines/BTCUSDT/1h/BTCUSDT-1h-2019-12.zip",
+   "description": "Binance のアーカイブ: プレミアム指数の 1 時間足（2019-12）"
+  },
+  {
+   "name": "deribit_funding",
+   "status": 200,
+   "ok": true,
+   "detail": "256 バイト",
+   "seconds": 0.13,
+   "url": "https://www.deribit.com/api/v2/public/get_funding_rate_history?instrument_name=BTC-PERPETUAL&start_timestamp=1577836800000&end_timestamp=1577840400000",
+   "description": "Deribit の資金調達率（届くかだけ）"
+  },
+  {
+   "name": "okx_funding",
+   "status": 200,
+   "ok": true,
+   "detail": "229 バイト",
+   "seconds": 0.31,
+   "url": "https://www.okx.com/api/v5/public/funding-rate-history?instId=BTC-USDT-SWAP&limit=1",
+   "description": "OKX の資金調達率（届くかだけ）"
+  },
+  {
+   "name": "kraken_futures_funding",
+   "status": 200,
+   "ok": true,
+   "detail": "1,020,013 バイト",
+   "seconds": 0.37,
+   "url": "https://futures.kraken.com/derivatives/api/v4/historicalfundingrates?symbol=PF_XBTUSD",
+   "description": "Kraken Futures の資金調達率（届くかだけ）"
+  },
+  {
+   "name": "bitmex_funding",
+   "status": 200,
+   "ok": true,
+   "detail": "182 バイト",
+   "seconds": 0.44,
+   "url": "https://www.bitmex.com/api/v1/funding?symbol=XBTUSD&count=1&reverse=false",
+   "description": "BitMEX の資金調達率（届くかだけ）"
+  },
+  {
+   "name": "bitmex_funding_2019",
+   "status": 200,
+   "ok": true,
+   "detail": "3 件、最初 2019-06-01T04:00、率 0.000116、間隔 2000-01-01T08:00:00.000Z",
+   "seconds": 0.15,
+   "url": "https://www.bitmex.com/api/v1/funding?symbol=XBTUSD&count=3&reverse=false&startTime=2019-06-01T00:00:00Z",
+   "description": "BitMEX XBTUSD の資金調達率（2019-06-01 以降の最初の 3 件）"
+  },
+  {
+   "name": "bitmex_funding_2020",
+   "status": 200,
+   "ok": true,
+   "detail": "3 件、最初 2020-01-01T04:00、率 0.0001、間隔 2000-01-01T08:00:00.000Z",
+   "seconds": 0.39,
+   "url": "https://www.bitmex.com/api/v1/funding?symbol=XBTUSD&count=3&reverse=false&startTime=2020-01-01T00:00:00Z",
+   "description": "BitMEX XBTUSD の資金調達率（2020-01-01 以降の最初の 3 件）"
+  },
+  {
+   "name": "deribit_funding_2019",
+   "status": 200,
+   "ok": true,
+   "detail": "3 件、最初 2019-06-01 01:00、8 時間の率 0.0004371521792057977、1 時間の率 8.142461913047441e-05",
+   "seconds": 0.1,
+   "url": "https://www.deribit.com/api/v2/public/get_funding_rate_history?instrument_name=BTC-PERPETUAL&start_timestamp=1559347200000&end_timestamp=1559358000000",
+   "description": "Deribit BTC-PERPETUAL の資金調達率（2019-06-01 の 3 時間）"
+  },
+  {
+   "name": "deribit_funding_2020",
+   "status": 200,
+   "ok": true,
+   "detail": "3 件、最初 2020-01-01 01:00、8 時間の率 0.00014033842756214416、1 時間の率 8.649043447829139e-07",
+   "seconds": 0.09,
+   "url": "https://www.deribit.com/api/v2/public/get_funding_rate_history?instrument_name=BTC-PERPETUAL&start_timestamp=1577836800000&end_timestamp=1577847600000",
+   "description": "Deribit BTC-PERPETUAL の資金調達率（2020-01-01 の 3 時間）"
+  }
+ ]
+}

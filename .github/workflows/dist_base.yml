@@ -1,0 +1,178 @@
+# 評価の土台（候補 1）: ボラだけの基準（HAR 型・GARCH-t 型）に対する、分位点回帰フォレストの幅と向き（公開 API のみ、認証不要）。
+# 2026-09-28 オーナー決定。
+# 実行方法:
+#   check: データの確認と学習期間での当てはめ（評価期間の成績は出さない）。scripts/dist_base.py、bbresearch/distbase.py・nullsim.py・fcompare.py、
+#          configs/dist_base.yaml かこのファイルを変更して push すると、この mode で動く。
+#   null:  帰無の監査（期待リターン 0 の合成データ、3 モデル × 20 回）。20 個のジョブに分けて並列に動かし、最後に集計してコミットする。
+#   eval:  事前登録どおりに 1 回評価する（configs/dist_base.yaml の owner_approved が必要）。
+# null と eval は API の workflow_dispatch で mode を指定したときだけ動く。workflow_dispatch だけのワークフローは既定ブランチにないと
+# API から起動できない（404）ので、push でも登録されるようにしてある。
+# 1 時間足は .cache/candles（dist.yml と同じキャッシュ）、約定は data/raw（dist.yml と同じキャッシュ。大きいので保存はしない）。
+name: dist-base
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "check（データの確認）/ null（帰無の監査）/ eval（事前登録どおりに 1 回評価）"
+        required: true
+        default: check
+        type: choice
+        options: [check, "null", eval]
+  push:
+    paths:
+      - scripts/dist_base.py
+      - bbresearch/distbase.py
+      - bbresearch/nullsim.py
+      - bbresearch/fcompare.py
+      - configs/dist_base.yaml
+      - .github/workflows/dist_base.yml
+permissions:
+  contents: write
+concurrency:
+  group: research-${{ github.ref }}
+env:
+  MODE: ${{ inputs.mode || 'check' }}
+jobs:
+  real:
+    if: ${{ (inputs.mode || 'check') != 'null' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/candles
+          key: candles-1hour-${{ github.run_id }}
+          restore-keys: candles-1hour-
+      - uses: actions/cache/restore@v4
+        with:
+          path: data/raw
+          key: bbdata-raw-btc_jpy-${{ github.run_id }}
+          restore-keys: bbdata-raw-btc_jpy-
+      - name: Download transactions (skips days already cached)
+        timeout-minutes: 240
+        run: python -m bbdata download --pairs btc_jpy --start 2021-01-01 --end $(date -u +%Y-%m-%d)
+      - name: Count experiment log lines
+        id: pre
+        run: echo "n=$( [ -f reports/experiments.jsonl ] && wc -l < reports/experiments.jsonl || echo 0 )" >> "$GITHUB_OUTPUT"
+      - name: Run
+        env:
+          PYTHONPATH: .
+        run: python scripts/dist_base.py --mode "$MODE"
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .cache/candles
+          key: candles-1hour-${{ github.run_id }}
+      - name: Summary and commit
+        run: |
+          if [ "$MODE" = check ]; then
+            files="reports/dist_base/check.md reports/dist_base/check.json"; md=reports/dist_base/check.md
+          else
+            files="reports/dist_base/report.md reports/dist_base/metrics.json"; md=reports/dist_base/report.md
+          fi
+          cat "$md" >> "$GITHUB_STEP_SUMMARY"
+          scripts/commit_report.sh "${{ steps.pre.outputs.n }}" "Distribution baselines $MODE from run ${{ github.run_id }}" $files
+
+  null-prepare:   # 1 時間足と、符号の入れ替えに使う実データの 1 分の終値を 1 回だけ用意し、並列のジョブが同じものを使う
+    if: ${{ inputs.mode == 'null' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/candles
+          key: candles-1hour-${{ github.run_id }}
+          restore-keys: candles-1hour-
+      - uses: actions/cache/restore@v4
+        with:
+          path: data/raw
+          key: bbdata-raw-btc_jpy-${{ github.run_id }}
+          restore-keys: bbdata-raw-btc_jpy-
+      - name: Download transactions (skips days already cached)
+        timeout-minutes: 240
+        run: python -m bbdata download --pairs btc_jpy --start 2021-01-01 --end $(date -u +%Y-%m-%d)
+      - name: Prepare hourly candles and minute closes
+        env:
+          PYTHONPATH: .
+        run: python scripts/dist_base.py --mode null-prepare
+      - uses: actions/cache/save@v4
+        with:
+          path: .cache/candles
+          key: candles-1hour-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: null-minutes
+          path: .cache/dist_base_minutes.npz
+          retention-days: 7
+
+  null-shard:
+    needs: null-prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19]   # configs/dist_base.yaml の null_audit.shards と同じ数
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/candles
+          key: candles-1hour-${{ github.run_id }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: null-minutes
+          path: .cache
+      - name: Run
+        env:
+          PYTHONPATH: .
+        run: python scripts/dist_base.py --mode null --shard ${{ matrix.shard }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: null-shard-${{ matrix.shard }}
+          path: reports/dist_base/null_shard_${{ matrix.shard }}.json
+          retention-days: 30
+
+  null-summary:
+    needs: null-shard
+    if: ${{ always() && inputs.mode == 'null' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: null-shard-*
+          path: null-shards
+          merge-multiple: true
+      - name: Summarize
+        env:
+          PYTHONPATH: .
+        run: python scripts/dist_base.py --mode null-summary --shard-dir null-shards
+      - name: Commit
+        run: |
+          cat reports/dist_base/null.md >> "$GITHUB_STEP_SUMMARY"
+          n=$( [ -f reports/experiments.jsonl ] && wc -l < reports/experiments.jsonl || echo 0 )
+          scripts/commit_report.sh "$n" "Distribution baselines null audit from run ${{ github.run_id }}" reports/dist_base/null.md reports/dist_base/null.json

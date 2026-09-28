@@ -25,6 +25,52 @@ python -m bbresearch search --config configs/research.yaml --grid configs/search
 `configs/search.yaml` を変更して push すると GitHub Actions（`search.yml`）で実行し、`reports/search/`
 （`report.md`、`screen.csv`、`selected.yaml`）をコミットする。
 
+### スイング（4 時間足で判断し 1〜3 日保有）の方向の研究
+
+```bash
+PYTHONPATH=. python scripts/swing.py --mode check   # データの確認（損益は出さない）
+PYTHONPATH=. python scripts/swing.py --mode eval    # 事前登録した 45 通りを全期間で 1 回評価
+```
+
+JPY の現物ペアで、時系列モメンタム・横断モメンタム・急落後の反発を、同じ配分を常に保有した場合に対する
+アルファで評価する。数値は `configs/swing.yaml` に事前に固定してあり、`owner_approved` に日付が入るまで
+eval は動かない。GitHub Actions（`swing.yml`）で実行し、`reports/swing/` をコミットする。eval は workflow_dispatch で mode を
+指定したときだけ動き、`scripts/swing.py` の変更の push では check だけが動く。評価の結果（2026-09-28、`reports/swing/report.md`）は
+3 つの仮説とも不支持。時系列モメンタムは全期間では常時保有を上回ったが、2022 年以降はほぼ効いておらず、研究を区切った。
+
+### 評価の土台（候補 1）: ボラだけの基準に対する幅と向き
+
+```bash
+PYTHONPATH=. python scripts/dist_base.py --mode check              # データの確認と学習期間での当てはめ（評価期間の成績は出さない）
+PYTHONPATH=. python scripts/dist_base.py --mode null-prepare       # 帰無の監査に使う実データの 1 分の終値をファイルにする
+PYTHONPATH=. python scripts/dist_base.py --mode null --shard 0     # 帰無の監査（期待リターン 0 の合成データ）。shard ごとに分けて実行
+PYTHONPATH=. python scripts/dist_base.py --mode null-summary       # 帰無の監査の集計
+PYTHONPATH=. python scripts/dist_base.py --mode eval               # 事前登録どおりに 1 回評価
+```
+
+btc_jpy の 4 時間・24 時間先の収益率の分布で、分位点回帰フォレストを、ボラだけの基準（HAR 型: 1 分の実現分散、GARCH-t 型）と
+比べる。幅の改善と、向きの上乗せ（位置を固定したフォレスト、符号と大きさの分解）を測る。期待リターン 0 の合成データで同じ手順を
+走らせる帰無の監査（GARCH-t、2 状態のボラ、実データの符号の入れ替え）を先に行う。数値は `configs/dist_base.yaml` に事前に固定してあり、`owner_approved` に日付が入り、同じ設定の
+帰無の監査がそろうまで eval は動かない。GitHub Actions（`dist_base.yml`）で実行し、`reports/dist_base/` をコミットする。
+null と eval は workflow_dispatch で mode を指定したときだけ動き、`scripts/dist_base.py`・`bbresearch/distbase.py`・`nullsim.py`・`fcompare.py`・`configs/dist_base.yaml` の変更の push では check だけが動く。
+評価の結果（2026-09-28、`reports/dist_base/report.md`）: 事前登録の判定では向きの上乗せはなく、幅は HAR 型がフォレストより良かった（CRPS で 4 時間 0.43%、24 時間 0.88%）。
+
+### 24 時間の新しい情報源（候補 2）
+
+```bash
+PYTHONPATH=. python scripts/ext_study.py --mode check   # データの確認（期間・抜け・書式、事象の数。先の収益率は出さない）
+PYTHONPATH=. python scripts/ext_study.py --mode eval    # 事前登録どおりに 1 回評価（configs/ext_study.yaml の owner_approved が必要）
+```
+
+資金調達率（Binance・BitMEX・Deribit）の極端な状態、JPY の内外価格差（bitbank 対 Binance 現物 × ドル円）、キャリー・建玉の急増が、
+btc_jpy の 24 時間先の収益率の分布に HAR 型を超える情報を持つかを調べる。外部データは認証なしの公開の窓口とアーカイブだけ
+（`bbresearch/extdata.py`。Binance のアーカイブ、BitMEX、Deribit、Dukascopy のドル円、FRED）で、`.cache/ext` にためる。
+GitHub Actions（`ext_study.yml`）で実行し、`reports/ext_study/` をコミットする。事前登録の数値は `configs/ext_study.yaml` の `eval` に
+固定してあり（判断は 0・8・16 時 UTC、事象は直前 180 日の下位・上位 10%、直前 24 時間の値動きをそろえた統制と比べ、循環シフトの帰無と
+Holm 法で判定。手順は `bbresearch/eventstudy.py` の冒頭）、`owner_approved` に日付が入るまで eval は動かない。eval は workflow_dispatch で
+mode を指定したときだけ動き、push では check だけが動く。評価の結果（2026-09-28、`reports/ext_study/report.md`）: 6 つの検定のうち、内外価格差が下位 10%（bitbank が割安）の後の上げ（H2a）だけ支持。ただし 2025 年以降は費用 0.3% に届いていない。
+H2a は 6 か月（2026-09〜2027-02）の前向きのドライランで確かめる（発注しない）: `--mode forward`（`ext_forward.yml`、毎月）と、0・8・16 時 UTC の気配の記録（`scripts/ext_quotes.py`、`ext_quotes.yml`）。結果は `reports/ext_study/forward.md`。
+
 ### 15 分後の上げ下げの予測（二段構え）
 
 ```bash
