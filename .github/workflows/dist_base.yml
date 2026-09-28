@@ -1,7 +1,8 @@
 # 評価の土台（候補 1）: ボラだけの基準（HAR 型・GARCH-t 型）に対する、分位点回帰フォレストの幅と向き（公開 API のみ、認証不要）。
 # 2026-09-28 オーナー決定。
 # 実行方法:
-#   check: データの確認と学習期間での当てはめ（評価期間の成績は出さない）。scripts/dist_base.py かこのファイルを変更して push すると、この mode で動く。
+#   check: データの確認と学習期間での当てはめ（評価期間の成績は出さない）。scripts/dist_base.py、bbresearch/distbase.py・nullsim.py・fcompare.py、
+#          configs/dist_base.yaml かこのファイルを変更して push すると、この mode で動く。
 #   null:  帰無の監査（期待リターン 0 の合成データ、2 モデル × 20 回）。20 個のジョブに分けて並列に動かし、最後に集計してコミットする。
 #   eval:  事前登録どおりに 1 回評価する（configs/dist_base.yaml の owner_approved が必要）。
 # null と eval は API の workflow_dispatch で mode を指定したときだけ動く。workflow_dispatch だけのワークフローは既定ブランチにないと
@@ -20,6 +21,10 @@ on:
   push:
     paths:
       - scripts/dist_base.py
+      - bbresearch/distbase.py
+      - bbresearch/nullsim.py
+      - bbresearch/fcompare.py
+      - configs/dist_base.yaml
       - .github/workflows/dist_base.yml
 permissions:
   contents: write

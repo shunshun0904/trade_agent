@@ -45,14 +45,29 @@ def fit_volume(h1: pd.DataFrame) -> dict:
     return {"a": float(a), "b": float(b), "phi": phi, "sd": float(u.std() * np.sqrt(max(1e-6, 1 - phi**2)))}
 
 
+MAX_PERSISTENCE = 0.995   # 合成データの GARCH の α + β の上限
+
+
+def stationary_garch(g: dict, var: float, cap: float = MAX_PERSISTENCE) -> dict:
+    """合成データ用の GARCH の数値。α + β が cap を超えるときは、α : β の比を保って cap に縮める。
+    ω は無条件分散が学習期間の分散 var に合うように決める（分散のターゲティング）。α + β = 1 のまま作ると
+    分散が平均に戻らず、系列が現実から離れる（2026-09-28 の check で尖度 93.5、実データは 14.8）。"""
+    a, b = g["alpha"], g["beta"]
+    phi = a + b
+    if phi > cap:
+        a, b = a * cap / phi, b * cap / phi
+    return {**g, "alpha": a, "beta": b, "omega": var * (1 - a - b), "fitted_alpha": g["alpha"], "fitted_beta": g["beta"],
+            "fitted_omega": g["omega"]}
+
+
 def calibrate(h1: pd.DataFrame, split, garch: dict | None = None, seed: int = 0) -> dict:
     """学習期間（split より前）の 1 時間足から、合成データの数値を決める。"""
     split = pd.Timestamp(split, tz="UTC") if isinstance(split, str) else split
     tr = h1[h1.index < split]
     r = np.log(tr["close"]).diff().dropna().to_numpy()
     g = dict(garch) if garch else fit_garch_t(r)
-    return {"garch": g, "ms2": fit_ms2(r, seed), "volume": fit_volume(tr), "p0": float(h1["close"].iloc[0]),
-            "train_sd": float(r.std()), "train_kurt": float(pd.Series(r).kurt())}
+    return {"garch": stationary_garch(g, float(r.var())), "ms2": fit_ms2(r, seed), "volume": fit_volume(tr),
+            "p0": float(h1["close"].iloc[0]), "train_sd": float(r.std()), "train_kurt": float(pd.Series(r).kurt())}
 
 
 def _garch_path(g: dict, n: int, rng: np.random.Generator, burn: int = 2000) -> tuple[np.ndarray, np.ndarray]:

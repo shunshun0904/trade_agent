@@ -115,11 +115,14 @@ def fit_garch_t(r: np.ndarray) -> dict:
 
 
 def garch_next_var(par: dict, r: np.ndarray) -> np.ndarray:
-    """s[t] = σ²_{t+1|t}（r_t までで決まる次の 1 時間の条件付き分散）。初期値は無条件分散。r の NaN は平均とみなす。"""
+    """s[t] = σ²_{t+1|t}（r_t までで決まる次の 1 時間の条件付き分散）。r の NaN は平均とみなす。
+
+    初期値は最初の e²（先の値を使わないため。α + β が 1 に近いと無条件分散 ω / (1 − α − β) は大きく外れる）。
+    初期値の影響は β^t で消える（学習に使う行は指標の助走の後なので、500 本以上先）。"""
     om, a, b, mu = par["omega"], par["alpha"], par["beta"], par["mu"]
     e2 = np.nan_to_num(np.asarray(r, float) - mu) ** 2
     out = np.empty(len(e2))
-    prev = om / max(1e-12, 1 - a - b)
+    prev = max(float(e2[0]), om) if len(e2) else om
     for t in range(len(e2)):
         prev = om + a * e2[t] + b * prev
         out[t] = prev
@@ -127,11 +130,16 @@ def garch_next_var(par: dict, r: np.ndarray) -> np.ndarray:
 
 
 def garch_sigma_h(par: dict, next_var: np.ndarray, h: int) -> np.ndarray:
-    """Σ_{k=1..h} E_t[σ²_{t+k}] の平方根。E_t[σ²_{t+k}] = σ̄² + φ^{k−1}(σ²_{t+1|t} − σ̄²)、φ = α + β。"""
-    phi = par["alpha"] + par["beta"]
-    vbar = par["omega"] / max(1e-12, 1 - phi)
-    geo = h if abs(1 - phi) < 1e-12 else (1 - phi**h) / (1 - phi)
-    return np.sqrt(np.clip(h * vbar + (next_var - vbar) * geo, 1e-18, None))
+    """Σ_{k=1..h} E_t[σ²_{t+k}] の平方根。E_t[σ²_{t+1}] = σ²_{t+1|t}、E_t[σ²_{t+k+1}] = ω + φ E_t[σ²_{t+k}]（φ = α + β）。
+
+    漸化式のまま足すので、φ が 1 以上（学習期間の当てはめが α + β = 1 の境界に来た場合）でも正しい。"""
+    phi, om = par["alpha"] + par["beta"], par["omega"]
+    s = np.asarray(next_var, float).copy()
+    total = s.copy()
+    for _ in range(h - 1):
+        s = om + phi * s
+        total += s
+    return np.sqrt(np.clip(total, 1e-18, None))
 
 
 # ------------------------------------------------------------------ 重み付き標本の分布の評価

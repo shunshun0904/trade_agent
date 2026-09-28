@@ -268,6 +268,8 @@ def main_check(cfg: dict) -> None:
         md.append(f"| {h} 時間 | {fh['n']:,} | {num(fh['r2'], 3)} | " + "、".join(f"{v:.3f}" for k, v in fh["coef"].items() if k != "const") + " |")
     md += ["", f"- GARCH(1,1)-t（1 時間）: μ {g['mu']:.2e}、ω {g['omega']:.2e}、α {g['alpha']:.4f}、β {g['beta']:.4f}"
                f"（α + β = {g['alpha'] + g['beta']:.4f}）、ν {g['nu']:.2f}",
+           f"- 合成データの GARCH: α {cal['garch']['alpha']:.4f}、β {cal['garch']['beta']:.4f}（α + β が {nullsim.MAX_PERSISTENCE} を超えるときは"
+           f"比を保って縮める）、ω {cal['garch']['omega']:.2e}（無条件分散を学習期間の分散 {pct(cal['train_sd'], 3)}² に合わせる）、ν {cal['garch']['nu']:.2f}",
            f"- 2 状態のボラ: σ {pct(cal['ms2']['sigma'][0], 3)} / {pct(cal['ms2']['sigma'][1], 3)}、とどまる確率 "
            f"{cal['ms2']['P'][0][0]:.4f} / {cal['ms2']['P'][1][1]:.4f}",
            f"- 出来高: log(出来高) = {cal['volume']['a']:.3f} + {cal['volume']['b']:.3f} × log(値幅) + u、u の AR(1) 係数 "

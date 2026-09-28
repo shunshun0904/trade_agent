@@ -37,3 +37,19 @@ def test_calibration_recovers_the_generating_values():
     m = nullsim.fit_ms2(np.log(h2["close"]).diff().dropna().to_numpy())
     assert abs(m["sigma"][0] / 0.003 - 1) < 0.1 and abs(m["sigma"][1] / 0.009 - 1) < 0.1
     assert abs(m["P"][0][0] - 0.995) < 0.005
+
+
+def test_synthetic_garch_is_made_stationary_with_the_training_variance():
+    g = {"mu": 0.0, "omega": 1e-7, "alpha": 0.0877, "beta": 0.9123, "nu": 3.5}   # 2026-09-28 の check と同じく α + β = 1
+    var = 0.007 ** 2
+    s = nullsim.stationary_garch(g, var)
+    assert abs(s["alpha"] + s["beta"] - nullsim.MAX_PERSISTENCE) < 1e-12
+    assert abs(s["alpha"] / s["beta"] - g["alpha"] / g["beta"]) < 1e-12
+    assert abs(s["omega"] / (1 - s["alpha"] - s["beta"]) - var) < 1e-15
+    cal = CAL | {"garch": s}
+    h1, _ = nullsim.simulate(IDX, "garch_t", cal, 6)
+    r = np.log(h1["close"]).diff().dropna()
+    assert 0.6 < r.std() / 0.007 < 1.4
+    # 境界にない値はそのまま（ω だけ分散に合わせる）
+    s2 = nullsim.stationary_garch(CAL["garch"], 0.004 ** 2)
+    assert s2["alpha"] == 0.08 and s2["beta"] == 0.9

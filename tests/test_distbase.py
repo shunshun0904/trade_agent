@@ -94,6 +94,9 @@ def test_garch_filter_has_no_lookahead_and_h_step_variance_is_the_sum_of_forecas
     h = 24
     brute = [sum(vbar + (par["alpha"] + par["beta"]) ** k * (v - vbar) for k in range(h)) for v in s[:5]]
     assert np.allclose(db.garch_sigma_h(par, s[:5], h) ** 2, brute)
+    # α + β = 1（学習期間の当てはめが境界に来た場合）: E_t[σ²_{t+k}] = σ²_{t+1|t} + (k − 1)ω
+    ig = par | {"alpha": 0.08, "beta": 0.92}
+    assert np.allclose(db.garch_sigma_h(ig, s[:5], h) ** 2, h * s[:5] + par["omega"] * h * (h - 1) / 2)
 
 
 def test_rolling_windows_use_only_confirmed_returns():
