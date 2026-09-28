@@ -1,7 +1,7 @@
 {
- "run_at": "2026-09-28T17:49:47+00:00",
- "requests": 3,
- "seconds": 33,
+ "run_at": "2026-09-28T18:44:10+00:00",
+ "requests": 3032,
+ "seconds": 2792,
  "config": {
   "start": "2020-01-01",
   "end": "2026-09-01",
@@ -90,11 +90,11 @@
   },
   {
    "name": "Dukascopy ドル円 1 時間足（中値）",
-   "n": 58440,
+   "n": 57000,
    "first": "2020-01-01 00:00:00+00:00",
    "last": "2026-08-31 23:00:00+00:00",
    "expected": 58440,
-   "missing": 0,
+   "missing": 1440,
    "extra": 0
   },
   {
@@ -537,14 +537,14 @@
    "signal": "jpy_premium",
    "year": 2020,
    "n": 6606,
-   "low0.05": 442,
-   "low0.05_ep": 29,
+   "low0.05": 458,
+   "low0.05_ep": 30,
    "high0.05": 13,
    "high0.05_ep": 7,
-   "low0.1": 764,
-   "low0.1_ep": 36,
-   "high0.1": 86,
-   "high0.1_ep": 16
+   "low0.1": 802,
+   "low0.1_ep": 39,
+   "high0.1": 59,
+   "high0.1_ep": 10
   },
   {
    "signal": "jpy_premium",
@@ -589,26 +589,26 @@
    "signal": "jpy_premium",
    "year": 2024,
    "n": 8784,
-   "low0.05": 589,
-   "low0.05_ep": 53,
-   "high0.05": 385,
-   "high0.05_ep": 42,
-   "low0.1": 1099,
-   "low0.1_ep": 65,
-   "high0.1": 756,
-   "high0.1_ep": 62
+   "low0.05": 756,
+   "low0.05_ep": 30,
+   "high0.05": 421,
+   "high0.05_ep": 38,
+   "low0.1": 1005,
+   "low0.1_ep": 35,
+   "high0.1": 782,
+   "high0.1_ep": 61
   },
   {
    "signal": "jpy_premium",
    "year": 2025,
    "n": 8760,
-   "low0.05": 391,
-   "low0.05_ep": 37,
+   "low0.05": 370,
+   "low0.05_ep": 34,
    "high0.05": 424,
    "high0.05_ep": 61,
-   "low0.1": 787,
-   "low0.1_ep": 54,
-   "high0.1": 848,
+   "low0.1": 730,
+   "low0.1_ep": 51,
+   "high0.1": 849,
    "high0.1_ep": 67
   },
   {
@@ -812,7 +812,7 @@
    "funding_binance": 1.0,
    "funding_bitmex": 0.491,
    "funding_deribit": 0.535,
-   "jpy_premium": -0.183,
+   "jpy_premium": -0.165,
    "carry": 0.673,
    "oi_change": 0.059
   },
@@ -820,7 +820,7 @@
    "funding_binance": 0.491,
    "funding_bitmex": 1.0,
    "funding_deribit": 0.469,
-   "jpy_premium": -0.106,
+   "jpy_premium": -0.095,
    "carry": 0.412,
    "oi_change": 0.021
   },
@@ -828,23 +828,23 @@
    "funding_binance": 0.535,
    "funding_bitmex": 0.469,
    "funding_deribit": 1.0,
-   "jpy_premium": -0.252,
+   "jpy_premium": -0.241,
    "carry": 0.428,
    "oi_change": 0.071
   },
   "jpy_premium": {
-   "funding_binance": -0.183,
-   "funding_bitmex": -0.106,
-   "funding_deribit": -0.252,
+   "funding_binance": -0.165,
+   "funding_bitmex": -0.095,
+   "funding_deribit": -0.241,
    "jpy_premium": 1.0,
-   "carry": -0.176,
-   "oi_change": -0.092
+   "carry": -0.157,
+   "oi_change": -0.084
   },
   "carry": {
    "funding_binance": 0.673,
    "funding_bitmex": 0.412,
    "funding_deribit": 0.428,
-   "jpy_premium": -0.176,
+   "jpy_premium": -0.157,
    "carry": 1.0,
    "oi_change": 0.029
   },
@@ -852,7 +852,7 @@
    "funding_binance": 0.059,
    "funding_bitmex": 0.021,
    "funding_deribit": 0.071,
-   "jpy_premium": -0.092,
+   "jpy_premium": -0.084,
    "carry": 0.029,
    "oi_change": 1.0
   }
@@ -882,15 +882,15 @@
   "median_abs_diff_sum8": 7.126257923813776e-08
  },
  "fx_dukascopy_vs_fred": {
-  "n": 1666,
-  "median_abs_diff": 4.1637282889583904e-05,
-  "p99_abs_diff": 0.0002030982451962315
+  "n": 1625,
+  "median_abs_diff": 4.149642492357053e-05,
+  "p99_abs_diff": 0.00020320508345234245
  },
  "premium_quantiles_by_year": {
   "2020": [
-   -0.00304,
-   0.00158,
-   0.0058
+   -0.00286,
+   0.00182,
+   0.01435
   ],
   "2021": [
    -0.00317,
@@ -908,9 +908,9 @@
    0.00502
   ],
   "2024": [
-   -0.00114,
-   0.00171,
-   0.0043
+   -0.01591,
+   0.00164,
+   0.00454
   ],
   "2025": [
    -0.00073,
@@ -1048,16 +1048,16 @@
   {
    "signal": "jpy_premium",
    "side": "low",
-   "n": 6104,
-   "after_drop": 0.014580602883355177,
-   "after_rise": 0.09911533420707733
+   "n": 5991,
+   "after_drop": 0.015189450842931064,
+   "after_rise": 0.09480887998664664
   },
   {
    "signal": "jpy_premium",
    "side": "high",
    "n": 4858,
-   "after_drop": 0.10148209139563606,
-   "after_rise": 0.015026759983532317
+   "after_drop": 0.10292301358583779,
+   "after_rise": 0.014203375874845615
   },
   {
    "signal": "carry",
@@ -1102,7 +1102,16 @@
    "after_rise": 0.08665835411471322
   }
  ],
- "failures": [],
+ "failures": [
+  {
+   "url": "https://datafeed.dukascopy.com/datafeed/USDJPY/2020/01/BID_candles_hour_1.bi5",
+   "status": "HTTP 503"
+  },
+  {
+   "url": "https://datafeed.dukascopy.com/datafeed/USDJPY/2024/06/BID_candles_hour_1.bi5",
+   "status": "HTTP 503"
+  }
+ ],
  "minutes": {
   "by_year": [
    {
