@@ -189,12 +189,14 @@ def judge(S: dict, null: dict | None, cfg: dict) -> dict:
     rows = []
     for (h, a, b), k, c, pf, pe in zip(fam, keys, cs, adj_fb, adj_ewc):
         imp = -c["mean"]
-        nl = [-rep["summary"]["horizons"][str(h)]["comps"][k]["mean"] for rep in (null or {}).get("reps", [])]
+        nreps = (null or {}).get("reps", [])
+        nl = [-rep["summary"]["horizons"][str(h)]["comps"][k]["mean"] for rep in nreps]
+        fp = sum(significant(rep["summary"]["horizons"][str(h)]["comps"][k], better=True) for rep in nreps)
         p_null = rank_percentile(imp, nl) if nl else float("nan")
         ok = bool(c["mean"] < 0 and pf < J["alpha"] and pe < J["alpha"] and np.isfinite(p_null) and p_null < J["null_alpha"])
         rows.append({"h": int(h), "model": a, "reference": b, "diff": c["mean"], "t_fb": c["t_fb"], "p_fb": c["p_fb"],
                      "p_fb_holm": pf, "t_ewc": c["t_ewc"], "p_ewc": c["p_ewc"], "p_ewc_holm": pe, "p_null": p_null,
-                     "n_null": len(nl), "increment": ok})
+                     "n_null": len(nl), "null_false_pos": fp, "increment": ok})
     wa, wb = J["width_pair"]
     width = []
     for h, H in S["horizons"].items():
@@ -329,6 +331,13 @@ def main_null(cfg: dict, shard: int) -> None:
     (OUT / f"null_shard_{shard}.json").write_text(json.dumps(jsonable({"calibration": cal, "reps": reps}), ensure_ascii=False))
 
 
+def significant(c: dict, better: bool, alpha: float = 0.05) -> bool:
+    """損失差 d = モデル − 参照 が、良い側（d < 0）または悪い側で、fixed-b と EWC の両方で p < alpha か。"""
+    if c.get("p_fb") is None or c.get("p_ewc") is None or not (np.isfinite(c["p_fb"]) and np.isfinite(c["p_ewc"])):
+        return False
+    return (c["mean"] < 0) == better and c["p_fb"] < alpha and c["p_ewc"] < alpha
+
+
 def main_null_summary(cfg: dict, shard_dir: Path) -> None:
     reps, cal = [], None
     for f in sorted(shard_dir.glob("null_shard_*.json")):
@@ -342,26 +351,50 @@ def main_null_summary(cfg: dict, shard_dir: Path) -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "null.json").write_text(json.dumps(null, ensure_ascii=False))
     md = [f"# 評価の土台（候補 1）: 帰無の監査（期待リターン 0 の合成データ、{len(reps)} / {expected} 回）\n",
-          "合成データでは向きの情報がないので、「向きのモデル − 参照」の改善は 0 以下に集まるはず。0 より大きい側に偏るなら、"
-          "手順に先読みなどの問題がある。検定の棄却率は名目 5% に近いはず（回数が少ないので目安）。\n",
+          "合成データには向きの情報がないので、「向きのモデル − 参照」の改善は 0 以下に集まるはず（向きのモデルは位置の雑音の分だけ"
+          "悪くなる）。0 より大きい側に偏るなら、手順に先読みなどの問題がある。\n",
+          "- 良い側で有意: 改善が正で、fixed-b と EWC の両方で p < 0.05 だった回の割合（判定の偽陽性。ホルム補正の前）。",
+          "- 悪い側で有意: 向きのモデル（幅の行はそのモデル）が有意に悪かった回の割合。帰無のもとでも損失の期待値は等しくないので、"
+          "検定の大きさ（名目 5%）とは比べられない。",
+          f"- 合成データは {'、'.join(cfg['null_audit']['models'])} を {cfg['null_audit']['reps']} 回ずつ。符号の入れ替えは実データの大きさを"
+          "そのまま使うので、幅の比較は評価期間の実データの幅の比較に近い（幅の判定の基準は、この監査の前に固定した）。\n",
           f"設定のハッシュ {cfg_hash(cfg)}（owner_approved を除く）、コードのハッシュ {code_hash()}\n"]
     comps = [f"{a}|{b}|{m}" for a, b in cfg["judge"]["comparisons"] for m in COMP_METRICS] + \
             [f"{m}|har|{met}" for m in MODELS if m != "har" for met in ("crps",)]
     for h in cfg["horizons"]:
-        md += [f"## {h} 時間\n", "| 比較 | 指標 | 改善の平均（×10⁻⁴） | 標準偏差 | 5% 点 | 95% 点 | 最大 | fixed-b の棄却率 | EWC の棄却率 |",
+        md += [f"## {h} 時間\n", "| 比較 | 指標 | 改善の平均（×10⁻⁴） | 標準偏差 | 5% 点 | 95% 点 | 最大 | 良い側で有意 | 悪い側で有意 |",
                "|---|---|---|---|---|---|---|---|---|"]
         for k in comps:
-            vals = [r["summary"]["horizons"][str(h)]["comps"].get(k) for r in reps]
-            vals = [v for v in vals if v]
+            vals = [v for v in (r["summary"]["horizons"][str(h)]["comps"].get(k) for r in reps) if v]
             if not vals:
                 continue
             imp = np.array([-v["mean"] for v in vals]) * 1e4
-            rej_fb = np.mean([v["p_fb"] < 0.05 for v in vals if v["p_fb"] is not None])
-            rej_ewc = np.mean([v["p_ewc"] < 0.05 for v in vals if v["p_ewc"] is not None])
             a, b, m = k.split("|")
             md.append(f"| {LABELS[a]} − {LABELS[b]} | {METRIC_JA[m]} | {imp.mean():+.3f} | {imp.std(ddof=1) if len(imp) > 1 else 0:.3f} | "
-                      f"{np.quantile(imp, 0.05):+.3f} | {np.quantile(imp, 0.95):+.3f} | {imp.max():+.3f} | {pct(rej_fb, 0)} | {pct(rej_ewc, 0)} |")
+                      f"{np.quantile(imp, 0.05):+.3f} | {np.quantile(imp, 0.95):+.3f} | {imp.max():+.3f} | "
+                      f"{pct(np.mean([significant(v, better=True) for v in vals]), 0)} | {pct(np.mean([significant(v, better=False) for v in vals]), 0)} |")
+        md += ["", f"### {h} 時間: 合成データの種類ごと（主指標 {METRIC_JA[cfg['judge']['primary']]}）\n",
+               "| 種類 | 比較 | 改善の平均（×10⁻⁴） | 最大 | 良い側で有意 | フォレストの AUC P(>0) の平均 | フォレスト − HAR 型の CRPS（相対。正ならフォレストが悪い） |",
+               "|---|---|---|---|---|---|---|"]
+        for kind in cfg["null_audit"]["models"]:
+            rs = [r["summary"]["horizons"][str(h)] for r in reps if r["kind"] == kind]
+            if not rs:
+                continue
+            width = np.mean([H["comps"]["forest|har|crps"]["mean"] / H["rows"]["har"]["crps"] for H in rs])
+            auc = np.mean([H["rows"]["forest"]["auc_0"] for H in rs])
+            for a, b in cfg["judge"]["comparisons"]:
+                vals = [H["comps"][f"{a}|{b}|{cfg['judge']['primary']}"] for H in rs]
+                imp = np.array([-v["mean"] for v in vals]) * 1e4
+                md.append(f"| {kind} | {LABELS[a]} − {LABELS[b]} | {imp.mean():+.3f} | {imp.max():+.3f} | "
+                          f"{sum(significant(v, better=True) for v in vals)} / {len(vals)} | {auc:.3f} | {pct(width, 2)} |")
         md.append("")
+    fam = [(str(h), a, b) for h in cfg["horizons"] for a, b in cfg["judge"]["comparisons"]]
+    hits = 0
+    for r in reps:
+        cs = [r["summary"]["horizons"][h]["comps"][f"{a}|{b}|{cfg['judge']['primary']}"] for h, a, b in fam]
+        pf, pe = holm([c["p_fb"] for c in cs]), holm([c["p_ewc"] for c in cs])
+        hits += any(c["mean"] < 0 and x < cfg["judge"]["alpha"] and y < cfg["judge"]["alpha"] for c, x, y in zip(cs, pf, pe))
+    md.append(f"4 つの主比較をホルム法でまとめた判定（帰無の p を除く）で「上乗せあり」になった回: {hits} / {len(reps)}\n")
     (OUT / "null.md").write_text("\n".join(md) + "\n")
     print("\n".join(md))
 
@@ -413,12 +446,12 @@ def write_report(cfg: dict, m: dict) -> None:
           "## 判定（事前登録）\n",
           f"向きの上乗せ: 主指標 {METRIC_JA[cfg['judge']['primary']]} の差（向きのモデル − 参照）が負で、4 検定のホルム補正後に fixed-b と EWC の"
           f"両方で p < {cfg['judge']['alpha']}、かつ帰無の監査の p < {cfg['judge']['null_alpha']}。\n",
-          "| ホライズン | 向きのモデル | 参照 | 差（×10⁻⁴） | fixed-b t | p（ホルム） | EWC t | p（ホルム） | 帰無の p | 上乗せ |",
-          "|---|---|---|---|---|---|---|---|---|---|"]
+          "| ホライズン | 向きのモデル | 参照 | 差（×10⁻⁴） | fixed-b t | p（ホルム） | EWC t | p（ホルム） | 帰無の p | 帰無で良い側に有意 | 上乗せ |",
+          "|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in J["direction"]:
         md.append(f"| {r['h']} 時間 | {LABELS[r['model']]} | {LABELS[r['reference']]} | {r['diff'] * 1e4:+.3f} | {num(r['t_fb'])} | "
                   f"{pv(r['p_fb_holm'])} | {num(r['t_ewc'])} | {pv(r['p_ewc_holm'])} | {pv(r['p_null'])}（{r['n_null']} 回） | "
-                  f"{'あり' if r['increment'] else 'なし'} |")
+                  f"{r['null_false_pos']} / {r['n_null']} | {'あり' if r['increment'] else 'なし'} |")
     md += ["", "幅（CRPS、" + f"{LABELS[cfg['judge']['width_pair'][0]]} − {LABELS[cfg['judge']['width_pair'][1]]}、fixed-b の両側 5%）:\n",
            "| ホライズン | 差 | 相対 | fixed-b t | p | EWC の p | 判定 |", "|---|---|---|---|---|---|---|"]
     md += [f"| {w['h']} 時間 | {w['diff']:+.2e} | {pct(w['rel'], 2)} | {num(w['t_fb'])} | {pv(w['p_fb'])} | {pv(w['p_ewc'])} | {w['verdict']} |"
