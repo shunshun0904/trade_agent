@@ -1,5 +1,5 @@
-# リバランス計画（ドライラン。発注しない）。毎月 1 日 00:10 UTC（09:10 JST）に銘柄と相対の重みを選び直し（monthly）、
-# 毎週月曜 00:10 UTC に JPY の割合だけ見直す（weekly。目標ボラとトレンドフィルタ）。手動でも実行できる。
+# リバランス計画（ドライラン。発注しない）。毎月 1 日 00:33 UTC（09:33 JST。正時直後は schedule が遅れるため端数の分）に銘柄と相対の重みを選び直し（monthly）、
+# 毎週月曜 00:33 UTC に JPY の割合だけ見直す（weekly。目標ボラとトレンドフィルタ）。手動でも実行できる。
 # 2026-09-27 からこのブランチが既定ブランチなので schedule が動く（それまでは手動で実行していた）。
 # 残高はキー（Secrets bitbank_API / bitbank_secret）で読むが、ログには割合（%）だけを出す（公開リポジトリ）。
 name: rebalance
@@ -11,8 +11,8 @@ on:
         required: false
         default: auto
   schedule:
-    - cron: "10 0 1 * *"
-    - cron: "10 0 * * 1"
+    - cron: "33 0 1 * *"
+    - cron: "33 0 * * 1"
   push:
     branches: [claude/bitbank-trade-agent-7ers55]
     paths:
