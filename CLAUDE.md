@@ -18,9 +18,9 @@
   - `direction_1h.yml`: 同じモデルの 1 時間版。毎正時に判断し、1 分ごとの TPO×価格帯別出来高のシグナルの直近 60 分の推移を加える（`configs/direction_1h.yaml`）
   - `direction_cost.yml`: 目的変数を「成行往復の費用（約 0.3%）を超えて上がるか」にし、下げ側も学習して差を信号にする版を 15 分と 1 時間で実行（`configs/direction_cost.yaml`、`direction_1h_cost.yaml`）
   - `activity.yml`: 全ペアの前日の約定数・出来高（`reports/activity/`）。`weekend_range.yml`: 曜日 × 時間帯の値幅（`reports/weekend_range/`）。`portfolio.yml`: 最小分散ポートフォリオの前向き検証（`scripts/portfolio.py`、`reports/portfolio/`）
-  - `rebalance.yml`: リバランス計画（ドライラン、発注しない。`scripts/rebalance.py`、`configs/rebalance.yaml`）。毎月 1 日 00:10 UTC に銘柄と相対の重みを選び直し、毎週月曜 00:10 UTC に JPY の割合だけ見直す（目標ボラ 30%、BTC が 200 日線を下回る間は全額 JPY。2026-09-27 オーナー決定）。ログは割合だけ
+  - `rebalance.yml`: リバランス計画（ドライラン、発注しない。`scripts/rebalance.py`、`configs/rebalance.yaml`）。毎月 1 日 00:33 UTC に銘柄と相対の重みを選び直し、毎週月曜 00:33 UTC に JPY の割合だけ見直す（目標ボラ 30%、BTC が 200 日線を下回る間は全額 JPY。2026-09-27 オーナー決定）。ログは割合だけ
   - `recorder.yml`: 板・約定の記録。約 5 時間 45 分ごとに次のジョブを自分で起動して連続させ、成果物（90 日）に保存する。止めるには `configs/recorder.yaml` の `enabled: false`
-  - `monitor.yml`: 毎日 00:20 UTC に残高・評価額・目標の重みを `docs/monitor/daily.jsonl` に記録し、`docs/monitor/index.html`（モニター画面）を作り直してコミットする（`scripts/snapshot.py`、`bbresearch/monitor.py`）。`rebalance.yml` は計画を `docs/monitor/rebalances.jsonl` に追記する
+  - `monitor.yml`: 毎日 00:47 UTC に残高・評価額・目標の重みを `docs/monitor/daily.jsonl` に記録し、`docs/monitor/index.html`（モニター画面）を作り直してコミットする（`scripts/snapshot.py`、`bbresearch/monitor.py`）。`rebalance.yml` は計画を `docs/monitor/rebalances.jsonl` に追記する
   - `margin.yml`: 信用取引の対応ペアと条件（建玉金利・手数料・保証金率）を `/spot/pairs` から一覧にする（`reports/margin/`）
   - `dist.yml`: 1 時間足のテクニカル指標（373 個。`bbresearch/indicators.py`、部品は `bbresearch/ta.py`）と約定フローの特徴量（34 個。`bbresearch/tradeflow.py`、約定履歴は Actions のキャッシュ）から 4 時間後までの収益率の条件付き分布を分位点回帰フォレストで推定し、無条件・直近 n 本の経験分布と精度を比べ、群ごとの寄与も出す（`scripts/dist_forecast.py`、`configs/dist.yaml`、`reports/dist/`）
   - `vol_daily.yml`: ポートフォリオの JPY 比率を日次で調整する案の前向き検証（BTC 1 時間足のフォレストによる翌日ボラ予測 ÷ 長期平均を推定ボラに掛ける。`scripts/vol_daily.py`、`configs/vol_daily.yaml`、`reports/vol_daily/`）
