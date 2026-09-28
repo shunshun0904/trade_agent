@@ -1,7 +1,7 @@
 {
- "run_at": "2026-09-28T16:12:59+00:00",
- "requests": 164,
- "seconds": 395,
+ "run_at": "2026-09-28T17:28:23+00:00",
+ "requests": 3,
+ "seconds": 25,
  "config": {
   "start": "2020-01-01",
   "end": "2026-09-01",
@@ -1102,5 +1102,67 @@
    "after_rise": 0.08665835411471322
   }
  ],
- "failures": []
+ "failures": [],
+ "minutes": {
+  "by_year": [
+   {
+    "year": 2020,
+    "minutes": 527040,
+    "share_with_trades": 0.8710705069823922,
+    "days_without_trades": 0,
+    "longest_gap_min": 119
+   },
+   {
+    "year": 2021,
+    "minutes": 525600,
+    "share_with_trades": 0.944039193302892,
+    "days_without_trades": 0,
+    "longest_gap_min": 202
+   },
+   {
+    "year": 2022,
+    "minutes": 525600,
+    "share_with_trades": 0.8183961187214612,
+    "days_without_trades": 0,
+    "longest_gap_min": 195
+   },
+   {
+    "year": 2023,
+    "minutes": 525600,
+    "share_with_trades": 0.6943911719939118,
+    "days_without_trades": 0,
+    "longest_gap_min": 244
+   },
+   {
+    "year": 2024,
+    "minutes": 527040,
+    "share_with_trades": 0.7936854887674559,
+    "days_without_trades": 0,
+    "longest_gap_min": 451
+   },
+   {
+    "year": 2025,
+    "minutes": 525600,
+    "share_with_trades": 0.835218797564688,
+    "days_without_trades": 0,
+    "longest_gap_min": 133
+   },
+   {
+    "year": 2026,
+    "minutes": 349920,
+    "share_with_trades": 0.7415837905807041,
+    "days_without_trades": 0,
+    "longest_gap_min": 140
+   }
+  ],
+  "hourly_close_match": {
+   "2020": 1.0,
+   "2021": 1.0,
+   "2022": 1.0,
+   "2023": 1.0,
+   "2024": 1.0,
+   "2025": 1.0,
+   "2026": 1.0
+  }
+ }
 }
