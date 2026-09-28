@@ -2,6 +2,7 @@
 
     python scripts/ext_study.py --mode check    # データの確認（期間・抜け・書式、事象の数）。先の収益率は一切出さない
     python scripts/ext_study.py --mode eval     # 事前登録（configs/ext_study.yaml の eval）どおりに 1 回評価。owner_approved が必要
+    python scripts/ext_study.py --mode forward  # 支持した仮説（H2a）の前向きのドライラン。確定した月まで同じ計算をする（発注しない）
 
 データは bbresearch/extdata.py（Binance のアーカイブ、BitMEX、Deribit、Dukascopy、FRED）と bitbank の公式 1 時間足
 （scripts/dist_forecast.py と同じキャッシュ）、HAR 型に使う bitbank の約定（data/raw）。事前登録の数値は configs/ext_study.yaml の eval に
@@ -488,17 +489,148 @@ def write_report(cfg: dict, m: dict) -> None:
     print("\n".join(md))
 
 
+# ------------------------------------------------------------------ 前向きのドライラン（支持した仮説だけ、発注しない）
+
+def first_taker_price(trades: pd.DataFrame, times: pd.DatetimeIndex, side: str, window_min: float) -> np.ndarray:
+    """各時刻 T から window_min 分以内の、最初の side（テイカー側。buy は売り気配で買った約定）の約定の価格。なければ NaN。"""
+    t = trades[trades["side"] == side]
+    ms_ = t["executed_at"].to_numpy("int64")
+    px = t["price"].to_numpy(float)
+    q = times.as_unit("ms").asi8
+    out = np.full(len(q), np.nan)
+    if len(ms_) == 0:
+        return out
+    pos = np.searchsorted(ms_, q, side="left")
+    ok = pos < len(ms_)
+    ok[ok] = ms_[pos[ok]] - q[ok] <= window_min * 60_000
+    out[ok] = px[pos[ok]]
+    return out
+
+
+def read_quotes(path: str | Path, max_delay_min: float) -> pd.DataFrame:
+    """記録した気配（1 行 1 回）。同じ判断の時刻が複数あれば最初の記録。遅れが上限を超えたものは除く。"""
+    p = Path(path)
+    if not p.exists():
+        return pd.DataFrame(columns=["sell", "buy", "delay_min"], index=pd.DatetimeIndex([], tz="UTC"))
+    rows = [json.loads(x) for x in p.read_text().splitlines() if x.strip()]
+    q = pd.DataFrame(rows)
+    q.index = pd.DatetimeIndex(pd.to_datetime(q["slot"], utc=True))
+    q = q[~q.index.duplicated()].sort_index()
+    return q[q["delay_min"] <= max_delay_min][["sell", "buy", "delay_min"]]
+
+
+def forward_window(cfg: dict, today: pd.Timestamp) -> tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp]:
+    """前向きの期間の始まり、今回の終わり（確定した月の終わり、含まない）、予定の終わり。"""
+    F = cfg["forward"]
+    start = pd.Timestamp(F["start"], tz="UTC")
+    planned = start + pd.DateOffset(months=F["months"])
+    return start, min(today.normalize().replace(day=1), planned), planned
+
+
+def main_forward(cfg: dict, fetcher: xd.Fetcher | None = None, hourly=None, trades: pd.DataFrame | None = None,
+                 today: pd.Timestamp | None = None) -> dict:
+    if not cfg.get("owner_approved"):
+        sys.exit("configs/ext_study.yaml の owner_approved が空。事前登録の承認の前は前向きの確認もしない。")
+    E, F = cfg["eval"], cfg["forward"]
+    today = today if today is not None else pd.Timestamp.now(tz="UTC")
+    f_start, f_end, planned = forward_window(cfg, today)
+    out = {"run_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), "start": str(f_start), "end": str(f_end),
+           "planned_end": str(planned), "complete": bool(f_end >= planned), "hypotheses": []}
+    if f_end <= f_start:
+        out["note"] = "確定した月がまだない"
+    else:
+        c2 = cfg | {"end": str(f_end.date())}
+        f = fetcher or xd.Fetcher(cfg.get("cache", ".cache/ext"), strict=True)
+        d = load_all(c2, f, hourly)
+        H = f"{E['horizon_hours']}h"
+        times = es.grid_times(f_start, f_end, E["grid_hours"], H)
+        t_ns = times.as_unit("ns").asi8
+        gap_ns = int(pd.Timedelta(hours=E["gap_hours"]).value)
+        n_bins = len(E["zbins"]) + 1
+        close_known = xd.available(d["bitbank"]["close"])
+        y = es.forward_log_return(close_known, times, H)
+        zb = es.zbins(es.prior_z(close_known, times, H, E["z_vol_hours"], E["z_min_hours"]), E["zbins"])
+        sig = signals(d, c2)
+        if trades is None:
+            from bbdata.download import load_transactions
+            trades = load_transactions(cfg["trades_root"], cfg["pair"], f_start, f_end + pd.Timedelta(days=1))
+        quotes = read_quotes(F["quotes"], F["max_quote_delay_min"])
+        for hid in F["hypotheses"]:
+            P = next(p for p in E["primary"] if p["id"] == hid)
+            tol = f"{E['staleness_hours']['funding' if P['signal'].startswith('funding_') else 'hourly']}h"
+            r = es.value_at(sig[P["signal"]], times, tol)
+            obs = es.event_study(r, y, zb, t_ns, E["q"], P["side"], gap_ns, n_bins)
+            ep = obs.pop("episodes") & np.isfinite(y)
+            min_shift = min(int(E["min_shift_days"] * len(E["grid_hours"])), max(1, len(times) // 4))
+            null = es.shift_null(r, y, zb, t_ns, E["q"], P["side"], gap_ns, n_bins, E["null_reps"], min_shift, E["seed"])
+            te = times[ep]
+            buy = first_taker_price(trades, te, "buy", F["entry_window_min"])
+            sell = first_taker_price(trades, te + pd.Timedelta(H), "sell", F["entry_window_min"])
+            r_exec = np.log(sell / buy)
+            ask = quotes["sell"].reindex(te).to_numpy(float)
+            bid = quotes["buy"].reindex(te + pd.Timedelta(H)).to_numpy(float)
+            r_quote = np.log(bid / ask)
+            ok_e, ok_q = np.isfinite(r_exec), np.isfinite(r_quote)
+            passed = bool(np.isfinite(obs["effect"]) and obs["effect"] > 0 and obs["ev_mean"] > E["cost"])
+            out["hypotheses"].append(obs | {
+                "id": hid, "signal": P["signal"], "side": P["side"], "p_info": es.p_one_sided(obs["effect"], null, P["direction"]),
+                "criterion_met": passed,
+                "exec": {"n": int(ok_e.sum()), "mean_close": float(np.mean(y[ep][ok_e])) if ok_e.any() else None,
+                         "mean_exec": float(np.mean(r_exec[ok_e])) if ok_e.any() else None,
+                         "mean_exec_net": float(np.mean(r_exec[ok_e]) - F["fee_round_trip"]) if ok_e.any() else None},
+                "quotes": {"n": int(ok_q.sum()), "mean_close": float(np.mean(y[ep][ok_q])) if ok_q.any() else None,
+                           "mean_quote": float(np.mean(r_quote[ok_q])) if ok_q.any() else None,
+                           "mean_quote_net": float(np.mean(r_quote[ok_q]) - F["fee_round_trip"]) if ok_q.any() else None,
+                           "n_recorded": int(len(quotes[(quotes.index >= f_start) & (quotes.index < f_end)]))},
+                "events": [{"t": str(t), "y": float(v), "exec": None if not np.isfinite(a) else float(a),
+                            "quote": None if not np.isfinite(b) else float(b)} for t, v, a, b in zip(te, y[ep], r_exec, r_quote)]})
+    OUT.mkdir(parents=True, exist_ok=True)
+    (OUT / "forward.json").write_text(json.dumps(jsonable(out), ensure_ascii=False, indent=1))
+    write_forward_report(cfg, out)
+    return out
+
+
+def write_forward_report(cfg: dict, o: dict) -> None:
+    E, F = cfg["eval"], cfg["forward"]
+    md = ["# 候補 2: 支持した仮説の前向きのドライラン（発注しない）\n",
+          f"- 期間 {o['start'][:10]} 〜 {o['end'][:10]}（終わりは含まない。予定は {o['planned_end'][:10]} まで、"
+          f"{'そろった。判定する' if o['complete'] else '途中経過（判定は予定の期間がそろってから）'}）。更新 {o['run_at']}",
+          f"- 計算は事前登録の評価と同じ（configs/ext_study.yaml の eval）。判定の基準: 統制との差が正 かつ 事象の後の平均が {pct(E['cost'], 1)} を超える"
+          "（回数が少ないので有意は求めない。p は参考）",
+          f"- 実際の価格: 約定から測る値は、判断の時刻から {F['entry_window_min']} 分以内の最初の買い（テイカー）の約定で買い、24 時間後から "
+          f"{F['entry_window_min']} 分以内の最初の売りの約定で売ったときの対数収益率。気配から測る値は、0・8・16 時 UTC に記録した売り気配で買い、"
+          f"24 時間後の買い気配で売ったとき（記録の遅れが {F['max_quote_delay_min']} 分以内のものだけ）。手数料 {pct(F['fee_round_trip'], 1)}（往復）を引いた値も出す\n"]
+    if not o["hypotheses"]:
+        md.append(f"{o.get('note', '')}。\n")
+    for h in o["hypotheses"]:
+        verdict = ("基準を満たす" if h["criterion_met"] else "基準を満たさない") + ("" if o["complete"] else "（途中経過）")
+        ex, qu = h["exec"], h["quotes"]
+        md += [f"## {h['id']}（{LABEL[h['signal']]}、{SIDE[h['side']]} {E['q']:.0%}）: {verdict}\n",
+               "| 事象（数えた回数 / 全体） | 事象の後（終値） | 統制（そろえた） | 差 | p（参考） |", "|---|---|---|---|---|",
+               f"| {h['n_ev']} / {h['n_events']} | {pct(h['ev_mean'], 2)} | {pct(h['ctrl_mean'], 2)} | {pct(h['effect'], 2)} | {pv(h['p_info'])} |", "",
+               "| 実際の価格の測り方 | 回数 | 同じ回の終値での平均 | 実際の価格での平均 | 手数料を引いた後 |", "|---|---|---|---|---|",
+               f"| 約定（{F['entry_window_min']} 分以内の最初の約定） | {ex['n']} | {pct(ex['mean_close'], 2)} | {pct(ex['mean_exec'], 2)} | {pct(ex['mean_exec_net'], 2)} |",
+               f"| 記録した気配（記録 {qu['n_recorded']} 回） | {qu['n']} | {pct(qu['mean_close'], 2)} | {pct(qu['mean_quote'], 2)} | {pct(qu['mean_quote_net'], 2)} |", "",
+               "| 判断の時刻 | 終値で測った 24 時間 | 約定で測った 24 時間 | 気配で測った 24 時間 |", "|---|---|---|---|"]
+        md += [f"| {e['t'][:16]} | {pct(e['y'], 2)} | {pct(e['exec'], 2)} | {pct(e['quote'], 2)} |" for e in h["events"]]
+        md.append("")
+    (OUT / "forward.md").write_text("\n".join(md) + "\n")
+    print("\n".join(md))
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=["check", "eval"], required=True)
+    ap.add_argument("--mode", choices=["check", "eval", "forward"], required=True)
     ap.add_argument("--config", default="configs/ext_study.yaml")
     args = ap.parse_args(argv)
     with open(args.config, encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh)
     if args.mode == "check":
         main_check(cfg)
-    else:
+    elif args.mode == "eval":
         main_eval(cfg)
+    else:
+        main_forward(cfg)
     return 0
 
 

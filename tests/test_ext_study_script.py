@@ -257,3 +257,61 @@ def test_minutes_summary():
     r = s["by_year"][0]
     assert r["days_without_trades"] == 1 and r["longest_gap_min"] == 1440 and r["share_with_trades"] == pytest.approx((2 * 1440 - 60) / (3 * 1440))
     assert s["hourly_close_match"][2020] == 1.0
+
+
+# ------------------------------------------------------------------ forward（支持した仮説の前向きのドライラン）
+
+FWD = {"hypotheses": ["H2a"], "start": "2020-05-01", "months": 2, "entry_window_min": 15, "fee_round_trip": 0.002,
+       "quotes": "quotes.jsonl", "max_quote_delay_min": 60}
+
+
+def synthetic_trades(bb: pd.Series) -> pd.DataFrame:
+    """毎時 1 分に買いの約定（終値 × 1.0005）、2 分に売りの約定（終値 × 0.9995）。index の足の終値は次の正時に分かる。"""
+    rows = []
+    for i, (t, c) in enumerate(bb.items()):
+        nxt = t + pd.Timedelta("1h")                                    # 足 t の終値が分かる時刻
+        rows.append((2 * i, "buy", c * 1.0005, 0.01, int((nxt + pd.Timedelta("1min")).value // 10**6)))
+        rows.append((2 * i + 1, "sell", c * 0.9995, 0.01, int((nxt + pd.Timedelta("2min")).value // 10**6)))
+    return pd.DataFrame(rows, columns=["transaction_id", "side", "price", "amount", "executed_at"])
+
+
+def test_forward_complete_period_with_trades_and_quotes(run_dir):
+    cfg = CFG | {"owner_approved": "2026-09-28", "eval": EVAL, "forward": FWD}
+    slots = pd.date_range("2020-05-01", "2020-07-01", freq="8h", tz="UTC", inclusive="left")
+    with open("quotes.jsonl", "w") as fh:
+        for i, s in enumerate(slots):
+            c = float(BB.asof(s - pd.Timedelta("1h")))                 # s に分かっている終値
+            delay = 90 if i % 10 == 0 else 5                            # 10 回に 1 回は遅すぎて使わない
+            fh.write(json.dumps({"slot": s.isoformat(), "delay_min": delay, "sell": c * 1.001, "buy": c * 0.999}) + "\n")
+    f = xd.Fetcher(run_dir / "cache", session=Session(fn=respond), pause=0)
+    o = es.main_forward(cfg, fetcher=f, hourly=hourly, trades=synthetic_trades(BB), today=pd.Timestamp("2020-07-05", tz="UTC"))
+    assert o["complete"] and o["end"].startswith("2020-07-01")
+    h = o["hypotheses"][0]
+    assert h["id"] == "H2a" and h["n_ev"] > 0 and h["criterion_met"] == (h["effect"] > 0 and h["ev_mean"] > 0.003)
+    ex, qu = h["exec"], h["quotes"]
+    assert ex["n"] == h["n_ev"] and ex["mean_exec"] == pytest.approx(ex["mean_close"] + np.log(0.9995 / 1.0005), abs=1e-9)
+    assert 0 < qu["n"] < h["n_ev"] and qu["mean_quote"] == pytest.approx(qu["mean_close"] + np.log(0.999 / 1.001), abs=1e-9)
+    assert ex["mean_exec_net"] == pytest.approx(ex["mean_exec"] - 0.002)
+    md = (run_dir / "reports/ext_study/forward.md").read_text()
+    assert "そろった。判定する" in md and "## H2a（JPY の内外価格差、下位 10%）" in md
+
+
+def test_forward_interim_and_not_started(run_dir):
+    cfg = CFG | {"owner_approved": "2026-09-28", "eval": EVAL, "forward": FWD}
+    f = xd.Fetcher(run_dir / "cache", session=Session(fn=respond), pause=0)
+    o = es.main_forward(cfg, fetcher=f, hourly=hourly, trades=synthetic_trades(BB), today=pd.Timestamp("2020-06-10", tz="UTC"))
+    assert not o["complete"] and o["end"].startswith("2020-06-01")
+    assert all(pd.Timestamp(e["t"]) < pd.Timestamp("2020-05-31", tz="UTC") for e in o["hypotheses"][0]["events"])
+    assert "途中経過" in (run_dir / "reports/ext_study/forward.md").read_text()
+    o2 = es.main_forward(cfg, fetcher=f, hourly=hourly, trades=synthetic_trades(BB), today=pd.Timestamp("2020-05-20", tz="UTC"))
+    assert o2["hypotheses"] == [] and o2["note"] == "確定した月がまだない"
+    with pytest.raises(SystemExit, match="owner_approved"):
+        es.main_forward(CFG | {"eval": EVAL, "forward": FWD}, fetcher=f, hourly=hourly, trades=synthetic_trades(BB))
+
+
+def test_first_taker_price_window():
+    tr = pd.DataFrame({"side": ["sell", "buy", "buy"], "price": [99.0, 101.0, 102.0],
+                       "executed_at": [ms("2020-01-01 00:00:30"), ms("2020-01-01 00:03"), ms("2020-01-01 00:40")]})
+    t = pd.DatetimeIndex(pd.to_datetime(["2020-01-01 00:00", "2020-01-01 00:30", "2020-01-01 01:00"], utc=True))
+    out = es.first_taker_price(tr, t, "buy", 15)
+    assert out[0] == 101.0 and out[1] == 102.0 and np.isnan(out[2])

@@ -1,0 +1,62 @@
+# 候補 2 の H2a の前向きのドライラン（発注しない）: 毎月、確定した月まで事前登録の評価と同じ計算をし、reports/ext_study/forward.md を更新する。
+# 2026-09-28 オーナー決定。期間は 2026-09〜2027-02。約定から測る実際の価格と、ext_quotes.yml が記録した気配から測る価格も出す。
+# 毎月 5 日 04:23 UTC（前の月の Binance・Dukascopy の月ごとのファイルがそろってから）。schedule は既定のブランチにあるときだけ動く
+# （このブランチからは PR #1 のマージ後）。手動の実行は API の workflow_dispatch（ref にブランチ）か、このファイルの変更の push。
+name: ext-forward
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 4 5 * *"
+  push:
+    paths:
+      - .github/workflows/ext_forward.yml
+permissions:
+  contents: write
+concurrency:
+  group: ext-study-${{ github.ref }}
+jobs:
+  forward:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/candles
+          key: candles-1hour-${{ github.run_id }}
+          restore-keys: candles-1hour-
+      - uses: actions/cache/restore@v4
+        with:
+          path: .cache/ext
+          key: ext-data-${{ github.run_id }}
+          restore-keys: ext-data-
+      - name: Download transactions for the forward period
+        timeout-minutes: 60
+        run: python -m bbdata download --pairs btc_jpy --start 2026-08-30 --end $(date -u +%Y-%m-%d)
+      - name: Count experiment log lines
+        id: pre
+        run: echo "n=$( [ -f reports/experiments.jsonl ] && wc -l < reports/experiments.jsonl || echo 0 )" >> "$GITHUB_OUTPUT"
+      - name: Forward
+        env:
+          PYTHONPATH: .
+        run: python scripts/ext_study.py --mode forward
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .cache/candles
+          key: candles-1hour-${{ github.run_id }}
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: .cache/ext
+          key: ext-data-${{ github.run_id }}
+      - name: Summary and commit
+        run: |
+          cat reports/ext_study/forward.md >> "$GITHUB_STEP_SUMMARY"
+          scripts/commit_report.sh "${{ steps.pre.outputs.n }}" "External data forward from run ${{ github.run_id }}" \
+            reports/ext_study/forward.md reports/ext_study/forward.json

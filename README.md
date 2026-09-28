@@ -69,6 +69,7 @@ GitHub Actions（`ext_study.yml`）で実行し、`reports/ext_study/` をコミ
 固定してあり（判断は 0・8・16 時 UTC、事象は直前 180 日の下位・上位 10%、直前 24 時間の値動きをそろえた統制と比べ、循環シフトの帰無と
 Holm 法で判定。手順は `bbresearch/eventstudy.py` の冒頭）、`owner_approved` に日付が入るまで eval は動かない。eval は workflow_dispatch で
 mode を指定したときだけ動き、push では check だけが動く。評価の結果（2026-09-28、`reports/ext_study/report.md`）: 6 つの検定のうち、内外価格差が下位 10%（bitbank が割安）の後の上げ（H2a）だけ支持。ただし 2025 年以降は費用 0.3% に届いていない。
+H2a は 6 か月（2026-09〜2027-02）の前向きのドライランで確かめる（発注しない）: `--mode forward`（`ext_forward.yml`、毎月）と、0・8・16 時 UTC の気配の記録（`scripts/ext_quotes.py`、`ext_quotes.yml`）。結果は `reports/ext_study/forward.md`。
 
 ### 15 分後の上げ下げの予測（二段構え）
 

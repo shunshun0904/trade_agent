@@ -28,6 +28,8 @@
   - `auth-check.yml`: 認証付き API の疎通確認（参照系のみ）。キーは Secrets `bitbank_API` / `bitbank_secret` から読む
   - `swing.yml`: スイング（4 時間足で判断し 1〜3 日保有）の方向の研究。mode `check`（データの確認。損益は出さない）と `eval`（事前登録した 45 通りを全期間で 1 回。`configs/swing.yaml` の `owner_approved` が必要）。eval は workflow_dispatch だけで動き、`scripts/swing.py` かワークフローの変更の push では check だけが動く（`scripts/swing.py`、`bbresearch/swing.py`、`reports/swing/`）。workflow_dispatch だけのワークフローは既定ブランチにないと API から起動できない（404、2026-09-28 に確認）
   - `ext_check.yml`: 候補 2 の外部データに Actions から届くか、履歴がどこまであるかの確認（`scripts/ext_check.py`、`reports/ext/`）
+  - `ext_forward.yml`: 候補 2 の H2a の前向きのドライラン（発注しない）。毎月 5 日 04:23 UTC に確定した月まで評価と同じ計算をする（`scripts/ext_study.py --mode forward`、`reports/ext_study/forward.md`）
+  - `ext_quotes.yml`: 0・8・16 時 UTC（2 分）に bitbank の気配を `reports/ext_study/quotes.jsonl` に追記する（`scripts/ext_quotes.py`）。push では記録しない
   - `ext_study.yml`: 候補 2（24 時間の新しい情報源）の研究。mode `check`（外部データ（Binance のアーカイブ、BitMEX、Deribit、Dukascopy のドル円、FRED）と bitbank の 1 時間足・約定の期間・抜け・書式、信号ごとの事象の数。先の収益率は出さない）と `eval`（事前登録どおりに 1 回。`configs/ext_study.yaml` の `owner_approved` が必要。workflow_dispatch だけ）。外部データは `.cache/ext` にため、確定した月・日は取り直さない。約定は 2020-01 から取る（`scripts/ext_study.py`、`bbresearch/extdata.py`、`bbresearch/eventstudy.py`、`configs/ext_study.yaml`、`reports/ext_study/`）
 - `dashboard/`: TPO・価格帯別出来高のダッシュボード（AWS: API Gateway + Lambda + S3、SAM）。`dashboard/deploy.sh` を AWS CloudShell で実行してデプロイする。Lambda は標準ライブラリだけで書き、計算が `bbresearch/profile.py` と一致することを `tests/test_dashboard.py` で照合している。画面は `dashboard/web/`（React、Vite）で書き、`dashboard/web/build.sh` でビルドして `dashboard/app/page.html`（生成物、コミットする）に置く。左に直近 24 時間・15 分足の TPO・価格帯別出来高（ダーク配色、5 分ごとに更新）、右に 1 分ごとの水準の 60 分の推移（`/api/signals`）。モデルの予測は載せない
 - リポジトリは公開（2026-09-27 に非公開へ切り替え、2026-09-28 に公開へ戻した）。ログやレポートに残高・注文の内容・キーを出さない（例外: `docs/monitor/` の記録は金額を残す。公開のまま記録する。2026-09-28 オーナー決定）。
@@ -47,7 +49,8 @@
 - 2020 年の約定の確認（2026-09-28、run 36458233866。SPEC §9 E3）: 約定のない日はなく、約定から作った 1 時間の終値は公式足と 100% 一致（約定のある分は 87.1%）。
 - 2026-09-28 オーナー承認: 候補 2 の事前登録（`configs/ext_study.yaml` の `owner_approved`）。eval を 1 回だけ実行する（workflow_dispatch、mode eval）。
 - 候補 2 の結果（2026-09-28、run 36458705172、`reports/ext_study/report.md`）: 6 つのうち H2a（JPY の内外価格差が下位 10%、bitbank が割安 → 24 時間後が高い）だけ支持（事象 473 回の後の平均 +0.53%、統制との差 +0.63%、Holm 後 p 0.006）。ただし年ごとの平均は 2020〜2024 年 0.38〜1.48%、2025 年 −0.00%、2026 年 0.15% で、直近は費用に届かない。H2b は有意だが費用の条件を満たさない。資金調達率（H1）とキャリー・建玉（H3）は支持しない。自動売買には使わない。
-- 次の作業: 事前登録どおり H2a を 6 か月の前向きのドライランで確かめる（やり方をオーナーと決める）。オーナーが `dashboard/deploy.sh` でデプロイし、React 版の画面と `/api/signals` を実機で確認する。Phase 7 は保留。
+- 2026-09-28 オーナー決定（H2a の前向きのドライラン、発注しない）: 6 か月（2026-09〜2027-02）。毎月 5 日に確定した月まで評価と同じ計算をし（`ext_forward.yml`、`reports/ext_study/forward.md`）、2027-03 に判定する（統制との差が正 かつ 事象の後の平均が +0.3% 超。有意は求めない）。0・8・16 時 UTC に bitbank の気配を記録する（`ext_quotes.yml`、`reports/ext_study/quotes.jsonl`）。どちらの schedule も既定のブランチにあるときだけ動くので、PR #1 のマージ後から。約定から測る実際の価格は 2026-09-01 から出す。
+- 次の作業: PR #1 のマージ後、`ext_quotes.yml` と `ext_forward.yml` の schedule が動いていることを確かめる。2026-10-05 に 2026-09 の途中経過が出る。オーナーが `dashboard/deploy.sh` でデプロイし、React 版の画面と `/api/signals` を実機で確認する。Phase 7 は保留。
 
 ## コマンド
 

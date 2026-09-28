@@ -41,3 +41,14 @@ eval:
     - {id: H3b, signal: oi_change, side: high, kind: tail, direction: 1}
   venue_check: [funding_bitmex, funding_deribit]   # H1a・H1b は、この 2 つでも統制との差が同じ向きであることを条件にする
   forward_months: 6            # 支持した仮説だけ、同じ数値で 6 か月の前向きのドライラン（発注しない）
+
+# ---- 前向きのドライラン（2026-09-28 オーナー決定。支持した H2a だけ。発注しない）
+forward:
+  hypotheses: [H2a]            # eval.primary の id。数値（閾値・判断の時刻・統制）は eval と同じ
+  start: "2026-09-01"          # 評価の期間の次の日から
+  months: 6                    # 2026-09〜2027-02。毎月、確定した月まで同じ計算をし、6 か月そろったら判定する
+  entry_window_min: 15         # 約定から測る実際の価格: 判断の時刻から 15 分以内の最初の買い（テイカー）の約定で買い、24 時間後から 15 分以内の最初の売りの約定で売る
+  fee_round_trip: 0.002        # テイカーの手数料 0.1% × 往復（§9 V0）。実際の価格で測った収益率から引く
+  quotes: reports/ext_study/quotes.jsonl   # 0・8・16 時 UTC に記録した bitbank の気配（ext_quotes.yml）
+  max_quote_delay_min: 60      # 判断の時刻からこの分数より遅れた気配は使わない
+

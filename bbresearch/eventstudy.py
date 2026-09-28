@@ -20,9 +20,14 @@ from bbresearch.distbase import HARVol, har_features, har_target
 HOUR = pd.Timedelta(hours=1)
 
 
+def _utc(x) -> pd.Timestamp:
+    ts = pd.Timestamp(x)
+    return ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+
+
 def grid_times(start, end, hours=(0, 8, 16), horizon: str = "24h") -> pd.DatetimeIndex:
     """[start, end) の判断の時刻のうち、T + horizon の終値が end までに分かるもの。"""
-    s, e = pd.Timestamp(start, tz="UTC"), pd.Timestamp(end, tz="UTC")
+    s, e = _utc(start), _utc(end)
     t = pd.date_range(s.normalize(), e, freq="1h", inclusive="left")
     t = t[t.hour.isin(list(hours)) & (t >= s)]
     return t[t + pd.Timedelta(horizon) <= e]
