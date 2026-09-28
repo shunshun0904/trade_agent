@@ -4,10 +4,13 @@
 実データと同じ手順（特徴量 → 各モデルの学習 → 評価）を走らせる。向きの情報がないデータで「向きの上乗せ」がどれだけ出るかの
 分布（帰無の分布）を作り、実データの値がその外にあるかを見る。手順に先読みがあれば、ここで上乗せが出る。
 
-- garch_t: 1 時間のリターン R_t = σ_t ε_t、ε は分散 1 の t 分布、σ²_{t+1} = ω + α R_t² + β σ²_t（学習期間に当てはめた値）。
+- garch_t: 1 時間のリターン R_t = σ_t ε_t、ε は分散 1 の t 分布、σ²_{t+1} = ω + α R_t² + β σ²_t（学習期間に当てはめた値。
+  α + β が 0.995 を超えるときは縮め、無条件分散を学習期間の分散に合わせる）。
 - ms2: ボラの 2 状態（マルコフ切り替え、状態ごとに正規分布。学習期間に当てはめた値）。
-1 時間の中の 1 分ごとの動きは、終点を R_t に固定したブラウン橋（1 分の分散 σ_t²/60）。高値・安値・1 分の終値はこの経路から作る。
-出来高は log(出来高) = a + b log(足の値幅 log(高値/安値)) + u_t、u は AR(1)（学習期間に当てはめた値）。
+  この 2 つでは、1 時間の中の 1 分ごとの動きは終点を R_t に固定したブラウン橋（1 分の分散 σ_t²/60）で、高値・安値・1 分の終値は
+  この経路から作る。出来高は log(出来高) = a + b log(足の値幅 log(高値/安値)) + u_t、u は AR(1)（学習期間に当てはめた値）。
+- sign_flip: 実データの 1 時間ごとのリターンの符号だけを無作為に入れ替える（その 1 時間の中の 1 分の動きも一緒に反転する。
+  2026-09-28 オーナー決定で追加）。大きさ・1 分の実現分散・出来高・ボラの動き・裾は実データのままで、向きの情報だけが消える。
 """
 from __future__ import annotations
 
@@ -98,8 +101,37 @@ def _ms2_path(m: dict, n: int, rng: np.random.Generator) -> tuple[np.ndarray, np
     return sigma, sigma * rng.standard_normal(n)
 
 
-def simulate(index: pd.DatetimeIndex, kind: str, cal: dict, seed: int) -> tuple[pd.DataFrame, pd.Series]:
-    """期待リターン 0 の合成データ。戻り値は 1 時間足（open, high, low, close, volume）と 1 分の終値。"""
+def _minute_index(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
+    return pd.DatetimeIndex((index.as_unit("ns").asi8[:, None] + np.arange(MINUTES)[None, :] * 60_000_000_000).ravel(), tz="UTC")
+
+
+def sign_flip(h1: pd.DataFrame, minute_close: pd.Series, seed: int) -> tuple[pd.DataFrame, pd.Series]:
+    """実データの 1 時間ごとのリターンの符号を無作為に入れ替えた系列。足の中の経路（前の足の最後の 1 分の終値からの対数差）を
+    足ごとに ±1 倍し、足の始値を前の足の終値にしてつなぎ直す。出来高は実データのまま。"""
+    rng = np.random.default_rng(seed)
+    n = len(h1)
+    mc = minute_close.reindex(_minute_index(h1.index)).ffill().bfill()
+    lm = np.log(mc.to_numpy()).reshape(n, MINUTES)
+    p0 = np.log(float(h1["open"].iloc[0]))
+    path = lm - np.r_[p0, lm[:-1, -1]][:, None]
+    path = path * rng.choice(np.array([-1.0, 1.0]), size=n)[:, None]
+    log_open = p0 + np.r_[0.0, np.cumsum(path[:, -1])[:-1]]
+    minute_log = log_open[:, None] + path
+    out = pd.DataFrame({"open": np.exp(log_open), "high": np.exp(np.maximum(log_open, minute_log.max(axis=1))),
+                        "low": np.exp(np.minimum(log_open, minute_log.min(axis=1))), "close": np.exp(minute_log[:, -1]),
+                        "volume": h1["volume"].to_numpy()}, index=h1.index)
+    return out, pd.Series(np.exp(minute_log.ravel()), index=_minute_index(h1.index))
+
+
+def simulate(index: pd.DatetimeIndex, kind: str, cal: dict, seed: int,
+             real: tuple[pd.DataFrame, pd.Series] | None = None) -> tuple[pd.DataFrame, pd.Series]:
+    """期待リターン 0 の合成データ。戻り値は 1 時間足（open, high, low, close, volume）と 1 分の終値。
+    sign_flip は実データ real = (1 時間足, 1 分の終値) が要る。"""
+    if kind == "sign_flip":
+        if real is None:
+            raise ValueError("sign_flip には実データ（1 時間足と 1 分の終値）が要る")
+        h1r, mcr = real
+        return sign_flip(h1r.reindex(index), mcr, seed)
     rng = np.random.default_rng(seed)
     n = len(index)
     if kind == "garch_t":
@@ -127,9 +159,7 @@ def simulate(index: pd.DatetimeIndex, kind: str, cal: dict, seed: int) -> tuple[
     volume = np.exp(v["a"] + v["b"] * np.log(rng_) + u)
     h1 = pd.DataFrame({"open": np.exp(log_open), "high": np.exp(high), "low": np.exp(low), "close": np.exp(log_close),
                        "volume": volume}, index=index)
-    m_index = pd.DatetimeIndex((index.as_unit("ns").asi8[:, None] + np.arange(MINUTES)[None, :] * 60_000_000_000).ravel(),
-                               tz="UTC")
-    return h1, pd.Series(np.exp(minute_log.ravel()), index=m_index)
+    return h1, pd.Series(np.exp(minute_log.ravel()), index=_minute_index(index))
 
 
 def path_stats(h1: pd.DataFrame) -> dict:

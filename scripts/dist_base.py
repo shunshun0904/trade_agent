@@ -1,6 +1,7 @@
 """評価の土台（候補 1）: ボラだけの基準（HAR 型・GARCH-t 型）に対する、分位点回帰フォレストの幅と向きの上乗せ。2026-09-28 オーナー決定。
 
     python scripts/dist_base.py --mode check              # データの確認と学習期間での当てはめ（評価期間の成績は出さない）
+    python scripts/dist_base.py --mode null-prepare       # 帰無の監査に使う実データの 1 分の終値をファイルにする（並列のジョブの前に 1 回）
     python scripts/dist_base.py --mode null --shard 0     # 帰無の監査（期待リターン 0 の合成データ）。null_audit.shards 分の 1 を実行
     python scripts/dist_base.py --mode null-summary       # 帰無の監査の集計（reports/dist_base/null.md・null.json）
     python scripts/dist_base.py --mode eval               # 事前登録どおりに 1 回評価（configs/dist_base.yaml の owner_approved が必要）
@@ -244,7 +245,7 @@ def main_check(cfg: dict) -> None:
     real_stats = nullsim.path_stats(h1[h1.index < split])
     syn_stats = {}
     for kind in cfg["null_audit"]["models"]:
-        h1s, _ = nullsim.simulate(h1.index, kind, cal, int(cfg["null_audit"]["seed0"]))
+        h1s, _ = nullsim.simulate(h1.index, kind, cal, int(cfg["null_audit"]["seed0"]), real=(h1, mc))
         syn_stats[kind] = nullsim.path_stats(h1s[h1s.index < split])
     chk = {"hourly": {"n": int(len(h1)), "first": str(h1.index[0]), "last": str(h1.index[-1]), "missing": int(len(full) - len(h1))},
            "minutes": years, "close_tape_vs_official": {"n": int(len(rel)), "median": float(rel.median()),
@@ -285,8 +286,31 @@ def main_check(cfg: dict) -> None:
 
 # ------------------------------------------------------------------ 帰無の監査
 
+MINUTES_FILE = Path(".cache/dist_base_minutes.npz")
+
+
+def save_minutes(path: Path, mc: pd.Series) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(path, start=np.int64(mc.index[0].value), values=mc.to_numpy())
+
+
+def read_minutes(path: Path) -> pd.Series:
+    d = np.load(path)
+    idx = pd.date_range(pd.Timestamp(int(d["start"]), tz="UTC"), periods=len(d["values"]), freq="1min")
+    return pd.Series(d["values"], index=idx)
+
+
+def main_null_prepare(cfg: dict) -> None:
+    """帰無の監査の並列のジョブが使う 1 分の終値（符号の入れ替えに要る実データ）を 1 回だけ作ってファイルにする。"""
+    h1 = load_hourly(cfg)
+    mc, _ = load_minutes(cfg, h1)
+    save_minutes(MINUTES_FILE, mc)
+    print(f"1 分の終値 {len(mc):,} 本を {MINUTES_FILE} に保存")
+
+
 def main_null(cfg: dict, shard: int) -> None:
     h1 = load_hourly(cfg)
+    mc = read_minutes(MINUTES_FILE) if MINUTES_FILE.exists() else load_minutes(cfg, h1)[0]
     split = pd.Timestamp(cfg["split"], tz="UTC")
     r_train = np.log(h1["close"]).diff()[lambda s: s.index < split].dropna().to_numpy()
     cal = nullsim.calibrate(h1, split, fit_garch_t(r_train), seed=int(cfg["null_audit"]["seed0"]))
@@ -297,7 +321,7 @@ def main_null(cfg: dict, shard: int) -> None:
     for i in mine:
         kind, seed = N["models"][i // int(N["reps"])], int(N["seed0"]) + i
         t0 = time.monotonic()
-        h1s, mcs_ = nullsim.simulate(h1.index, kind, cal, seed)
+        h1s, mcs_ = nullsim.simulate(h1.index, kind, cal, seed, real=(h1, mc))
         out = run_pipeline(h1s, mcs_, cfg)
         reps.append({"i": i, "kind": kind, "seed": seed, "summary": slim(summarize(out, cfg, full=False))})
         print(f"帰無 {i}（{kind}、種 {seed}）: {time.monotonic() - t0:.0f} 秒")
@@ -480,7 +504,7 @@ def write_report(cfg: dict, m: dict) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--mode", choices=["check", "null", "null-summary", "eval"], required=True)
+    ap.add_argument("--mode", choices=["check", "null-prepare", "null", "null-summary", "eval"], required=True)
     ap.add_argument("--config", default="configs/dist_base.yaml")
     ap.add_argument("--shard", type=int, default=0)
     ap.add_argument("--shard-dir", default=str(OUT))
@@ -490,6 +514,8 @@ def main() -> None:
     t0 = time.monotonic()
     if args.mode == "check":
         main_check(cfg)
+    elif args.mode == "null-prepare":
+        main_null_prepare(cfg)
     elif args.mode == "null":
         main_null(cfg, args.shard)
     elif args.mode == "null-summary":

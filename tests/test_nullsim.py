@@ -53,3 +53,23 @@ def test_synthetic_garch_is_made_stationary_with_the_training_variance():
     # 境界にない値はそのまま（ω だけ分散に合わせる）
     s2 = nullsim.stationary_garch(CAL["garch"], 0.004 ** 2)
     assert s2["alpha"] == 0.08 and s2["beta"] == 0.9
+
+
+def test_sign_flip_keeps_magnitudes_volume_and_realized_variance():
+    from bbresearch.distbase import hourly_rv
+
+    idx = IDX[:2000]
+    h1, mc = nullsim.simulate(idx, "garch_t", CAL, 8)
+    mc = mc.copy()
+    mc.iloc[5:9] = np.nan                                    # 約定のない分（直前の値で埋める）
+    f1, fm1 = nullsim.simulate(idx, "sign_flip", {}, 1, real=(h1, mc))
+    f2, _ = nullsim.simulate(idx, "sign_flip", {}, 2, real=(h1, mc))
+    r0 = np.log(mc.ffill()).groupby(mc.index.floor("h")).last().diff().dropna()
+    r1 = np.log(f1["close"]).diff().dropna()
+    assert np.allclose(np.abs(r1.to_numpy()), np.abs(r0.to_numpy()))                      # 1 時間の大きさは同じ
+    assert 0.3 < np.mean(np.sign(r1.to_numpy()) == np.sign(r0.to_numpy())) < 0.7          # 符号は入れ替わる
+    assert not np.allclose(f1["close"], f2["close"])                                       # 種が違えば違う系列
+    assert np.allclose(hourly_rv(fm1, idx).iloc[1:], hourly_rv(mc, idx).iloc[1:])          # 1 分の実現分散は同じ
+    assert (f1["volume"].to_numpy() == h1["volume"].to_numpy()).all()
+    assert (f1["low"] <= f1[["open", "close"]].min(axis=1)).all() and (f1["high"] >= f1[["open", "close"]].max(axis=1)).all()
+    assert np.allclose(fm1.iloc[59::60].to_numpy(), f1["close"].to_numpy(), rtol=1e-12)

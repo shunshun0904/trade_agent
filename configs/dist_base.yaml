@@ -1,6 +1,6 @@
 # 評価の土台（候補 1）: ボラだけの基準（HAR 型・GARCH-t 型）に対する、分位点回帰フォレストの幅と向きの上乗せ（scripts/dist_base.py）。
 # 2026-09-28 オーナー決定: 評価は 2024-01〜 で 1 回（これまでの 5 回と同じ期間割り。診断として扱い、売買の判断には使わない。
-# 向きの上乗せが見えたときだけ前向きの期間で確かめる）、btc_jpy の 4 時間と 24 時間、帰無の監査は 2 モデル × 20 回、学習は 1 回だけ。
+# 向きの上乗せが見えたときだけ前向きの期間で確かめる）、btc_jpy の 4 時間と 24 時間、帰無の監査は 2 モデル × 20 回（同日に実データの符号の入れ替えを加えて 3 モデル × 20 回）、学習は 1 回だけ。
 # 数値は評価の前に固定する。評価（--mode eval）は owner_approved にオーナーの承認日が入っているときだけ動く。
 owner_approved: null
 pair: btc_jpy
@@ -47,15 +47,15 @@ tests:
   hill_share: 0.01
   seed: 0
 null_audit:
-  models: [garch_t, ms2]     # 期待リターン 0 の合成データ（bbresearch/nullsim.py）
+  models: [garch_t, ms2, sign_flip]   # 期待リターン 0 の合成データ（bbresearch/nullsim.py）。sign_flip は 2026-09-28 オーナー決定で追加
   reps: 20                   # モデルごとの回数
   seed0: 1000                # 回ごとの乱数の種 = seed0 + 通し番号
-  shards: 20                 # Actions で並列に分ける数（1 回あたり約 30 分なので、1 ジョブ 2 回）
+  shards: 20                 # Actions で並列に分ける数（1 回あたり約 25 分なので、1 ジョブ 3 回）
 judge:
   primary: brier_0           # 向きの主指標: P(収益率 > 0) のブライアスコア（小さいほど良い）
   comparisons:               # [向きのモデル, 向きの情報を持たない参照]
     - [forest, forest_fixed]
     - [sign_magnitude, har]
   alpha: 0.05                # 2 比較 × 2 ホライズンの 4 検定をホルム法でまとめた有意水準。fixed-b と EWC の両方で有意なこと
-  null_alpha: 0.05           # 帰無の監査: (1 + 合成データの改善が実データ以上の回数) / (1 + 回数) < 0.05
+  null_alpha: 0.05           # 帰無の監査: (1 + 合成データの改善が実データ以上の回数) / (1 + 回数（60）) < 0.05
   width_pair: [forest, har]  # 幅の比較（CRPS。fixed-b の両側 5%）

@@ -57,7 +57,7 @@ def cfg(tmp_path, monkeypatch):
                                                     "min_child_samples": 50, "random_state": 0}},
             "tests": {"nw_mult": 1.3, "ewc_mult": 0.4, "fixedb_sims": 500, "bootstrap_reps": 49, "mcs_size": 0.1,
                       "mcs_reps": 30, "mcs_block": 24, "acf_lags": [1, 4, 24, 168], "hill_share": 0.01, "seed": 0},
-            "null_audit": {"models": ["garch_t", "ms2"], "reps": 1, "seed0": 1000, "shards": 2},
+            "null_audit": {"models": ["garch_t", "ms2", "sign_flip"], "reps": 1, "seed0": 1000, "shards": 3},
             "judge": {"primary": "brier_0", "comparisons": [["forest", "forest_fixed"], ["sign_magnitude", "har"]],
                       "alpha": 0.05, "null_alpha": 0.05, "width_pair": ["forest", "har"]}}
 
@@ -69,15 +69,18 @@ def test_check_null_and_eval_end_to_end(cfg):
     assert all(y["share_with_trades"] == 1.0 for y in chk["minutes"])
     assert chk["close_tape_vs_official"]["median"] < 1e-9           # 約定から作った終値 = 足の終値
     assert set(chk["har_train"]) == {"4", "24"} and "ms2" in chk["null_calibration"]
+    assert set(chk["path_stats"]) == {"real_train", "garch_t", "ms2", "sign_flip"}
     assert "評価期間" in (sb.OUT / "check.md").read_text()
 
     with pytest.raises(SystemExit):                                   # 承認の前は評価しない
         sb.main_eval(cfg)
-    sb.main_null(cfg, 0)
-    sb.main_null(cfg, 1)
+    sb.main_null_prepare(cfg)                                          # 並列のジョブが使う 1 分の終値
+    assert sb.read_minutes(sb.MINUTES_FILE).equals(sb.load_minutes(cfg, sb.load_hourly(cfg))[0])
+    for shard in range(3):
+        sb.main_null(cfg, shard)
     sb.main_null_summary(cfg, sb.OUT)
     null = json.loads((sb.OUT / "null.json").read_text())
-    assert null["n_reps"] == 2 and [r["kind"] for r in null["reps"]] == ["garch_t", "ms2"]
+    assert null["n_reps"] == 3 and [r["kind"] for r in null["reps"]] == ["garch_t", "ms2", "sign_flip"]
     assert null["code_hash"] == sb.code_hash()
     assert "forest|forest_fixed|brier_0" in null["reps"][0]["summary"]["horizons"]["4"]["comps"]
 
@@ -85,7 +88,7 @@ def test_check_null_and_eval_end_to_end(cfg):
     sb.main_eval(cfg)
     m = json.loads((sb.OUT / "metrics.json").read_text())
     assert len(m["judge"]["direction"]) == 4 and len(m["judge"]["width"]) == 2
-    assert all(r["n_null"] == 2 for r in m["judge"]["direction"])
+    assert all(r["n_null"] == 3 for r in m["judge"]["direction"])
     report = (sb.OUT / "report.md").read_text()
     assert "判定（事前登録）" in report and "フォレスト（位置を固定）" in report
     lines = (sb.OUT.parent / "experiments.jsonl").read_text().splitlines()
@@ -115,4 +118,4 @@ def test_config_file_has_the_keys_the_script_reads(cfg):
     assert real["owner_approved"] is None                              # 承認の前
     wf = yaml.safe_load((root / ".github" / "workflows" / "dist_base.yml").read_text(encoding="utf-8"))
     assert len(wf["jobs"]["null-shard"]["strategy"]["matrix"]["shard"]) == real["null_audit"]["shards"]
-    assert real["null_audit"]["reps"] * len(real["null_audit"]["models"]) == 40
+    assert real["null_audit"]["reps"] * len(real["null_audit"]["models"]) == 60        # 3 モデル × 20 回（2026-09-28 オーナー決定）

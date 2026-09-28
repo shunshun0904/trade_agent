@@ -3,7 +3,7 @@
 # 実行方法:
 #   check: データの確認と学習期間での当てはめ（評価期間の成績は出さない）。scripts/dist_base.py、bbresearch/distbase.py・nullsim.py・fcompare.py、
 #          configs/dist_base.yaml かこのファイルを変更して push すると、この mode で動く。
-#   null:  帰無の監査（期待リターン 0 の合成データ、2 モデル × 20 回）。20 個のジョブに分けて並列に動かし、最後に集計してコミットする。
+#   null:  帰無の監査（期待リターン 0 の合成データ、3 モデル × 20 回）。20 個のジョブに分けて並列に動かし、最後に集計してコミットする。
 #   eval:  事前登録どおりに 1 回評価する（configs/dist_base.yaml の owner_approved が必要）。
 # null と eval は API の workflow_dispatch で mode を指定したときだけ動く。workflow_dispatch だけのワークフローは既定ブランチにないと
 # API から起動できない（404）ので、push でも登録されるようにしてある。
@@ -79,10 +79,10 @@ jobs:
           cat "$md" >> "$GITHUB_STEP_SUMMARY"
           scripts/commit_report.sh "${{ steps.pre.outputs.n }}" "Distribution baselines $MODE from run ${{ github.run_id }}" $files
 
-  null-prepare:   # 1 時間足を 1 回だけ取り足してキャッシュに保存し、並列のジョブが同じものを使う
+  null-prepare:   # 1 時間足と、符号の入れ替えに使う実データの 1 分の終値を 1 回だけ用意し、並列のジョブが同じものを使う
     if: ${{ inputs.mode == 'null' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -95,14 +95,27 @@ jobs:
           path: .cache/candles
           key: candles-1hour-${{ github.run_id }}
           restore-keys: candles-1hour-
-      - name: Fetch hourly candles
+      - uses: actions/cache/restore@v4
+        with:
+          path: data/raw
+          key: bbdata-raw-btc_jpy-${{ github.run_id }}
+          restore-keys: bbdata-raw-btc_jpy-
+      - name: Download transactions (skips days already cached)
+        timeout-minutes: 240
+        run: python -m bbdata download --pairs btc_jpy --start 2021-01-01 --end $(date -u +%Y-%m-%d)
+      - name: Prepare hourly candles and minute closes
         env:
           PYTHONPATH: .
-        run: python -c "import yaml; from scripts.dist_base import load_hourly; load_hourly(yaml.safe_load(open('configs/dist_base.yaml')))"
+        run: python scripts/dist_base.py --mode null-prepare
       - uses: actions/cache/save@v4
         with:
           path: .cache/candles
           key: candles-1hour-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: null-minutes
+          path: .cache/dist_base_minutes.npz
+          retention-days: 7
 
   null-shard:
     needs: null-prepare
@@ -123,6 +136,10 @@ jobs:
         with:
           path: .cache/candles
           key: candles-1hour-${{ github.run_id }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: null-minutes
+          path: .cache
       - name: Run
         env:
           PYTHONPATH: .
