@@ -5,6 +5,7 @@
 Binance・Bybit の公開 API とアーカイブ、ドル円の候補（Dukascopy、FRED）に GitHub Actions から届くか、履歴がどこまであるかを調べる。
 認証は使わず、発注もしない。リクエストは 40 件ほど（公開 API に大量のリクエストを送らない）。
 2 回目（2026-09-28）: Binance のアーカイブの始まりの月と、代わりの取引所（Deribit、OKX、Kraken Futures、BitMEX）に届くかだけを加えた。
+3 回目（2026-09-28）: オーナー決定で使う BitMEX と Deribit の資金調達率の履歴がどこまであるかを加えた。
 結果は reports/ext/check.md・check.json。
 """
 from __future__ import annotations
@@ -86,6 +87,15 @@ PROBES = [
      "Kraken Futures の資金調達率（届くかだけ）"),
     ("bitmex_funding", "GET", "https://www.bitmex.com/api/v1/funding?symbol=XBTUSD&count=1&reverse=false", "reach",
      "BitMEX の資金調達率（届くかだけ）"),
+    # 3 回目（2026-09-28）: オーナー決定で Bybit の代わりに BitMEX と Deribit を使う。資金調達率の履歴がどこまであるか
+    ("bitmex_funding_2019", "GET", "https://www.bitmex.com/api/v1/funding?symbol=XBTUSD&count=3&reverse=false&startTime=2019-06-01T00:00:00Z",
+     "bitmex_funding", "BitMEX XBTUSD の資金調達率（2019-06-01 以降の最初の 3 件）"),
+    ("bitmex_funding_2020", "GET", "https://www.bitmex.com/api/v1/funding?symbol=XBTUSD&count=3&reverse=false&startTime=2020-01-01T00:00:00Z",
+     "bitmex_funding", "BitMEX XBTUSD の資金調達率（2020-01-01 以降の最初の 3 件）"),
+    ("deribit_funding_2019", "GET", "https://www.deribit.com/api/v2/public/get_funding_rate_history?instrument_name=BTC-PERPETUAL"
+     "&start_timestamp=1559347200000&end_timestamp=1559358000000", "deribit_funding", "Deribit BTC-PERPETUAL の資金調達率（2019-06-01 の 3 時間）"),
+    ("deribit_funding_2020", "GET", "https://www.deribit.com/api/v2/public/get_funding_rate_history?instrument_name=BTC-PERPETUAL"
+     "&start_timestamp=1577836800000&end_timestamp=1577847600000", "deribit_funding", "Deribit BTC-PERPETUAL の資金調達率（2020-01-01 の 3 時間）"),
 ]
 
 
@@ -134,6 +144,14 @@ def summarize(kind: str, resp: requests.Response) -> str:
             return f"{len(resp.content):,} バイト、足 0 本"
         t, o, c, lo, hi, v = recs[0]
         return f"{len(resp.content):,} バイト、足 {len(recs)} 本、最初の足: ずれ {t} 秒、始値 {o:.3f}、高値 {hi:.3f}、安値 {lo:.3f}、終値 {c:.3f}"
+    if kind == "bitmex_funding":
+        rows = resp.json()
+        return (f"{len(rows)} 件、最初 {rows[0]['timestamp'][:16]}、率 {rows[0]['fundingRate']}、間隔 {rows[0].get('fundingInterval', '-')}"
+                if rows else "空")
+    if kind == "deribit_funding":
+        rows = (resp.json() or {}).get("result") or []
+        return (f"{len(rows)} 件、最初 {ms_iso(rows[0]['timestamp'])}、8 時間の率 {rows[0].get('interest_8h')}、1 時間の率 {rows[0].get('interest_1h')}"
+                if rows else "空")
     if kind == "reach":
         return f"{len(resp.content):,} バイト"
     if kind == "fred":

@@ -44,6 +44,12 @@ class FakeSession:
         if "dukascopy" in url:
             raw = struct.pack(">5if", 0, 108610, 108700, 108500, 108750, 1.5) * 3
             return FakeResp(200, content=lzma.compress(raw, format=lzma.FORMAT_ALONE))
+        if "bitmex.com" in url and "startTime" in url:
+            return FakeResp(200, [{"timestamp": "2019-06-01T04:00:00.000Z", "fundingRate": 0.0001, "fundingInterval": "2000-01-01T08:00:00.000Z"}])
+        if "deribit.com" in url and "1559347200000" in url:
+            return FakeResp(200, {"result": []})
+        if "deribit.com" in url and "1577836800000" in url and "end_timestamp=1577847600000" in url:
+            return FakeResp(200, {"result": [{"timestamp": 1577836800000, "interest_8h": 0.0001, "interest_1h": 0.00001}]})
         if any(h in url for h in ("deribit.com", "okx.com", "kraken.com", "bitmex.com")):
             return FakeResp(200, content=b"{}")
         if "fred" in url:
@@ -62,6 +68,8 @@ def test_probes_run_and_report(tmp_path):
     assert "空" in rows["bybit_oi_2021"]["detail"]
     assert "始値 108.610" in rows["dukascopy_hour_2020_01"]["detail"]
     assert "2026-09-25,149.10" in rows["fred_dexjpus"]["detail"]
+    assert "2019-06-01T04:00" in rows["bitmex_funding_2019"]["detail"]
+    assert rows["deribit_funding_2019"]["detail"] == "空" and "2020-01-01 00:00" in rows["deribit_funding_2020"]["detail"]
     md = (tmp_path / "check.md").read_text()
     assert "| binance_spot_klines |" in md and "451" in md
 
