@@ -30,6 +30,8 @@ CFG = {"owner_approved": None, "pair": "btc_jpy", "binance_symbol": "BTCUSDT", "
 
 def kline_zip(series, m, scale=1.0):
     g = series[series.index.strftime("%Y-%m") == m]
+    if g.empty:                                                     # 合成データの期間の外の月は、実際のアーカイブと同じく 404
+        return None
     rows = [f"{ms(str(t))},{v * scale},{v * scale * 1.001},{v * scale * 0.999},{v * scale},1,{ms(str(t)) + 3_599_999},1,1,1,1,0"
             for t, v in g.items()]
     return zip_csv("\n".join(rows) + "\n")
@@ -43,15 +45,21 @@ def bi5(m, side):
     return lzma.compress(raw, format=lzma.FORMAT_ALONE)
 
 
+def found(body):
+    return Resp(404) if body is None else Resp(200, body)
+
+
 def respond(url):
     if m := re.search(r"/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-(\d{4}-\d{2})\.zip$", url):
-        return Resp(200, kline_zip(USDT, m[1]))
+        return found(kline_zip(USDT, m[1]))
     if m := re.search(r"/futures/um/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-(\d{4}-\d{2})\.zip$", url):
-        return Resp(200, kline_zip(USDT, m[1], 1.0005))
+        return found(kline_zip(USDT, m[1], 1.0005))
     if m := re.search(r"/premiumIndexKlines/BTCUSDT/1h/BTCUSDT-1h-(\d{4}-\d{2})\.zip$", url):
-        return Resp(200, kline_zip(PREM * 0.1 + 1e-4, m[1]))
+        return found(kline_zip(PREM * 0.1 + 1e-4, m[1]))
     if m := re.search(r"fundingRate/BTCUSDT/BTCUSDT-fundingRate-(\d{4}-\d{2})\.zip$", url):
         g = FUND[FUND.index.strftime("%Y-%m") == m[1]]
+        if g.empty:
+            return Resp(404)
         return Resp(200, zip_csv("calc_time,funding_interval_hours,last_funding_rate\n" +
                                  "".join(f"{ms(str(t)) + 3},8,{v}\n" for t, v in g.items())))
     if m := re.search(r"metrics/BTCUSDT/BTCUSDT-metrics-(\d{4}-\d{2}-\d{2})\.zip$", url):
@@ -315,3 +323,24 @@ def test_first_taker_price_window():
     t = pd.DatetimeIndex(pd.to_datetime(["2020-01-01 00:00", "2020-01-01 00:30", "2020-01-01 01:00"], utc=True))
     out = es.first_taker_price(tr, t, "buy", 15)
     assert out[0] == 101.0 and out[1] == 102.0 and np.isnan(out[2])
+
+
+def test_forward_uses_only_needed_history_and_gives_same_result(run_dir, monkeypatch):
+    """前向きの計算は窓の長さ分の過去だけを読む。全期間を読んだときと結果が同じ。"""
+    cfg = CFG | {"owner_approved": "2026-09-28", "eval": EVAL, "forward": FWD, "window": "30D", "min_days": 10}
+    today = pd.Timestamp("2020-07-05", tz="UTC")
+    f = xd.Fetcher(run_dir / "cache", session=Session(fn=respond), pause=0)
+    short = es.main_forward(cfg, fetcher=f, hourly=hourly, trades=synthetic_trades(BB), today=today)
+    assert short["data_start"] == "2020-03-25"                        # 2020-05-01 − (30 日 + 7 日。z の分母 240 本 + 24 時間より長い)
+    monkeypatch.setattr(es, "forward_lookback", lambda c: pd.Timedelta(days=120))   # 合成データの最初（2020-01-01）の近くから読む
+    full = es.main_forward(cfg, fetcher=f, hourly=hourly, trades=synthetic_trades(BB), today=today)
+    a, b = short["hypotheses"][0], full["hypotheses"][0]
+    assert a["n_ev"] > 0 and a["events"] == b["events"] and a["effect"] == pytest.approx(b["effect"])
+
+
+def test_forward_stops_when_needed_series_is_missing(run_dir):
+    cfg = CFG | {"owner_approved": "2026-09-28", "eval": EVAL, "forward": FWD}
+    sess = Session(fn=lambda url: Resp(503) if "dukascopy" in url and "/2020/04/" in url else respond(url))
+    f = xd.Fetcher(run_dir / "cache", session=sess, pause=0, retries=1, strict=False)
+    with pytest.raises(SystemExit, match="ドル円の 1 時間足"):
+        es.main_forward(cfg, fetcher=f, hourly=hourly, trades=synthetic_trades(BB), today=pd.Timestamp("2020-07-05", tz="UTC"))
