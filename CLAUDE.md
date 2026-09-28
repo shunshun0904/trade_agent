@@ -51,7 +51,8 @@
 - 2026-09-28 オーナー承認: 候補 2 の事前登録（`configs/ext_study.yaml` の `owner_approved`）。eval を 1 回だけ実行する（workflow_dispatch、mode eval）。
 - 候補 2 の結果（2026-09-28、run 36458705172、`reports/ext_study/report.md`）: 6 つのうち H2a（JPY の内外価格差が下位 10%、bitbank が割安 → 24 時間後が高い）だけ支持（事象 473 回の後の平均 +0.53%、統制との差 +0.63%、Holm 後 p 0.006）。ただし年ごとの平均は 2020〜2024 年 0.38〜1.48%、2025 年 −0.00%、2026 年 0.15% で、直近は費用に届かない。H2b は有意だが費用の条件を満たさない。資金調達率（H1）とキャリー・建玉（H3）は支持しない。自動売買には使わない。
 - 2026-09-28 オーナー決定（H2a の前向きのドライラン、発注しない）: 6 か月（2026-09〜2027-02）。毎月 5 日に確定した月まで評価と同じ計算をし（`ext_forward.yml`、`reports/ext_study/forward.md`）、2027-03 に判定する（統制との差が正 かつ 事象の後の平均が +0.3% 超。有意は求めない）。0・8・16 時 UTC に bitbank の気配を記録する（`ext_quotes.yml`、`reports/ext_study/quotes.jsonl`）。どちらの schedule も既定のブランチにあるときだけ動くので、PR #1 のマージ後から。約定から測る実際の価格は 2026-09-01 から出す。
-- 次の作業: PR #1 のマージ後、`ext_quotes.yml` と `ext_forward.yml` の schedule が動いていることを確かめる。2026-10-05 に 2026-09 の途中経過が出る。オーナーが `dashboard/deploy.sh` でデプロイし、React 版の画面と `/api/signals` を実機で確認する。Phase 7 は保留。
+- 2026-09-28: PR #1 をマージした（オーナー）。GitHub の schedule は当てにならないので、オーナー決定で H2a の毎月の計算は Claude の Routine （trig_01PQQUF3bsjWJ5TofsdMkHn1「bitbank H2a 前向きドライランの月次確認」、毎月 6 日 10:12 JST、Routine を作ったセッション session_01TyQHbym6efKFoRDCVXezWz に届く）が、`ext_forward.yml` が今月動いたかを確かめ、動いていなければ起動して途中経過を報告する。2027-03 の判定の報告の後に Routine を削除する。気配の記録（`ext_quotes.yml`）は schedule のままで、遅れが 60 分以内の回だけ使う（実際に買える価格は約定からも測る）。Actions のキャッシュはブランチごとなので、既定のブランチでの最初の `ext_study.yml` は外部データを取り直した（run 36461565982、3,032 件、47 分。Dukascopy の 2 か月分は 503 で取れず、次の実行で取り直す）。前向きの計算は判断に要る過去（信号の窓 180 日 + 7 日）だけを読み、H2a に要る系列（bitbank・Binance 現物・ドル円の 1 時間足）が 1% を超えて欠けたときだけ止まる。
+- 次の作業: 2026-10-06 に 2026-09 の途中経過を報告する（Routine）。オーナーが `dashboard/deploy.sh` でデプロイし、React 版の画面と `/api/signals` を実機で確認する。Phase 7 は保留。
 
 ## コマンド
 

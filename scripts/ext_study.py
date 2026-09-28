@@ -519,6 +519,16 @@ def read_quotes(path: str | Path, max_delay_min: float) -> pd.DataFrame:
     return q[q["delay_min"] <= max_delay_min][["sell", "buy", "delay_min"]]
 
 
+def forward_lookback(cfg: dict) -> pd.Timedelta:
+    """前向きの期間の判断に要る過去の長さ: 信号の順位の窓（180 日）と z の分母（720 本 + 24 時間）の長い方に 7 日の余裕。
+    これより前のデータは前向きの期間の値に影響しない（窓の外）。"""
+    E = cfg["eval"]
+    return max(pd.Timedelta(cfg["window"]), pd.Timedelta(hours=E["z_vol_hours"] + E["horizon_hours"])) + pd.Timedelta(days=7)
+
+
+FORWARD_NEEDS = {"bitbank": "bitbank の 1 時間足", "binance_spot": "Binance 現物の 1 時間足", "usdjpy": "ドル円の 1 時間足"}
+
+
 def forward_window(cfg: dict, today: pd.Timestamp) -> tuple[pd.Timestamp, pd.Timestamp, pd.Timestamp]:
     """前向きの期間の始まり、今回の終わり（確定した月の終わり、含まない）、予定の終わり。"""
     F = cfg["forward"]
@@ -539,9 +549,18 @@ def main_forward(cfg: dict, fetcher: xd.Fetcher | None = None, hourly=None, trad
     if f_end <= f_start:
         out["note"] = "確定した月がまだない"
     else:
-        c2 = cfg | {"end": str(f_end.date())}
-        f = fetcher or xd.Fetcher(cfg.get("cache", ".cache/ext"), strict=True)
+        s2 = (f_start - forward_lookback(cfg)).strftime("%Y-%m-%d")
+        c2 = cfg | {"start": s2, "end": str(f_end.date()), "metrics_start": s2}
+        f = fetcher or xd.Fetcher(cfg.get("cache", ".cache/ext"), strict=False)
         d = load_all(c2, f, hourly)
+        # H2a に要る系列だけ、要る期間がそろっているかを確かめる（ほかの系列が取れなくても止めない）
+        full = pd.date_range(pd.Timestamp(s2, tz="UTC"), f_end, freq="1h", inclusive="left")
+        short = {k: 1 - len(full.intersection(d[k].index)) / len(full) for k in FORWARD_NEEDS}
+        if any(v > 0.01 for v in short.values()):
+            sys.exit("前向きの計算に要る系列が 1% を超えて欠けている: " +
+                     "、".join(f"{FORWARD_NEEDS[k]} {v:.1%}" for k, v in short.items()) +
+                     "。取れなかったファイル: " + "、".join(f"{x['url']}（{x['status'][:40]}）" for x in f.failures[:10]))
+        out["data_start"], out["failures"] = s2, f.failures
         H = f"{E['horizon_hours']}h"
         times = es.grid_times(f_start, f_end, E["grid_hours"], H)
         t_ns = times.as_unit("ns").asi8
