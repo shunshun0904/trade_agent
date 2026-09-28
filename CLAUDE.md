@@ -6,6 +6,7 @@
 
 - Phase 1（`bbdata/`）、Phase 0（`scripts/phase0.py`、結果は SPEC.md §9）、Phase 2〜6（`bbresearch/`）は実装済み。
 - このブランチは 2026-09-27 に既定ブランチになった（schedule 付きワークフローが自動で動く。60 日間 push がないと GitHub が schedule を止める）。
+- GitHub の schedule は当てにならない（9 月 27 日は 5 時間遅れ、28 日は動かず）。2026-09-28 から Claude の Routine が毎日 09:50 JST に GitHub API で monitor を起動し、月曜は rebalance（weekly）、1 日は rebalance（monthly）も起動する。schedule は予備として残す。
 - 実 API へのアクセスは GitHub Actions で行う。開発環境からは行わない。
   - どのワークフローも、API の workflow_dispatch でこのブランチを ref に指定して実行できる（既定ブランチになくてもよいことを 2026-09-23 に確認）
   - `phase0.yml`: `scripts/phase0.py` の変更を push すると実行し、`reports/phase0/` をコミットする
