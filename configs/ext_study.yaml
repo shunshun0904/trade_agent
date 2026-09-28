@@ -2,7 +2,7 @@
 # check: データの確認（期間・抜け・書式、事象の数。先の収益率は出さない）。
 # eval: 下の eval の数値（事前登録）で 1 回だけ評価する。owner_approved に承認の日付が入るまで動かない。
 # 外部データは認証なしの公開の窓口とアーカイブだけ（Binance のアーカイブ、BitMEX、Deribit、Dukascopy、FRED）。発注・口座は使わない。
-owner_approved: null
+owner_approved: "2026-09-28"   # オーナー承認（2026-09-28、事前登録どおりに 1 回だけ評価する）
 pair: btc_jpy
 binance_symbol: BTCUSDT
 start: "2020-01-01"            # Binance のアーカイブ（資金調達率・永久先物・プレミアム指数）の最初の月（§9 E1）
