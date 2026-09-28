@@ -38,6 +38,21 @@ eval は動かない。GitHub Actions（`swing.yml`）で実行し、`reports/sw
 指定したときだけ動き、`scripts/swing.py` の変更の push では check だけが動く。評価の結果（2026-09-28、`reports/swing/report.md`）は
 3 つの仮説とも不支持。時系列モメンタムは全期間では常時保有を上回ったが、2022 年以降はほぼ効いておらず、研究を区切った。
 
+### 評価の土台（候補 1）: ボラだけの基準に対する幅と向き
+
+```bash
+PYTHONPATH=. python scripts/dist_base.py --mode check              # データの確認と学習期間での当てはめ（評価期間の成績は出さない）
+PYTHONPATH=. python scripts/dist_base.py --mode null --shard 0     # 帰無の監査（期待リターン 0 の合成データ）。shard ごとに分けて実行
+PYTHONPATH=. python scripts/dist_base.py --mode null-summary       # 帰無の監査の集計
+PYTHONPATH=. python scripts/dist_base.py --mode eval               # 事前登録どおりに 1 回評価
+```
+
+btc_jpy の 4 時間・24 時間先の収益率の分布で、分位点回帰フォレストを、ボラだけの基準（HAR 型: 1 分の実現分散、GARCH-t 型）と
+比べる。幅の改善と、向きの上乗せ（位置を固定したフォレスト、符号と大きさの分解）を測る。期待リターン 0 の合成データで同じ手順を
+走らせる帰無の監査を先に行う。数値は `configs/dist_base.yaml` に事前に固定してあり、`owner_approved` に日付が入り、同じ設定の
+帰無の監査がそろうまで eval は動かない。GitHub Actions（`dist_base.yml`）で実行し、`reports/dist_base/` をコミットする。
+null と eval は workflow_dispatch で mode を指定したときだけ動き、`scripts/dist_base.py` の変更の push では check だけが動く。
+
 ### 15 分後の上げ下げの予測（二段構え）
 
 ```bash

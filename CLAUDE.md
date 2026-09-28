@@ -24,6 +24,7 @@
   - `margin.yml`: 信用取引の対応ペアと条件（建玉金利・手数料・保証金率）を `/spot/pairs` から一覧にする（`reports/margin/`）
   - `dist.yml`: 1 時間足のテクニカル指標（373 個。`bbresearch/indicators.py`、部品は `bbresearch/ta.py`）と約定フローの特徴量（34 個。`bbresearch/tradeflow.py`、約定履歴は Actions のキャッシュ）から 4 時間後までの収益率の条件付き分布を分位点回帰フォレストで推定し、無条件・直近 n 本の経験分布と精度を比べ、群ごとの寄与も出す（`scripts/dist_forecast.py`、`configs/dist.yaml`、`reports/dist/`）
   - `vol_daily.yml`: ポートフォリオの JPY 比率を日次で調整する案の前向き検証（BTC 1 時間足のフォレストによる翌日ボラ予測 ÷ 長期平均を推定ボラに掛ける。`scripts/vol_daily.py`、`configs/vol_daily.yaml`、`reports/vol_daily/`）
+  - `dist_base.yml`: 評価の土台（候補 1）。ボラだけの基準（HAR 型・GARCH-t 型）に対する、分位点回帰フォレストの幅と向きの上乗せ（btc_jpy の 4・24 時間）。mode `check`（データの確認と学習期間での当てはめ。評価期間の成績は出さない）、`null`（期待リターン 0 の合成データによる帰無の監査。20 個のジョブで並列）、`eval`（事前登録どおりに 1 回。`configs/dist_base.yaml` の `owner_approved` と、同じ設定の帰無の監査が必要）。null と eval は workflow_dispatch だけ、`scripts/dist_base.py` かワークフローの変更の push では check だけが動く（`bbresearch/distbase.py`、`fcompare.py`、`nullsim.py`、`reports/dist_base/`）
   - `auth-check.yml`: 認証付き API の疎通確認（参照系のみ）。キーは Secrets `bitbank_API` / `bitbank_secret` から読む
   - `swing.yml`: スイング（4 時間足で判断し 1〜3 日保有）の方向の研究。mode `check`（データの確認。損益は出さない）と `eval`（事前登録した 45 通りを全期間で 1 回。`configs/swing.yaml` の `owner_approved` が必要）。eval は workflow_dispatch だけで動き、`scripts/swing.py` かワークフローの変更の push では check だけが動く（`scripts/swing.py`、`bbresearch/swing.py`、`reports/swing/`）。workflow_dispatch だけのワークフローは既定ブランチにないと API から起動できない（404、2026-09-28 に確認）
 - `dashboard/`: TPO・価格帯別出来高のダッシュボード（AWS: API Gateway + Lambda + S3、SAM）。`dashboard/deploy.sh` を AWS CloudShell で実行してデプロイする。Lambda は標準ライブラリだけで書き、計算が `bbresearch/profile.py` と一致することを `tests/test_dashboard.py` で照合している。画面は `dashboard/web/`（React、Vite）で書き、`dashboard/web/build.sh` でビルドして `dashboard/app/page.html`（生成物、コミットする）に置く。左に直近 24 時間・15 分足の TPO・価格帯別出来高（ダーク配色、5 分ごとに更新）、右に 1 分ごとの水準の 60 分の推移（`/api/signals`）。モデルの予測は載せない
@@ -33,7 +34,8 @@
 - 2026-09-28 オーナー決定: 方向の研究をスイング（4 時間足で判断し 1〜3 日保有、JPY の現物ペアすべて）で続ける。仮説はトレンド（時系列・横断モメンタム）と急落後の反発。数値は `configs/swing.yaml` に事前に固定し、全期間で 1 回だけ評価する（SPEC の「スイング」の節）。
 - スイングの研究の結果（2026-09-28、run 36341530578、`reports/swing/report.md`）: 事前登録の判定では 3 つとも「支持しない」。時系列モメンタムは 24 通りすべてでアルファが正（t 1.65〜3.28、費用 2 倍でも正、アクティブが正の年 75%）だが、45 試行のデフレートシャープが 0.717（基準 0.95）。横断モメンタムは費用に負ける。急落後の反発は保有率 1% で割引後に届かない。評価に使った数値は変えない（変えた実行は新しい試行として数える）。時系列モメンタムの超過リターンは 2017〜2021 年に集中し、2022〜2026 年は 24 通りの平均で +5.9%（正は 12/24）で、直近 5 年はほぼ効いていない。2026-09-28 オーナー決定で不支持を確定し、前向きのドライランは行わない（研究を区切った）。自動売買には使わない。
 - 2026-09-28 オーナー指示で、期待収益率の分布推定の先行研究を調べた（Notion のページ https://app.notion.com/p/3e9036495bee81d2971cfbe20a527d17 と付録 A〜E、SPEC の「分布推定の先行研究の調査」の節）。文献の結論はこれまでの結果と同じ（幅は予測でき、向きは費用に届かない）。次の研究の候補は 3 つ（評価の土台、24 時間の新しい情報源、分布から配分への変換）。
-- 次の作業: 先行研究の調査で絞った候補から、次の研究の方向をオーナーが決める。オーナーが `dashboard/deploy.sh` でデプロイし、React 版の画面と `/api/signals` を実機で確認する。Phase 7 は保留。
+- 2026-09-28 オーナー決定: 候補 1（評価の土台）だけを進める。評価は 2024 年以降で 1 回（6 回目の使用なので診断として扱い、売買の判断には使わない。向きの上乗せが見えたときだけ前向きの期間で確かめる）、btc_jpy の 4・24 時間、帰無の監査は 2 モデル × 20 回、学習は 2023 年末までで 1 回（SPEC の「評価の土台」の節）。
+- 次の作業: 評価の土台（候補 1）のデータの確認（check）と帰無の監査（null）を Actions で行い、事前登録の数値をオーナーが承認してから eval を 1 回だけ実行する。オーナーが `dashboard/deploy.sh` でデプロイし、React 版の画面と `/api/signals` を実機で確認する。Phase 7 は保留。
 
 ## コマンド
 
