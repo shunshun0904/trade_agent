@@ -1,22 +1,27 @@
 # 候補 2（24 時間の新しい情報源）: 外部データ（Binance のアーカイブ、BitMEX、Deribit、Dukascopy、FRED。認証なし、発注なし）と
-# bitbank の公式 1 時間足。2026-09-28 オーナー決定。
-# 実行方法: scripts/ext_study.py・bbresearch/extdata.py・configs/ext_study.yaml かこのファイルを変更して push すると check が動く。
-# API の workflow_dispatch（ref にこのブランチ）でも動かせる。
-# 外部データは .cache/ext（確定した月・日は取り直さない）、1 時間足は .cache/candles（dist.yml と同じキャッシュ）にためる。
+# bitbank の公式 1 時間足・約定。2026-09-28 オーナー決定。
+# 実行方法:
+#   check: データの確認（先の収益率は出さない）。scripts/ext_study.py・bbresearch/extdata.py・bbresearch/eventstudy.py・
+#          configs/ext_study.yaml かこのファイルを変更して push すると、この mode で動く。
+#   eval:  事前登録（configs/ext_study.yaml の eval）どおりに 1 回評価する（owner_approved が必要）。API の workflow_dispatch で
+#          mode を指定したときだけ動く（ref にこのブランチ）。
+# 外部データは .cache/ext（確定した月・日は取り直さない）、1 時間足は .cache/candles（dist.yml と同じキャッシュ）、約定は data/raw
+# （dist.yml と同じキャッシュ。2020 年の分はこのワークフローで取る。大きいので保存はしない）。
 name: ext-study
 on:
   workflow_dispatch:
     inputs:
       mode:
-        description: "check（データの確認。先の収益率は出さない）"
+        description: "check（データの確認。先の収益率は出さない）/ eval（事前登録どおりに 1 回評価）"
         required: true
         default: check
         type: choice
-        options: [check]
+        options: [check, eval]
   push:
     paths:
       - scripts/ext_study.py
       - bbresearch/extdata.py
+      - bbresearch/eventstudy.py
       - configs/ext_study.yaml
       - .github/workflows/ext_study.yml
 permissions:
@@ -28,7 +33,7 @@ env:
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -46,6 +51,14 @@ jobs:
           path: .cache/ext
           key: ext-data-${{ github.run_id }}
           restore-keys: ext-data-
+      - uses: actions/cache/restore@v4
+        with:
+          path: data/raw
+          key: bbdata-raw-btc_jpy-${{ github.run_id }}
+          restore-keys: bbdata-raw-btc_jpy-
+      - name: Download transactions (skips days already cached)
+        timeout-minutes: 180
+        run: python -m bbdata download --pairs btc_jpy --start 2020-01-01 --end 2026-09-01
       - name: Count experiment log lines
         id: pre
         run: echo "n=$( [ -f reports/experiments.jsonl ] && wc -l < reports/experiments.jsonl || echo 0 )" >> "$GITHUB_OUTPUT"
@@ -65,6 +78,10 @@ jobs:
           key: ext-data-${{ github.run_id }}
       - name: Summary and commit
         run: |
-          cat reports/ext_study/check.md >> "$GITHUB_STEP_SUMMARY"
-          scripts/commit_report.sh "${{ steps.pre.outputs.n }}" "External data study $MODE from run ${{ github.run_id }}" \
-            reports/ext_study/check.md reports/ext_study/check.json
+          if [ "$MODE" = check ]; then
+            files="reports/ext_study/check.md reports/ext_study/check.json"; md=reports/ext_study/check.md
+          else
+            files="reports/ext_study/report.md reports/ext_study/metrics.json"; md=reports/ext_study/report.md
+          fi
+          cat "$md" >> "$GITHUB_STEP_SUMMARY"
+          scripts/commit_report.sh "${{ steps.pre.outputs.n }}" "External data study $MODE from run ${{ github.run_id }}" $files

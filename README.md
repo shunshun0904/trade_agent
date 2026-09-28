@@ -59,13 +59,16 @@ null と eval は workflow_dispatch で mode を指定したときだけ動き�
 
 ```bash
 PYTHONPATH=. python scripts/ext_study.py --mode check   # データの確認（期間・抜け・書式、事象の数。先の収益率は出さない）
+PYTHONPATH=. python scripts/ext_study.py --mode eval    # 事前登録どおりに 1 回評価（configs/ext_study.yaml の owner_approved が必要）
 ```
 
 資金調達率（Binance・BitMEX・Deribit）の極端な状態、JPY の内外価格差（bitbank 対 Binance 現物 × ドル円）、キャリー・建玉の急増が、
 btc_jpy の 24 時間先の収益率の分布に HAR 型を超える情報を持つかを調べる。外部データは認証なしの公開の窓口とアーカイブだけ
 （`bbresearch/extdata.py`。Binance のアーカイブ、BitMEX、Deribit、Dukascopy のドル円、FRED）で、`.cache/ext` にためる。
-GitHub Actions（`ext_study.yml`）で実行し、`reports/ext_study/` をコミットする。事前登録の数値は check の後に `configs/ext_study.yaml` に
-固定し、オーナーの承認後に 1 回だけ評価する。
+GitHub Actions（`ext_study.yml`）で実行し、`reports/ext_study/` をコミットする。事前登録の数値は `configs/ext_study.yaml` の `eval` に
+固定してあり（判断は 0・8・16 時 UTC、事象は直前 180 日の下位・上位 10%、直前 24 時間の値動きをそろえた統制と比べ、循環シフトの帰無と
+Holm 法で判定。手順は `bbresearch/eventstudy.py` の冒頭）、`owner_approved` に日付が入るまで eval は動かない。eval は workflow_dispatch で
+mode を指定したときだけ動き、push では check だけが動く。
 
 ### 15 分後の上げ下げの予測（二段構え）
 

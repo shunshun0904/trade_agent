@@ -168,3 +168,92 @@ def test_check_reports_unreachable_source(run_dir, monkeypatch):
     assert not any(r["signal"] == "jpy_premium" for r in rep["event_counts"])
     md = (run_dir / "reports/ext_study/check.md").read_text()
     assert "取れなかったファイル 12 件" in md and "USDJPY/2020/00/BID_candles_hour_1.bi5: HTTP 503" in md
+
+
+# ------------------------------------------------------------------ eval（事前登録どおりの評価）
+
+EVAL = {"grid_hours": [0, 8, 16], "horizon_hours": 24, "q": 0.10, "gap_hours": 24, "staleness_hours": {"funding": 8, "hourly": 2},
+        "zbins": [-2, -1, 1, 2], "z_vol_hours": 240, "z_min_hours": 120, "cost": 0.003, "alpha": 0.05, "tail_ratio": 2.0,
+        "tail_quantile": 0.05, "null_reps": 199, "min_shift_days": 10, "seed": 5,
+        "har": {"windows": [1, 4, 24, 168], "calendar": False, "rv_floor": 1e-10, "min_train_days": 20, "quantiles": [0.05, 0.01]},
+        "primary": [{"id": "H1a", "signal": "funding_binance", "side": "low", "kind": "mean", "direction": 1},
+                    {"id": "H1b", "signal": "funding_binance", "side": "high", "kind": "mean", "direction": -1},
+                    {"id": "H2a", "signal": "jpy_premium", "side": "low", "kind": "mean", "direction": 1},
+                    {"id": "H2b", "signal": "jpy_premium", "side": "high", "kind": "mean", "direction": -1},
+                    {"id": "H3a", "signal": "carry", "side": "high", "kind": "tail", "direction": 1},
+                    {"id": "H3b", "signal": "oi_change", "side": "high", "kind": "tail", "direction": 1}],
+        "venue_check": ["funding_bitmex", "funding_deribit"], "forward_months": 6}
+
+
+def minute_closes(bb: pd.Series, seed: int = 4) -> pd.Series:
+    """1 時間足の終値を分に広げ、小さな揺れを足した 1 分の終値（HAR 型の実現分散に使う）。"""
+    idx = pd.date_range(START, END, freq="1min", tz="UTC", inclusive="left")
+    base = bb.reindex(idx, method="ffill")
+    return base * np.exp(np.random.default_rng(seed).normal(0, 2e-4, len(idx)))
+
+
+def planted(cfg, bump=0.03):
+    """Binance の資金調達率が下位 10% の判断の時刻（数えた事象）の後 24 時間に、bitbank の価格を bump だけ上げる。"""
+    from bbresearch import eventstudy as ev
+    f = xd.Fetcher(".cache/plant", session=Session(fn=respond), pause=0)
+    d = es.load_all(cfg, f, hourly)
+    E = cfg["eval"]
+    times = ev.grid_times(cfg["start"], cfg["end"], E["grid_hours"], "24h")
+    rank = ev.value_at(es.signals(d, cfg)["funding_binance"], times, "8h")
+    sel = ev.select_episodes(ev.event_mask(rank, E["q"], "low"), times.as_unit("ns").asi8, 24 * 3_600_000_000_000)
+    drift = pd.Series(0.0, index=H)
+    for T in times[sel]:
+        ramp = (H >= T) & (H < T + pd.Timedelta("24h"))
+        drift[ramp] += bump * ((H[ramp] - T) / pd.Timedelta("1h") + 1) / 24     # 足 T の終値（T + 1h に分かる）から上がり始める
+        drift[H >= T + pd.Timedelta("24h")] += bump
+    return BB * np.exp(drift), int(sel.sum())
+
+
+def test_eval_requires_owner_approval(run_dir):
+    with pytest.raises(SystemExit, match="owner_approved"):
+        es.main_eval(CFG | {"eval": EVAL})
+
+
+def test_eval_finds_planted_effect_and_reports(run_dir):
+    cfg = CFG | {"owner_approved": "2026-09-28", "eval": EVAL}
+    bb2, n_sel = planted(cfg)
+
+    def hourly2(start, end):
+        idx = H[(H >= pd.Timestamp(start, tz="UTC")) & (H < pd.Timestamp(end, tz="UTC"))]
+        c = bb2.reindex(idx)
+        return pd.DataFrame({"open": c, "high": c * 1.001, "low": c * 0.999, "close": c, "volume": 1.0})
+    f = xd.Fetcher(run_dir / "cache", session=Session(fn=respond), pause=0)
+    m = es.main_eval(cfg, fetcher=f, hourly=hourly2, minute_close=minute_closes(bb2))
+    P = {r["id"]: r for r in m["primary"]}
+    assert set(P) == {"H1a", "H1b", "H2a", "H2b", "H3a", "H3b"} and P["H1a"]["n_ev"] == n_sel
+    assert P["H1a"]["effect"] == pytest.approx(0.03, abs=0.01) and P["H1a"]["ev_mean"] > 0.003
+    assert P["H1a"]["p_holm"] < 0.05 and P["H1a"]["venue_ok"] and P["H1a"]["supported"]
+    assert all(P[k]["p_holm"] >= P[k]["p"] for k in P if np.isfinite(P[k]["p"]))
+    assert P["H2a"]["n_ev"] == 0 and np.isnan(P["H2a"]["p_holm"]) and not P["H2a"]["supported"]   # 上げを足したので割安の事象がない
+    assert P["H3a"]["kind"] == "tail" and 0 <= P["H3a"]["ev_mean"] <= 1
+    assert m["diag"]["har_refits"] >= 2 and 0 < m["diag"]["tail_rate_all"] < 0.2
+    md = (run_dir / "reports/ext_study/report.md").read_text()
+    assert "結論: 主な検定 6 つのうち支持は" in md and "| H1a | 資金調達率（Binance） | 下位 10% |" in md and "| 支持 |" in md
+    log = [json.loads(x) for x in (run_dir / "reports/experiments.jsonl").read_text().splitlines()]
+    assert [x["key"] for x in log] == [f"ext_study/{k}" for k in ("H1a", "H1b", "H2a", "H2b", "H3a", "H3b")]
+    assert json.loads((run_dir / "reports/ext_study/metrics.json").read_text())["owner_approved"] == "2026-09-28"
+
+
+def test_eval_without_effect_supports_nothing(run_dir):
+    cfg = CFG | {"owner_approved": "2026-09-28", "eval": EVAL}
+    f = xd.Fetcher(run_dir / "cache", session=Session(fn=respond), pause=0)
+    m = es.main_eval(cfg, fetcher=f, hourly=hourly, minute_close=minute_closes(BB))
+    assert not any(r["supported"] for r in m["primary"])
+    assert "結論: 主な検定 6 つのうち支持は 0 個（前向きの確認はしない）" in (run_dir / "reports/ext_study/report.md").read_text()
+
+
+def test_minutes_summary():
+    idx = pd.date_range("2020-01-01", periods=3 * 1440, freq="1min", tz="UTC")
+    mc = pd.Series(100.0, index=idx)
+    mc[1440:1440 * 2] = np.nan                                      # 2 日目は約定なし
+    mc[1440 * 2 + 10:1440 * 2 + 70] = np.nan
+    h = pd.DataFrame({"close": 100.0}, index=pd.date_range("2020-01-01", periods=72, freq="h", tz="UTC"))
+    s = es.minutes_summary(mc, h)
+    r = s["by_year"][0]
+    assert r["days_without_trades"] == 1 and r["longest_gap_min"] == 1440 and r["share_with_trades"] == pytest.approx((2 * 1440 - 60) / (3 * 1440))
+    assert s["hourly_close_match"][2020] == 1.0

@@ -28,7 +28,7 @@
   - `auth-check.yml`: 認証付き API の疎通確認（参照系のみ）。キーは Secrets `bitbank_API` / `bitbank_secret` から読む
   - `swing.yml`: スイング（4 時間足で判断し 1〜3 日保有）の方向の研究。mode `check`（データの確認。損益は出さない）と `eval`（事前登録した 45 通りを全期間で 1 回。`configs/swing.yaml` の `owner_approved` が必要）。eval は workflow_dispatch だけで動き、`scripts/swing.py` かワークフローの変更の push では check だけが動く（`scripts/swing.py`、`bbresearch/swing.py`、`reports/swing/`）。workflow_dispatch だけのワークフローは既定ブランチにないと API から起動できない（404、2026-09-28 に確認）
   - `ext_check.yml`: 候補 2 の外部データに Actions から届くか、履歴がどこまであるかの確認（`scripts/ext_check.py`、`reports/ext/`）
-  - `ext_study.yml`: 候補 2（24 時間の新しい情報源）の研究。今は mode `check` だけ（外部データ（Binance のアーカイブ、BitMEX、Deribit、Dukascopy のドル円、FRED）と bitbank の 1 時間足の期間・抜け・書式、信号ごとの事象の数。先の収益率は出さない）。外部データは `.cache/ext` にため、確定した月・日は取り直さない（`scripts/ext_study.py`、`bbresearch/extdata.py`、`configs/ext_study.yaml`、`reports/ext_study/`）
+  - `ext_study.yml`: 候補 2（24 時間の新しい情報源）の研究。mode `check`（外部データ（Binance のアーカイブ、BitMEX、Deribit、Dukascopy のドル円、FRED）と bitbank の 1 時間足・約定の期間・抜け・書式、信号ごとの事象の数。先の収益率は出さない）と `eval`（事前登録どおりに 1 回。`configs/ext_study.yaml` の `owner_approved` が必要。workflow_dispatch だけ）。外部データは `.cache/ext` にため、確定した月・日は取り直さない。約定は 2020-01 から取る（`scripts/ext_study.py`、`bbresearch/extdata.py`、`bbresearch/eventstudy.py`、`configs/ext_study.yaml`、`reports/ext_study/`）
 - `dashboard/`: TPO・価格帯別出来高のダッシュボード（AWS: API Gateway + Lambda + S3、SAM）。`dashboard/deploy.sh` を AWS CloudShell で実行してデプロイする。Lambda は標準ライブラリだけで書き、計算が `bbresearch/profile.py` と一致することを `tests/test_dashboard.py` で照合している。画面は `dashboard/web/`（React、Vite）で書き、`dashboard/web/build.sh` でビルドして `dashboard/app/page.html`（生成物、コミットする）に置く。左に直近 24 時間・15 分足の TPO・価格帯別出来高（ダーク配色、5 分ごとに更新）、右に 1 分ごとの水準の 60 分の推移（`/api/signals`）。モデルの予測は載せない
 - リポジトリは公開（2026-09-27 に非公開へ切り替え、2026-09-28 に公開へ戻した）。ログやレポートに残高・注文の内容・キーを出さない（例外: `docs/monitor/` の記録は金額を残す。公開のまま記録する。2026-09-28 オーナー決定）。
 - 上げ下げの予測モデル（`direction*.yml`）は 2026-09-26 に研究を区切った（目的変数 3 通り・ホライズン 2 通りとも費用を超えない。SPEC §1.3）。自動売買には使わない。
@@ -43,7 +43,8 @@
 - 候補 2 の外部データの確認（2026-09-28、run 36436612034・36436921106、`reports/ext/check.md`。SPEC §9 E1）: Binance の窓口（api・fapi）は 451、Bybit は 403 で Actions（米国）から届かない。Binance の市場データ専用の窓口（data-api.binance.vision、現物の足）とアーカイブ（data.binance.vision。資金調達率・永久先物の足・プレミアム指数は 2020-01 から、建玉などの記録は 2020-09 以前から）は届く。Dukascopy のドル円の 1 時間足（月ごとのファイル）と FRED の日次、Deribit・OKX・Kraken Futures・BitMEX の窓口も届く。
 - 2026-09-28 オーナー決定: Bybit の代わりに BitMEX と Deribit で資金調達率の効果を確かめる。ドル円は Dukascopy の 1 時間足（FRED の日次で照合）。評価の期間は Binance のアーカイブがある 2020-01 から。
 - 候補 2 のデータの確認（2026-09-28、run 36448539811、`reports/ext_study/check.md`。SPEC §9 E2）: 2020-01〜2026-08 のすべての系列がそろった（BitMEX・Deribit の資金調達率も 2020-01 から欠けなし。建玉などの記録は 2020-09 から）。信号は 2020-03-31 から。事象の数は下位・上位 10% で、24 時間より離れたものだけ数えて 89〜417 回。
-- 次の作業: 候補 2 の事前登録の数値（閾値、判断の時刻、統制、判定、下側の裾の物差し、帰無、前向きの確認）をオーナーと決め、承認を得てから 1 回評価する。オーナーが `dashboard/deploy.sh` でデプロイし、React 版の画面と `/api/signals` を実機で確認する。Phase 7 は保留。
+- 2026-09-28 オーナー決定（候補 2 の事前登録の設計、8 項目とも推奨の案）: 下位・上位 10%、0・8・16 時 UTC で 24 時間は重ねない、上げ下げは統制との差が有意 かつ 費用 0.3% を超える、資金調達率は Binance で判定し BitMEX・Deribit は同じ向きが条件、下側の裾の物差しは HAR 型（1 分の実現分散）、下側の裾は差が有意 かつ 統制の 2 倍以上、帰無は循環シフト 999 回（Holm 法）、前向きは支持した仮説だけ 6 か月。数値は `configs/ext_study.yaml` の `eval`、SPEC の「24 時間の新しい情報源」の節。
+- 次の作業: check で 2020 年の約定（HAR 型の 1 分の実現分散）を確かめ、事前登録の承認（`owner_approved`）を得てから eval を 1 回実行する。オーナーが `dashboard/deploy.sh` でデプロイし、React 版の画面と `/api/signals` を実機で確認する。Phase 7 は保留。
 
 ## コマンド
 
