@@ -115,7 +115,7 @@ def test_config_file_has_the_keys_the_script_reads(cfg):
     for k, v in cfg.items():
         if isinstance(v, dict):
             assert set(real[k]) == set(v), k
-    assert real["owner_approved"] is None                              # 承認の前
+    assert real["owner_approved"] is None or len(str(real["owner_approved"])) == 10   # 承認の前は空、承認後は日付（YYYY-MM-DD）
     wf = yaml.safe_load((root / ".github" / "workflows" / "dist_base.yml").read_text(encoding="utf-8"))
     assert len(wf["jobs"]["null-shard"]["strategy"]["matrix"]["shard"]) == real["null_audit"]["shards"]
     assert real["null_audit"]["reps"] * len(real["null_audit"]["models"]) == 60        # 3 モデル × 20 回（2026-09-28 オーナー決定）
