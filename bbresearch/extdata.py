@@ -34,15 +34,23 @@ METRICS_COLS = ["create_time", "symbol", "sum_open_interest", "sum_open_interest
 
 
 class Fetcher:
-    """キャッシュ付きの取得。404 は None（その月・日のファイルがない）。5xx と 429 は待って取り直す。"""
+    """キャッシュ付きの取得。404 は None（その月・日のファイルがない）。429・5xx と接続の失敗は待って取り直す（Retry-After が
+    あればその秒数、なければ 2, 4, 8, … 秒。最長 60 秒）。strict でなければ、取り直しても取れないものや 404 以外の拒否は
+    failures に記録して None を返す（check で使う。どのファイルが取れなかったかを報告に出す）。"""
 
     def __init__(self, cache: Path | str = ".cache/ext", session: requests.Session | None = None, pause: float = 0.25,
-                 retries: int = 4):
+                 retries: int = 6, strict: bool = True):
         self.cache = Path(cache)
         self.session = session or requests.Session()
         self.session.headers.update(UA)
-        self.pause, self.retries = pause, retries
+        self.pause, self.retries, self.strict = pause, retries, strict
         self.n_requests = 0
+        self.failures: list[dict] = []
+
+    def _fail(self, url: str, status) -> None:
+        if self.strict:
+            raise RuntimeError(f"{url}: {status}（{self.retries} 回まで取り直した）")
+        self.failures.append({"url": url, "status": str(status)})
 
     def get(self, url: str, rel: str, final: bool = True, pause: float | None = None) -> bytes | None:
         """final: 確定したファイル（ためたものがあれば取り直さない）。pause: 要求の後に待つ秒（窓口ごとの制限に合わせる）。"""
@@ -52,9 +60,15 @@ class Fetcher:
             return path.read_bytes()
         if final and miss.exists():
             return None
+        last = None
         for attempt in range(self.retries):
             self.n_requests += 1
-            resp = self.session.get(url, timeout=60)
+            try:
+                resp = self.session.get(url, timeout=60)
+            except requests.RequestException as exc:
+                last = f"{type(exc).__name__}"
+                time.sleep(min(60, 2 ** (attempt + 1)))
+                continue
             time.sleep(self.pause if pause is None else pause)
             if resp.status_code == 200:
                 path.parent.mkdir(parents=True, exist_ok=True)
@@ -65,11 +79,23 @@ class Fetcher:
                     miss.parent.mkdir(parents=True, exist_ok=True)
                     miss.write_bytes(b"")
                 return None
+            last = f"HTTP {resp.status_code}"
             if resp.status_code in (429, 500, 502, 503, 504):
-                time.sleep(2 ** attempt)
+                wait = (getattr(resp, "headers", None) or {}).get("Retry-After")
+                time.sleep(min(60, float(wait)) if wait and str(wait).isdigit() else min(60, 2 ** (attempt + 1)))
                 continue
-            raise RuntimeError(f"{url}: HTTP {resp.status_code} {resp.text[:200]}")
-        raise RuntimeError(f"{url}: 取り直しても失敗")
+            self._fail(url, f"{last} {resp.text[:200]}")
+            return None
+        self._fail(url, last)
+        return None
+
+
+def _empty(columns: list[str] | None = None, name: str | None = None):
+    """取れなかったときの空の表・系列（index は UTC の時刻。後の計算で他の系列とそろえられるように）。"""
+    idx = pd.DatetimeIndex([], tz="UTC")
+    if columns is None:
+        return pd.Series(dtype=float, index=idx, name=name)
+    return pd.DataFrame({c: pd.Series(dtype=float) for c in columns}, index=idx)
 
 
 def months(start: str, end_exclusive: str) -> list[str]:
@@ -114,7 +140,7 @@ def binance_klines(f: Fetcher, market: str, kind: str, symbol: str, interval: st
         if raw:
             parts.append(read_zip_csv(raw, KLINE_COLS, positional=True))
     if not parts:
-        return pd.DataFrame(columns=["open", "high", "low", "close", "volume"])
+        return _empty(["open", "high", "low", "close", "volume"])
     df = pd.concat(parts, ignore_index=True)
     df.index = _ms_to_utc(df["open_time"])
     out = df[["open", "high", "low", "close", "volume"]].astype(float)
@@ -131,7 +157,7 @@ def binance_funding(f: Fetcher, symbol: str, start: str, end: str) -> pd.Series:
         if raw:
             parts.append(read_zip_csv(raw, FUNDING_COLS, positional=True))
     if not parts:
-        return pd.Series(dtype=float, name="binance")
+        return _empty(name="binance")
     df = pd.concat(parts, ignore_index=True)
     s = pd.Series(df["last_funding_rate"].astype(float).to_numpy(), index=_ms_to_utc(df["calc_time"]).floor("min"), name="binance")
     s = s[~s.index.duplicated()].sort_index()
@@ -149,7 +175,7 @@ def binance_metrics(f: Fetcher, symbol: str, start: str, end: str) -> pd.DataFra
         if raw:
             parts.append(read_zip_csv(raw, METRICS_COLS))
     if not parts:
-        return pd.DataFrame(columns=["sum_open_interest", "sum_open_interest_value"])
+        return _empty(["sum_open_interest", "sum_open_interest_value"])
     df = pd.concat(parts, ignore_index=True)
     df.index = pd.DatetimeIndex(pd.to_datetime(df["create_time"], utc=True))
     keep = [c for c in ("sum_open_interest", "sum_open_interest_value") if c in df.columns]
@@ -172,16 +198,20 @@ def bitmex_funding(f: Fetcher, start: str, end: str, symbol: str = "XBTUSD", pau
             while True:
                 url = (f"https://www.bitmex.com/api/v1/funding?symbol={symbol}&count=500&reverse=false&startTime={cursor}"
                        f"&endTime={year + 1}-01-01T00:00:00Z")
-                batch = json.loads(f.get(url, f"bitmex/tmp/{symbol}-{cursor[:19].replace(':', '')}.json", final=False, pause=pause))
+                raw = f.get(url, f"bitmex/tmp/{symbol}-{cursor[:19].replace(':', '')}.json", final=False, pause=pause)
+                if raw is None:                       # 取れなかった（strict でないとき）。その年はためない
+                    break
+                batch = json.loads(raw)
                 rows += batch
                 if len(batch) < 500:
                     break
                 cursor = (pd.Timestamp(batch[-1]["timestamp"]) + pd.Timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
-            path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(json.dumps(rows))
+            if raw is not None:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(json.dumps(rows))
         out += rows
     if not out:
-        return pd.Series(dtype=float, name="bitmex")
+        return _empty(name="bitmex")
     s = pd.Series([float(r["fundingRate"]) for r in out], index=pd.DatetimeIndex(pd.to_datetime([r["timestamp"] for r in out], utc=True)),
                   name="bitmex")
     s = s[~s.index.duplicated()].sort_index()
@@ -210,7 +240,7 @@ def deribit_funding(f: Fetcher, start: str, end: str, instrument: str = "BTC-PER
                 break
             cursor = last + 1
     if not out:
-        return pd.DataFrame(columns=["interest_8h", "interest_1h"], dtype=float)
+        return _empty(["interest_8h", "interest_1h"])
     df = pd.DataFrame({"interest_8h": [float(r["interest_8h"]) for r in out], "interest_1h": [float(r["interest_1h"]) for r in out]},
                       index=pd.DatetimeIndex(pd.to_datetime([int(r["timestamp"]) for r in out], unit="ms", utc=True)))
     df = df[~df.index.duplicated()].sort_index()
@@ -222,15 +252,16 @@ def decode_bi5_candles(raw: bytes, base: pd.Timestamp, point: float = 1000.0) ->
     data = lzma.decompress(raw) if raw else b""
     n = len(data) // 24
     if n == 0:
-        return pd.DataFrame(columns=["open", "high", "low", "close"])
+        return _empty(["open", "high", "low", "close"])
     rec = np.frombuffer(data[:n * 24], dtype=BI5_CANDLE)
     idx = base + pd.to_timedelta(rec["t"].astype("int64"), unit="s")
     return pd.DataFrame({"open": rec["o"] / point, "close": rec["c"] / point, "low": rec["l"] / point, "high": rec["h"] / point},
                         index=pd.DatetimeIndex(idx))
 
 
-def dukascopy_hourly(f: Fetcher, start: str, end: str, symbol: str = "USDJPY") -> pd.DataFrame:
-    """ドル円の 1 時間足（BID と ASK の中値）。月ごとのファイル。月の区切りは 0 始まり（1 月 = 00）。"""
+def dukascopy_hourly(f: Fetcher, start: str, end: str, symbol: str = "USDJPY", pause: float = 1.5) -> pd.DataFrame:
+    """ドル円の 1 時間足（BID と ASK の中値）。月ごとのファイル。月の区切りは 0 始まり（1 月 = 00）。2026-09-28 の run 36440860628
+    では最初のファイルで取り直しても取れなかった（429 か 5xx が続いた）ので、1 件ごとに pause 秒待つ。"""
     parts = []
     for m in months(start, end):
         y, mo = int(m[:4]), int(m[5:])
@@ -238,13 +269,13 @@ def dukascopy_hourly(f: Fetcher, start: str, end: str, symbol: str = "USDJPY") -
         sides = {}
         for side in ("BID", "ASK"):
             url = f"https://datafeed.dukascopy.com/datafeed/{symbol}/{y}/{mo - 1:02d}/{side}_candles_hour_1.bi5"
-            raw = f.get(url, f"dukascopy/{symbol}/{m}-{side}.bi5", month_is_final(m))
+            raw = f.get(url, f"dukascopy/{symbol}/{m}-{side}.bi5", month_is_final(m), pause=pause)
             if raw:
                 sides[side] = decode_bi5_candles(raw, base)
         if len(sides) == 2:
             parts.append((sides["BID"] + sides["ASK"]) / 2)
     if not parts:
-        return pd.DataFrame(columns=["open", "high", "low", "close"])
+        return _empty(["open", "high", "low", "close"])
     out = pd.concat(parts).sort_index()
     out = out[~out.index.duplicated()]
     return out[(out.index >= pd.Timestamp(start, tz="UTC")) & (out.index < pd.Timestamp(end, tz="UTC"))]
@@ -253,6 +284,8 @@ def dukascopy_hourly(f: Fetcher, start: str, end: str, symbol: str = "USDJPY") -
 def fred_series(f: Fetcher, series: str = "DEXJPUS") -> pd.Series:
     """FRED の日次（欠損の "." は除く）。毎回取り直す（1 回の要求）。"""
     raw = f.get(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}", f"fred/{series}.csv", final=False)
+    if raw is None:
+        return _empty(name=series)
     df = pd.read_csv(io.BytesIO(raw))
     df.columns = ["date", "value"]
     df = df[pd.to_numeric(df["value"], errors="coerce").notna()]

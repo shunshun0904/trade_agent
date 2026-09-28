@@ -99,22 +99,39 @@ def test_binance_klines_mixed_formats_cache_and_missing_month(tmp_path):
     assert len(sess.calls) == n and again.equals(out)             # 確定した月（404 も）は取り直さない
 
 
-def test_fetcher_retries_and_errors(tmp_path):
+def test_fetcher_retries_and_errors(tmp_path, monkeypatch):
+    waits = []
+    monkeypatch.setattr(xd.time, "sleep", waits.append)
     seq = [Resp(503), Resp(429), Resp(200, b"ok")]
     sess = Session(fn=lambda url: seq.pop(0) if "retry" in url else Resp(403, b"blocked"))
     f = xd.Fetcher(tmp_path, session=sess, pause=0)
-    xd.time.sleep, orig = (lambda s: None), xd.time.sleep
-    try:
-        assert f.get("https://x/retry", "a.bin") == b"ok" and f.n_requests == 3
-        with pytest.raises(RuntimeError, match="HTTP 403"):
-            f.get("https://x/forbidden", "b.bin")
-    finally:
-        xd.time.sleep = orig
+    assert f.get("https://x/retry", "a.bin") == b"ok" and f.n_requests == 3
+    assert [w for w in waits if w] == [2, 4]                         # 取り直しの前に 2 秒、4 秒待つ
+    with pytest.raises(RuntimeError, match="HTTP 403"):
+        f.get("https://x/forbidden", "b.bin")
     sess2 = Session()
     f2 = xd.Fetcher(tmp_path / "c", session=sess2, pause=0)
     assert f2.get("https://x/missing", "m.bin", final=False) is None
     assert f2.get("https://x/missing", "m.bin", final=False) is None and len(sess2.calls) == 2   # 確定していなければ 404 も取り直す
     assert not (tmp_path / "c" / "m.bin.404").exists()
+
+
+def test_fetcher_not_strict_records_failures(tmp_path, monkeypatch):
+    monkeypatch.setattr(xd.time, "sleep", lambda s: None)
+
+    def fn(url):
+        if "down" in url:
+            return Resp(503)
+        if "reset" in url:
+            raise xd.requests.ConnectionError("reset")
+        return Resp(403, b"blocked")
+    sess = Session(fn=fn)
+    f = xd.Fetcher(tmp_path, session=sess, pause=0, retries=3, strict=False)
+    assert f.get("https://x/down", "d.bin") is None and f.get("https://x/reset", "r.bin") is None
+    assert f.get("https://x/forbidden", "f.bin") is None
+    assert [x["status"][:8] for x in f.failures] == ["HTTP 503", "Connecti", "HTTP 403"]
+    assert len(sess.calls) == 3 + 3 + 1 and not list(tmp_path.glob("*.404"))   # 取れなかったものは 404 として残さない
+    assert f.get("https://x/down", "d.bin") is None and len(sess.calls) == 10   # 次の実行では取り直す
 
 
 def test_binance_funding_floors_to_minute(tmp_path):

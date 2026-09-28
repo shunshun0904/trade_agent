@@ -100,7 +100,7 @@ def episodes(t: pd.DatetimeIndex, gap: str = "24h") -> int:
 
 
 def main_check(cfg: dict, fetcher: xd.Fetcher | None = None, hourly=None) -> dict:
-    f = fetcher or xd.Fetcher(cfg.get("cache", ".cache/ext"))
+    f = fetcher or xd.Fetcher(cfg.get("cache", ".cache/ext"), strict=False)     # 取れなかったファイルは報告に出して続ける
     t0 = time.monotonic()
     d = load_all(cfg, f, hourly)
     s, e = cfg["start"], cfg["end"]
@@ -196,7 +196,7 @@ def main_check(cfg: dict, fetcher: xd.Fetcher | None = None, hourly=None) -> dic
            "coverage": cov, "funding_binance_gaps": funding_gaps, "first_signal": first_signal, "samples": samples,
            "event_counts": counts, "signal_corr": sig_corr.to_dict(), "funding_corr_daily": corr, "deribit_interest": der,
            "fx_dukascopy_vs_fred": fx_row, "premium_quantiles_by_year": prem_q, "funding_quantiles_by_year": fund_q,
-           "prior_move": prior}
+           "prior_move": prior, "failures": f.failures}
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / "check.json").write_text(json.dumps(chk, ensure_ascii=False, indent=1, default=str))
 
@@ -207,8 +207,11 @@ def main_check(cfg: dict, fetcher: xd.Fetcher | None = None, hourly=None) -> dic
           "- 信号: funding_*（各取引所の資金調達率。Deribit は 0・8・16 時の記録の interest_8h）、jpy_premium（log bitbank − log(Binance 現物 × ドル円)）、"
           "carry（Binance のプレミアム指数の 1 時間足の終値）、oi_change（Binance の建玉の 24 時間の対数変化）\n",
           "## データ\n", "| 系列 | 件数 | 最初 | 最後 | 期待する件数 | 抜け | 余分 |", "|---|---|---|---|---|---|---|"]
+    fails = [f"- 取れなかったファイル {len(f.failures)} 件" + ("" if not f.failures else "（最初の 20 件）:")]
+    fails += [f"  - {x['url']}: {x['status'][:120]}" for x in f.failures[:20]]
     md += [f"| {r['name']} | {r['n']:,} | {r['first'][:16]} | {r['last'][:16]} | {r.get('expected', '-')} | {r.get('missing', '-')} | {r.get('extra', '-')} |"
            for r in cov]
+    md += [""] + fails
     md += ["", "- Binance の資金調達の間隔（時間: 回数）: " + "、".join(f"{k}: {v:,}" for k, v in funding_gaps.items()),
            "- 信号が出始める時刻: " + "、".join(f"{k} {v[:16]}" for k, v in first_signal.items()),
            "", "## 事象の数（年ごと。下位 q = 順位が q 以下、上位 q = 1 − q 以上。括弧内は前の事象から 24 時間より離れたものだけ数えた数）\n",

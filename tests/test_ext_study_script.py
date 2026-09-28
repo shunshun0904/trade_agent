@@ -91,18 +91,14 @@ def hourly(start, end):
 @pytest.fixture()
 def run_dir(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(xd.time, "sleep", lambda s: None)          # 窓口ごとの待ち時間を飛ばす
     return tmp_path
 
 
 def test_check_runs_and_reports(run_dir):
     sess = Session(fn=respond)
     f = xd.Fetcher(run_dir / "cache", session=sess, pause=0)
-    xd_bitmex = xd.bitmex_funding
-    try:
-        xd.bitmex_funding = lambda fetcher, s, e: xd_bitmex(fetcher, s, e, pause=0)
-        chk = es.main_check(CFG, fetcher=f, hourly=hourly)
-    finally:
-        xd.bitmex_funding = xd_bitmex
+    chk = es.main_check(CFG, fetcher=f, hourly=hourly)
     rep = json.loads((run_dir / "reports/ext_study/check.json").read_text())
     md = (run_dir / "reports/ext_study/check.md").read_text()
     cov = {r["name"]: r for r in rep["coverage"]}
@@ -159,3 +155,16 @@ def test_main_reads_config(run_dir, monkeypatch):
     (run_dir / "c.yaml").write_text("start: '2020-01-01'\nend: '2020-02-01'\n")
     assert es.main(["--mode", "check", "--config", str(run_dir / "c.yaml")]) == 0
     assert called["cfg"]["start"] == "2020-01-01"
+
+
+def test_check_reports_unreachable_source(run_dir, monkeypatch):
+    """ドル円の窓口が 503 を返し続けても check は最後まで進み、取れなかったファイルを報告に出す。"""
+    sess = Session(fn=lambda url: Resp(503) if "dukascopy" in url else respond(url))
+    f = xd.Fetcher(run_dir / "cache", session=sess, pause=0, retries=2, strict=False)
+    rep = es.main_check(CFG, fetcher=f, hourly=hourly)
+    assert len(rep["failures"]) == 12 and all("dukascopy" in x["url"] and x["status"] == "HTTP 503" for x in rep["failures"])
+    cov = {r["name"]: r for r in rep["coverage"]}
+    assert cov["Dukascopy ドル円 1 時間足（中値）"]["n"] == 0 and rep["fx_dukascopy_vs_fred"]["n"] == 0
+    assert not any(r["signal"] == "jpy_premium" for r in rep["event_counts"])
+    md = (run_dir / "reports/ext_study/check.md").read_text()
+    assert "取れなかったファイル 12 件" in md and "USDJPY/2020/00/BID_candles_hour_1.bi5: HTTP 503" in md
