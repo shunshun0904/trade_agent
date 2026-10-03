@@ -1,11 +1,10 @@
 # 1 日 1 回、残高・評価額・目標の重みを記録し、モニター画面（docs/monitor/index.html）を作り直してコミットする。
-# 毎日 00:47 UTC（09:47 JST。正時直後は GitHub の schedule が数時間遅れるため、端数の分にした）と手動、scripts/snapshot.py の変更を push したとき。2026-09-27 からこのブランチが既定なので schedule が動く。
+# 起動は Claude の Routine（毎日 09:50 JST に workflow_dispatch）と、scripts/snapshot.py などの変更を push したとき。
+# GitHub の schedule は遅れや欠落が多く、Routine と二重に記録したので 2026-10-03 に外した（オーナー決定）。
 # 残高はキー（Secrets bitbank_API / bitbank_secret）で読む（参照系のみ、発注しない）。オーナー決定: 金額は伏せない。
 name: monitor
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "47 0 * * *"
   push:
     branches: [claude/bitbank-trade-agent-7ers55]
     paths:
