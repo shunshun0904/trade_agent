@@ -1,13 +1,11 @@
 # 候補 2 の H2a の前向きのドライラン: 判断の時刻（0・8・16 時 UTC）に bitbank の気配（公開の ticker）を記録し、
 # reports/ext_study/quotes.jsonl に 1 行ずつ追記する。発注はしない。2026-09-28 オーナー決定。
-# schedule は既定のブランチ（claude/bitbank-trade-agent-7ers55）にあるときだけ動く（このブランチからは PR #1 のマージ後）。
-# 正時ちょうどは schedule が遅れやすいので 2 分にした。遅れは記録の delay_min に残し、ext_study の forward は 60 分以内のものだけ使う。
+# schedule（"2 0,8,16 * * *"）は 2026-10-30 のオーナー指示で外した（前向きのドライランを止めた）。
+# 遅れは記録の delay_min に残し、ext_study の forward は 60 分以内のものだけ使う。
 # 手動の実行は API の workflow_dispatch（ref にブランチ）。push では記録しない（workflow_dispatch で起動できるようにするためだけの設定）。
 name: ext-quotes
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "2 0,8,16 * * *"
   push:
     paths:
       - .github/workflows/ext_quotes.yml

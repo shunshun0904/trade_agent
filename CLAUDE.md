@@ -5,7 +5,7 @@
 ## 現在の状態
 
 - Phase 1（`bbdata/`）、Phase 0（`scripts/phase0.py`、結果は SPEC.md §9）、Phase 2〜6（`bbresearch/`）は実装済み。
-- このブランチは 2026-09-27 に既定ブランチになった（schedule 付きワークフローが自動で動く。60 日間 push がないと GitHub が schedule を止める。monitor・rebalance は 2026-10-03 に schedule を外した）。
+- このブランチは 2026-09-27 に既定ブランチになった（schedule 付きワークフローが自動で動く。60 日間 push がないと GitHub が schedule を止める。monitor・rebalance は 2026-10-03 に、ext_quotes・ext_forward は 2026-10-30 に schedule を外したので、いまは schedule で動くワークフローはない）。
 - monitor・rebalance の定期の起動は 2026-10-30 のオーナー指示で止めた（Claude の Routine trig_014P2JB6B2EnaawCpyZZ8HdV を削除。最後の記録は 10 月 30 日）。いまは手動の workflow_dispatch でだけ動く。経緯: GitHub の schedule は当てにならない（9 月 27 日は 5 時間遅れ、28 日は動かず）ので、9 月 29 日から Routine（毎日 09:50 JST、セッション session_01RuMTmcvL9E32eKE63o74Vg に届く）が GitHub API で monitor を起動し、月曜は rebalance（weekly）、1 日は rebalance（monthly）も起動していた。2026-09-28 に作った「新しいセッションを立てる」型の Routine は GitHub のツールを持たず起動できなかったので、セッションに届く型へ替えた。schedule は予備として残していたが、Routine と二重に記録した（10 月 1 日のリバランス計画が 2 行）ので、2026-10-03 のオーナー決定で monitor・rebalance の schedule を外した。10 月 25〜28 日は Claude の週次の利用上限で Routine が動かず、記録が抜けた（10 月 26 日の weekly も）。
 - 実 API へのアクセスは GitHub Actions で行う。開発環境からは行わない。
   - どのワークフローも、API の workflow_dispatch でこのブランチを ref に指定して実行できる（既定ブランチになくてもよいことを 2026-09-23 に確認）。ただし workflow_dispatch だけで push のきっかけを持たないワークフローは、既定ブランチにないと API が 404 を返した（`swing.yml`、2026-09-28）。push のきっかけも付けておく
@@ -29,8 +29,8 @@
   - `auth-check.yml`: 認証付き API の疎通確認（参照系のみ）。キーは Secrets `bitbank_API` / `bitbank_secret` から読む
   - `swing.yml`: スイング（4 時間足で判断し 1〜3 日保有）の方向の研究。mode `check`（データの確認。損益は出さない）と `eval`（事前登録した 45 通りを全期間で 1 回。`configs/swing.yaml` の `owner_approved` が必要）。eval は workflow_dispatch だけで動き、`scripts/swing.py` かワークフローの変更の push では check だけが動く（`scripts/swing.py`、`bbresearch/swing.py`、`reports/swing/`）。workflow_dispatch だけのワークフローは既定ブランチにないと API から起動できない（404、2026-09-28 に確認）
   - `ext_check.yml`: 候補 2 の外部データに Actions から届くか、履歴がどこまであるかの確認（`scripts/ext_check.py`、`reports/ext/`）
-  - `ext_forward.yml`: 候補 2 の H2a の前向きのドライラン（発注しない）。毎月 5 日 04:23 UTC に確定した月まで評価と同じ計算をする（`scripts/ext_study.py --mode forward`、`reports/ext_study/forward.md`）
-  - `ext_quotes.yml`: 0・8・16 時 UTC（2 分）に bitbank の気配を `reports/ext_study/quotes.jsonl` に追記する（`scripts/ext_quotes.py`）。push では記録しない
+  - `ext_forward.yml`: 候補 2 の H2a の前向きのドライラン（発注しない）。確定した月まで評価と同じ計算をする（`scripts/ext_study.py --mode forward`、`reports/ext_study/forward.md`）。毎月 5 日 04:23 UTC の schedule は 2026-10-30 に外した（手動だけ）
+  - `ext_quotes.yml`: bitbank の気配を `reports/ext_study/quotes.jsonl` に追記する（`scripts/ext_quotes.py`）。0・8・16 時 UTC（2 分）の schedule は 2026-10-30 に外した（手動だけ）。push では記録しない
   - `ext_study.yml`: 候補 2（24 時間の新しい情報源）の研究。mode `check`（外部データ（Binance のアーカイブ、BitMEX、Deribit、Dukascopy のドル円、FRED）と bitbank の 1 時間足・約定の期間・抜け・書式、信号ごとの事象の数。先の収益率は出さない）と `eval`（事前登録どおりに 1 回。`configs/ext_study.yaml` の `owner_approved` が必要。workflow_dispatch だけ）。外部データは `.cache/ext` にため、確定した月・日は取り直さない。約定は 2020-01 から取る（`scripts/ext_study.py`、`bbresearch/extdata.py`、`bbresearch/eventstudy.py`、`configs/ext_study.yaml`、`reports/ext_study/`）
 - `dashboard/`: TPO・価格帯別出来高のダッシュボード（AWS: API Gateway + Lambda + S3、SAM）。`dashboard/deploy.sh` を AWS CloudShell で実行してデプロイする。Lambda は標準ライブラリだけで書き、計算が `bbresearch/profile.py` と一致することを `tests/test_dashboard.py` で照合している。画面は `dashboard/web/`（React、Vite）で書き、`dashboard/web/build.sh` でビルドして `dashboard/app/page.html`（生成物、コミットする）に置く。左に直近 24 時間・15 分足の TPO・価格帯別出来高（ダーク配色、5 分ごとに更新）、右に 1 分ごとの水準の 60 分の推移（`/api/signals`）。モデルの予測は載せない
 - リポジトリは公開（2026-09-27 に非公開へ切り替え、2026-09-28 に公開へ戻した）。ログやレポートに残高・注文の内容・キーを出さない（例外: `docs/monitor/` の記録は金額を残す。公開のまま記録する。2026-09-28 オーナー決定）。
@@ -52,7 +52,8 @@
 - 候補 2 の結果（2026-09-28、run 36458705172、`reports/ext_study/report.md`）: 6 つのうち H2a（JPY の内外価格差が下位 10%、bitbank が割安 → 24 時間後が高い）だけ支持（事象 473 回の後の平均 +0.53%、統制との差 +0.63%、Holm 後 p 0.006）。ただし年ごとの平均は 2020〜2024 年 0.38〜1.48%、2025 年 −0.00%、2026 年 0.15% で、直近は費用に届かない。H2b は有意だが費用の条件を満たさない。資金調達率（H1）とキャリー・建玉（H3）は支持しない。自動売買には使わない。
 - 2026-09-28 オーナー決定（H2a の前向きのドライラン、発注しない）: 6 か月（2026-09〜2027-02）。毎月 5 日に確定した月まで評価と同じ計算をし（`ext_forward.yml`、`reports/ext_study/forward.md`）、2027-03 に判定する（統制との差が正 かつ 事象の後の平均が +0.3% 超。有意は求めない）。0・8・16 時 UTC に bitbank の気配を記録する（`ext_quotes.yml`、`reports/ext_study/quotes.jsonl`）。どちらの schedule も既定のブランチにあるときだけ動くので、PR #1 のマージ後から。約定から測る実際の価格は 2026-09-01 から出す。
 - 2026-09-28: PR #1 をマージした（オーナー）。GitHub の schedule は当てにならないので、オーナー決定で H2a の毎月の計算は Claude の Routine （trig_01PQQUF3bsjWJ5TofsdMkHn1「bitbank H2a 前向きドライランの月次確認」、毎月 6 日 10:12 JST、Routine を作ったセッション session_01TyQHbym6efKFoRDCVXezWz に届く）が、`ext_forward.yml` が今月動いたかを確かめ、動いていなければ起動して途中経過を報告する。2027-03 の判定の報告の後に Routine を削除する。気配の記録（`ext_quotes.yml`）は schedule のままで、遅れが 60 分以内の回だけ使う（実際に買える価格は約定からも測る）。Actions のキャッシュはブランチごとなので、既定のブランチでの最初の `ext_study.yml` は外部データを取り直した（run 36461565982、3,032 件、47 分。Dukascopy の 2 か月分は 503 で取れず、次の実行で取り直す）。前向きの計算は判断に要る過去（信号の窓 180 日 + 7 日）だけを読み、H2a に要る系列（bitbank・Binance 現物・ドル円の 1 時間足）が 1% を超えて欠けたときだけ止まる。
-- 次の作業: 2026-10-06 に 2026-09 の途中経過を報告する（Routine）。オーナーが `dashboard/deploy.sh` でデプロイし、React 版の画面と `/api/signals` を実機で確認する。Phase 7 は保留。
+- 2026-10-30 オーナー指示: H2a の前向きのドライランを止めた（Routine trig_01PQQUF3bsjWJ5TofsdMkHn1 を削除し、`ext_quotes.yml`・`ext_forward.yml` の schedule を外した）。毎月の計算と 2027-03 の判定は行わない（`ext_forward.yml` は手動でなら動く）。気配の記録は 2026-10-30 まで。同じ日に monitor・rebalance の日次の Routine も削除したので、定期で動く処理はない（`recorder.yml` も `enabled: false`）。
+- 次の作業: オーナーが `dashboard/deploy.sh` でデプロイし、React 版の画面と `/api/signals` を実機で確認する。Phase 7 は保留。
 
 ## コマンド
 
