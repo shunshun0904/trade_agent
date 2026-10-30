@@ -1,6 +1,6 @@
 # リバランス計画（ドライラン。発注しない）。毎月 1 日に銘柄と相対の重みを選び直し（monthly）、毎週月曜に JPY の割合だけ見直す（weekly。目標ボラとトレンドフィルタ）。
-# 起動は Claude の Routine（毎日 09:50 JST。1 日は monthly、月曜は weekly を workflow_dispatch）。
-# GitHub の schedule は遅れや欠落が多く、Routine と二重に記録したので 2026-10-03 に外した（オーナー決定）。
+# 起動は手動の workflow_dispatch（mode を選ぶ）と、scripts/rebalance.py などの変更を push したとき。
+# 定期の起動（2026-10-03 までは GitHub の schedule、2026-10-30 までは Claude の Routine）はオーナーの指示で止めた。
 # 残高はキー（Secrets bitbank_API / bitbank_secret）で読むが、ログには割合（%）だけを出す（公開リポジトリ）。
 name: rebalance
 on:
